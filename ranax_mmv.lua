@@ -6082,27 +6082,46 @@ end
 
 local function _rebuildCoinCache()
     _RanaxCoinCache = {}
-    local map = (typeof(getActiveMapModel) == "function") and getActiveMapModel() or workspace:FindFirstChild("Normal")
-    if map then
-        local cc = map:FindFirstChild("CoinContainer") or map:FindFirstChild("Coins")
-        if cc then
-            for _, v in ipairs(cc:GetChildren()) do
-                if isCollectibleCoin(v) then
-                    _RanaxCoinCache[v] = true
-                end
-            end
-        else
-            for _, v in ipairs(map:GetChildren()) do
-                if isCollectibleCoin(v) then
+    local map = (typeof(getActiveMapModel) == "function") and getActiveMapModel()
+    local searchContainers = {
+        workspace:FindFirstChild("CoinContainer"),
+        workspace:FindFirstChild("Coins"),
+        workspace:FindFirstChild("Normal") and workspace.Normal:FindFirstChild("CoinContainer"),
+        map and map:FindFirstChild("CoinContainer"),
+        map and map:FindFirstChild("Coins"),
+        map,
+        workspace:FindFirstChild("Normal")
+    }
+
+    local seen = {}
+    for _, container in ipairs(searchContainers) do
+        if container then
+            for _, v in ipairs(container:GetChildren()) do
+                if not seen[v] and isCollectibleCoin(v) then
+                    seen[v] = true
                     _RanaxCoinCache[v] = true
                 elseif v:IsA("Model") and (v.Name:find("Coin") or v.Name == "Spawns") then
                     for _, sub in ipairs(v:GetChildren()) do
-                        if isCollectibleCoin(sub) then _RanaxCoinCache[sub] = true end
+                        if not seen[sub] and isCollectibleCoin(sub) then
+                            seen[sub] = true
+                            _RanaxCoinCache[sub] = true
+                        end
                     end
                 end
             end
         end
     end
+
+    -- Direct fallback if containers were empty: check workspace children for Coin_Server
+    if next(_RanaxCoinCache) == nil then
+        for _, v in ipairs(workspace:GetChildren()) do
+            if v.Name == "Coin_Server" and isCollectibleCoin(v) and not seen[v] then
+                seen[v] = true
+                _RanaxCoinCache[v] = true
+            end
+        end
+    end
+
     _coinCacheReady = true
 end
 
@@ -6140,17 +6159,16 @@ _G.RanaxUpdateWorkspaceCoinWatchers = updateWorkspaceCoinWatchers
 
 local function getCoinTargetPosition(coin)
     if not coin or not coin.Parent then return nil end
-    local visual = coin:FindFirstChild("CoinVisual")
-    if visual then
-        if visual:IsA("BasePart") then
-            return visual.Position
-        elseif visual:IsA("Model") then
-            return visual:GetPivot().Position
-        end
-    end
+    -- The server hitbox is ALWAYS the BasePart (Coin_Server) itself!
+    -- Never use rotating cosmetic models which have shifted pivots!
     if coin:IsA("BasePart") then
         return coin.Position
-    elseif coin:IsA("Model") then
+    end
+    local visual = coin:FindFirstChild("CoinVisual")
+    if visual and visual:IsA("BasePart") then
+        return visual.Position
+    end
+    if coin:IsA("Model") then
         return coin:GetPivot().Position
     end
     return nil
@@ -6908,7 +6926,8 @@ task.spawn(function()
 
                         local closestCoin, minDist = nil, math.huge
                         for _, coin in ipairs(coins) do
-                            local cPos = (typeof(getCoinTargetPosition) == "function") and getCoinTargetPosition(coin) or coin.Position
+                            -- Real BasePart position, zero offset
+                            local cPos = (coin:IsA("BasePart") and coin.Position) or ((typeof(getCoinTargetPosition) == "function") and getCoinTargetPosition(coin)) or coin.Position
                             if cPos then
                                 local dist = (hrp.Position - cPos).Magnitude
                                 if dist < minDist then
@@ -6984,35 +7003,51 @@ task.spawn(function()
                                         _RanaxFarmPlatform.CFrame = CFrame.new(hrp.Position.X, hrp.Position.Y - 3.1, hrp.Position.Z)
                                     end
 
-                                    pcall(function()
-                                        if typeof(firetouchinterest) == "function" then
-                                            firetouchinterest(hrp, closestCoin, 0)
-                                            firetouchinterest(hrp, closestCoin, 1)
-                                            local cv = closestCoin:FindFirstChild("CoinVisual")
-                                            if cv and cv:IsA("BasePart") then
-                                                firetouchinterest(hrp, cv, 0)
-                                                firetouchinterest(hrp, cv, 1)
-                                            end
-                                        end
-                                    end)
-
                                     local currentDist = (hrp.Position - targetCFrame.Position).Magnitude
                                     local horizDist = Vector2.new(hrp.Position.X - coinPos.X, hrp.Position.Z - coinPos.Z).Magnitude
-                                    local isCollected = (not closestCoin:FindFirstChild("TouchInterest")) or (not closestCoin:FindFirstChild("CoinVisual"))
+                                    local hasVisual = closestCoin:FindFirstChild("CoinVisual") ~= nil
 
-                                    -- Directly on target or coin taken: finish immediately!
-                                    if isCollected or currentDist <= 3.2 or horizDist <= 2.2 then
+                                    -- Continuous touch trigger when within proximity
+                                    if horizDist <= 6.0 then
                                         pcall(function()
                                             if typeof(firetouchinterest) == "function" then
                                                 firetouchinterest(hrp, closestCoin, 0)
                                                 firetouchinterest(hrp, closestCoin, 1)
-                                                local cv = closestCoin:FindFirstChild("CoinVisual")
-                                                if cv and cv:IsA("BasePart") then
-                                                    firetouchinterest(hrp, cv, 0)
-                                                    firetouchinterest(hrp, cv, 1)
-                                                end
                                             end
                                         end)
+                                    end
+
+                                    -- If coin was already collected by us (CoinVisual destroyed by MM2 server)
+                                    if not hasVisual then
+                                        break
+                                    end
+
+                                    -- If reached the exact target coordinates
+                                    if currentDist <= 2.0 or horizDist <= 1.5 then
+                                        -- Arrived! Touch the coin
+                                        pcall(function()
+                                            if typeof(firetouchinterest) == "function" then
+                                                firetouchinterest(hrp, closestCoin, 0)
+                                                task.wait()
+                                                firetouchinterest(hrp, closestCoin, 1)
+                                            end
+                                        end)
+
+                                        -- Micro-nudge if needed to guarantee 100% pickup
+                                        local pickupWait = tick()
+                                        while closestCoin and closestCoin.Parent and closestCoin:FindFirstChild("CoinVisual") and (tick() - pickupWait < 0.18) do
+                                            pcall(function()
+                                                if typeof(firetouchinterest) == "function" then
+                                                    firetouchinterest(hrp, closestCoin, 0)
+                                                    firetouchinterest(hrp, closestCoin, 1)
+                                                end
+                                            end)
+                                            -- If underground, bring head right into contact zone
+                                            if farmMode and farmMode:find("Underground") then
+                                                hrp.CFrame = CFrame.new(coinPos.X, coinPos.Y - 4.6, coinPos.Z)
+                                            end
+                                            task.wait(0.03)
+                                        end
                                         break
                                     end
 
