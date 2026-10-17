@@ -5874,18 +5874,12 @@ getCoinBagLive = function()
     if cachedCoinLabel and cachedCoinLabel.Parent and cachedCoinLabel.Visible then
         local txt = cachedCoinLabel.Text
         if txt and txt ~= "" then
-            local lowerTxt = txt:lower()
             local cur, mx = txt:match("(%d+)%s*/%s*(%d+)")
             if cur and mx then
                 local cNum, mNum = tonumber(cur), tonumber(mx)
-                if cNum and mNum and mNum > 0 then
+                -- MM2 Coin Bag max is ALWAYS 40 (or 50 with Elite). Never accept fake counts like 10, 15, 20, 25, 30!
+                if cNum and mNum and (mNum >= 40 and mNum <= 60) then
                     return cNum, mNum
-                end
-            end
-            if (lowerTxt:find("full") and (lowerTxt:find("coin") or lowerTxt:find("bag"))) then
-                -- Only allow FULL if we have collected coins or match has been going for > 20s
-                if (_G.RanaxCoinsCollected and _G.RanaxCoinsCollected >= 10) or (os.time() - (_G.RanaxRoundStartTime or os.time()) > 25) then
-                    return 40, 40
                 end
             end
         end
@@ -5894,26 +5888,34 @@ getCoinBagLive = function()
     cachedCoinLabel = nil
     local pgui = LocalPlayer:FindFirstChild("PlayerGui")
     if pgui then
-        -- Search inside MainGUI first
         local mg = pgui:FindFirstChild("MainGUI") or pgui:FindFirstChild("MainGui") or pgui:FindFirstChild("Gui")
         if mg then
+            -- Direct check inside Game -> CoinBag first
+            local gameFrame = mg:FindFirstChild("Game") or mg
+            local cbObj = gameFrame:FindFirstChild("CoinBag", true) or gameFrame:FindFirstChild("Coins", true)
+            if cbObj then
+                local tl = cbObj:IsA("TextLabel") and cbObj or cbObj:FindFirstChildOfClass("TextLabel", true)
+                if tl and tl.Visible then
+                    local cur, mx = tl.Text:match("(%d+)%s*/%s*(%d+)")
+                    if cur and mx then
+                        local cNum, mNum = tonumber(cur), tonumber(mx)
+                        if cNum and mNum and (mNum >= 40 and mNum <= 60) then
+                            cachedCoinLabel = tl
+                            return cNum, mNum
+                        end
+                    end
+                end
+            end
+
+            -- Search visible text labels inside MainGUI for real (xx / 40 or xx / 50)
             for _, desc in ipairs(mg:GetDescendants()) do
                 if desc:IsA("TextLabel") and desc.Visible then
                     local txt = desc.Text
                     if txt and txt ~= "" then
-                        local lowerTxt = txt:lower()
-                        local dName = desc.Name:lower()
-                        local pName = desc.Parent and desc.Parent.Name:lower() or ""
-                        local isCoinContext = lowerTxt:find("coin") or lowerTxt:find("bag") or dName:find("coin") or dName:find("bag") or pName:find("coin") or pName:find("bag")
-                        
-                        if isCoinContext and lowerTxt:find("full") then
-                            cachedCoinLabel = desc
-                            return 40, 40
-                        end
                         local cur, mx = txt:match("(%d+)%s*/%s*(%d+)")
                         if cur and mx then
                             local cNum, mNum = tonumber(cur), tonumber(mx)
-                            if cNum and mNum and (mNum == 10 or mNum == 15 or mNum == 20 or mNum == 25 or mNum == 40 or mNum == 50 or mNum == 60) then
+                            if cNum and mNum and (mNum >= 40 and mNum <= 60) then
                                 cachedCoinLabel = desc
                                 return cNum, mNum
                             end
@@ -5922,35 +5924,9 @@ getCoinBagLive = function()
                 end
             end
         end
-
-        -- Fast direct check: MainGUI -> Game -> CoinBag
-        local gameFrame = mg and (mg:FindFirstChild("Game") or mg)
-        local cbObj = gameFrame and (gameFrame:FindFirstChild("CoinBag", true) or gameFrame:FindFirstChild("Coins", true))
-        if cbObj then
-            local tl = cbObj:IsA("TextLabel") and cbObj or cbObj:FindFirstChildOfClass("TextLabel", true)
-            if tl and tl.Visible then
-                local cur, mx = tl.Text:match("(%d+)%s*/%s*(%d+)")
-                if cur and mx then
-                    cachedCoinLabel = tl
-                    return tonumber(cur), tonumber(mx)
-                end
-            end
-        end
     end
 
-    -- 2. Fallback: leaderstats / CoinData
-    local coinData = LocalPlayer:FindFirstChild("CoinData") or LocalPlayer:FindFirstChild("leaderstats")
-    if coinData then
-        local c = coinData:FindFirstChild("Coins") or coinData:FindFirstChild("CoinBag") or coinData:FindFirstChild("Bag")
-        local m = coinData:FindFirstChild("MaxCoins") or coinData:FindFirstChild("MaxBag")
-        if c and c:IsA("ValueBase") then
-            local maxV = (m and m:IsA("ValueBase") and tonumber(m.Value)) or 40
-            return tonumber(c.Value) or 0, maxV
-        end
-    end
-
-    -- Safe default: 0 collected (NEVER return visited waypoints as fake coins!)
-    return 0, 40
+    return (_G.RanaxCoinsCollected or 0), 40
 end
 
 local _detectedMurderer = nil
@@ -6044,33 +6020,17 @@ local function isRoundOngoing()
 end
 
 IsCoinBagFull = function()
-    -- ABSOLUTE ANTI-FALSE-POSITIVE: A player who collected < 10 coins can NEVER have a full bag!
-    -- This guarantees round 2, 3, 4, 5... will NEVER freeze or stop at round start!
-    if (_G.RanaxCoinsCollected or 0) < 10 then
-        return false
-    end
-
-    -- If player collected 38+ coins in this round, bag is 100% full (MM2 max is 40 / 50)
-    if (_G.RanaxCoinsCollected or 0) >= 38 then
+    -- STRICT 40 COIN FULL CHECK: Bag is ONLY full when reaching 40 coins!
+    -- Will NEVER trigger at 25 or 30 coins!
+    if (_G.RanaxCoinsCollected or 0) >= 40 then
         return true
     end
 
     local cur, mx = getCoinBagLive()
-    if mx and mx > 0 and cur and cur >= mx and cur > 0 then
+    if cur and mx and mx >= 40 and cur >= mx and cur >= 40 then
         return true
     end
 
-    if cachedCoinLabel and cachedCoinLabel.Parent and cachedCoinLabel.Visible then
-        local txt = cachedCoinLabel.Text
-        if txt then
-            local lTxt = txt:lower()
-            if lTxt:find("full") and (lTxt:find("coin") or lTxt:find("bag")) then
-                if (_G.RanaxCoinsCollected or 0) >= 20 then
-                    return true
-                end
-            end
-        end
-    end
     return false
 end
 
@@ -6665,7 +6625,12 @@ task.spawn(function()
                         pcall(removeCoinFarmPlatform)
                         pcall(function() removeFarmFloat(char) end)
 
-                        -- 2) Webhook
+                        -- 2) FIRST TELEPORT ABOVE MAP (SAFE ROOF) WHEN BAG REACHES 40!
+                        notify("Coin Farm", "Bag Full (40)! Teleporting above map first...", 2.5, "arrow-up")
+                        pcall(TeleportAboveMap)
+                        task.wait(0.4)
+
+                        -- 3) Webhook
                         if _G.WebhookEnabled and not _G.HasReportedCoins then
                             _G.HasReportedCoins = true
                             local diff = os.time() - (_G.FarmStartTime or os.time())
@@ -6677,7 +6642,7 @@ task.spawn(function()
                             task.spawn(function() pcall(sendCoinWebhook, bagValue > 0 and bagValue or 40, maxBag > 0 and maxBag or 40, totalC, tStr, "Bag Full") end)
                         end
 
-                        -- 3) DETERMINE ROLES & EQUIPPED TOOLS
+                        -- 4) DETERMINE ROLES & EQUIPPED TOOLS
                         local action = _G.BagFullAction or "Auto by Role (Kill/Fling/Reset)"
                         
                         -- Find Murderer
@@ -6771,15 +6736,38 @@ task.spawn(function()
 
                         local killConfirmed = false
 
-                        -- 4) EXECUTE MURDERER ELIMINATION / ROLE ACTION
-                        if hasKnife or action == "Kill Everyone (Murderer)" then
-                            notify("Coin Farm", "Bag Full! (Murderer) 500 Range Kill Aura...", 2, "skull")
-                            local killFn = (_G.ExecuteKillEveryone) or (typeof(ExecuteKillEveryone) == "function" and ExecuteKillEveryone or nil)
-                            for _killTry = 1, 3 do
-                                if killFn then pcall(killFn, 500) end
-                                task.wait(0.25)
+                        -- Helper to verify if all players on map are dead
+                        local function areAllEnemiesDead()
+                            for _, p in ipairs(Players:GetPlayers()) do
+                                if p ~= LocalPlayer and p.Character then
+                                    local hum = p.Character:FindFirstChildOfClass("Humanoid")
+                                    if hum and hum.Health > 0 and not IsPlayerInLobby(p) then
+                                        return false
+                                    end
+                                end
                             end
-                            killConfirmed = true
+                            return true
+                        end
+
+                        -- 5) EXECUTE MURDERER ELIMINATION / ROLE ACTION
+                        if hasKnife or action == "Kill Everyone (Murderer)" then
+                            notify("Coin Farm", "Bag Full! (Murderer) Eliminating all enemies...", 2.5, "skull")
+                            local killFn = (_G.ExecuteKillEveryone) or (typeof(ExecuteKillEveryone) == "function" and ExecuteKillEveryone or nil)
+                            local startKill = os.clock()
+                            -- Keep killing until EVERYONE on map is dead or round ends!
+                            while os.clock() - startKill < 25 do
+                                if not isRoundOngoing() or areAllEnemiesDead() then
+                                    break
+                                end
+                                if killFn then pcall(killFn, 500) end
+                                task.wait(0.2)
+                            end
+
+                            if areAllEnemiesDead() or not isRoundOngoing() then
+                                killConfirmed = true
+                            else
+                                killConfirmed = false
+                            end
 
                         elseif action == "Reset Character" or action == "Reset & Continue" then
                             notify("Coin Farm", "Bag Full! Resetting...", 2, "refresh-cw")
@@ -6861,15 +6849,15 @@ task.spawn(function()
                             end
                         end
 
-                        -- 5) POST-ACTION DISPATCH: TELEPORT TO LOBBY OR SAFE ROOF
+                        -- 6) POST-ACTION DISPATCH: Teleport to Lobby ONLY if enemies are confirmed dead / victory!
                         if killConfirmed or not isRoundOngoing() then
-                            notify("Coin Farm", "Murderer Eliminated! Round Won, Teleporting to Lobby...", 2.5, "check")
+                            notify("Coin Farm", "Victory! Enemies Eliminated, Teleporting to Lobby...", 2.5, "check")
                             task.wait(0.2)
                             pcall(TeleportToLobby)
                             task.wait(0.3)
                             pcall(stopCoinFarmClean)
                         else
-                            notify("Coin Farm", "Target unreachable! Teleporting to safe roof...", 2.5, "shield")
+                            notify("Coin Farm", "Enemies still alive! Holding safe roof...", 2.5, "shield")
                             pcall(TeleportAboveMap)
                             task.wait(0.3)
                             pcall(stopCoinFarmClean)
