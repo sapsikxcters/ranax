@@ -5564,7 +5564,7 @@ local function ensureCoinFarmPlatform(pos)
         p.Parent = workspace
         _RanaxFarmPlatform = p
     end
-    _RanaxFarmPlatform.CFrame = CFrame.new(pos.X, pos.Y - 3, pos.Z)
+    _RanaxFarmPlatform.CFrame = CFrame.new(pos.X, pos.Y, pos.Z)
     return _RanaxFarmPlatform
 end
 
@@ -6561,9 +6561,8 @@ if LocalPlayer.Character then hookLocalDeath(LocalPlayer.Character) end
 LocalPlayer.CharacterAdded:Connect(function(c)
     task.wait(0.2)
     hookLocalDeath(c)
-    _G.DiedThisRound = false
-    _G.CoinFarmHandlingBagFull = false
-    _G.RanaxCoinsCollected = 0
+    -- DO NOT clear DiedThisRound here! When player dies, they respawn in lobby while match is still active.
+    -- Farm must WAIT until the new match/round starts before farming again!
     cachedCoinLabel = nil
 end)
 
@@ -6599,11 +6598,12 @@ task.spawn(function()
 
                 -- BETWEEN ROUNDS / LOBBY (Zero coins in game map):
                 if #mapCoins == 0 then
+                    _G.HasTeleportedAboveFirst = false
                     if _G.CoinTween then _G.CoinTween:Cancel(); _G.CoinTween = nil end
                     pcall(removeCoinFarmPlatform)
                     pcall(function() removeFarmFloat(char) end)
 
-                    -- Clear round locks while waiting for map to spawn coins
+                    -- Clear round locks while waiting for map to spawn coins (NEW ROUND STARTS HERE!)
                     _G.DiedThisRound = false
                     _G.CoinFarmHandlingBagFull = false
                     _G.HasReportedCoins = false
@@ -6617,7 +6617,7 @@ task.spawn(function()
                     end
                     task.wait(0.4)
 
-                -- USER DIED DURING THIS MATCH: Wait until coins reset in next round
+                -- USER DIED DURING THIS MATCH: Stay completely parked in lobby until match ends & new round starts!
                 elseif _G.DiedThisRound then
                     if _G.CoinTween then _G.CoinTween:Cancel(); _G.CoinTween = nil end
                     pcall(removeCoinFarmPlatform)
@@ -6632,6 +6632,7 @@ task.spawn(function()
                 elseif _G.CoinFarmHandlingBagFull then
                     -- When coins on map disappear (round ended), clear flag!
                     if #mapCoins == 0 then
+                        _G.HasTeleportedAboveFirst = false
                         _G.CoinFarmHandlingBagFull = false
                         _G.RanaxCoinsCollected = 0
                         cachedCoinLabel = nil
@@ -6645,6 +6646,14 @@ task.spawn(function()
                     end
 
                 else
+                    -- 1) FIRST TELEPORT ABOVE MAP (SAFE ROOF) WITH ENGLISH NOTIFICATION:
+                    if not _G.HasTeleportedAboveFirst then
+                        _G.HasTeleportedAboveFirst = true
+                        notify("Coin Farm", "Teleporting above map...", 2.5, "arrow-up")
+                        pcall(TeleportAboveMap)
+                        task.wait(0.45)
+                    end
+
                     -- ACTIVE COINS EXIST ON MAP! Check if bag is full:
                     local isBagFullNow = IsCoinBagFull()
 
@@ -6900,13 +6909,19 @@ task.spawn(function()
                                 local targetCFrame
                                 local farmMode = _G.FarmMode or "Direct (AlSploit / Above Map)"
                                 if (farmMode and farmMode:find("Underground")) then
-                                    local UNDERGROUND_DEPTH = 5.7
+                                    -- EXACTLY 3 BLOCKS (STUDS) DIRECTLY UNDER THE COIN:
+                                    local UNDERGROUND_DEPTH = 3.0
                                     local targetY = math.max(coinPos.Y - UNDERGROUND_DEPTH, MIN_SAFE_Y)
-                                    targetCFrame = CFrame.new(coinPos.X, targetY, coinPos.Z)
-                                    ensureCoinFarmPlatform(Vector3.new(coinPos.X, targetY - 0.5, coinPos.Z))
+                                    -- Character lying flat on back ("göt üstü yatıcak"): tilted -90 degrees on X axis, looking directly up at the coin!
+                                    targetCFrame = CFrame.new(coinPos.X, targetY, coinPos.Z) * CFrame.Angles(math.rad(-90), 0, 0)
+                                    ensureCoinFarmPlatform(Vector3.new(coinPos.X, targetY - 1.0, coinPos.Z))
+                                    hum.PlatformStand = true
+                                    hum.Sit = true
                                 else
                                     removeCoinFarmPlatform()
                                     targetCFrame = CFrame.new(coinPos.X, coinPos.Y + 2.8, coinPos.Z)
+                                    hum.PlatformStand = false
+                                    hum.Sit = false
                                 end
 
                                 local dist = (hrp.Position - targetCFrame.Position).Magnitude
@@ -6929,7 +6944,7 @@ task.spawn(function()
                                     end
 
                                     if _RanaxFarmPlatform and _RanaxFarmPlatform.Parent then
-                                        _RanaxFarmPlatform.CFrame = CFrame.new(hrp.Position.X, hrp.Position.Y - 3.1, hrp.Position.Z)
+                                        _RanaxFarmPlatform.CFrame = CFrame.new(hrp.Position.X, hrp.Position.Y - 1.0, hrp.Position.Z)
                                     end
 
                                     local currentDist = (hrp.Position - targetCFrame.Position).Magnitude
@@ -6983,7 +6998,7 @@ task.spawn(function()
                                                 end
                                             end)
                                             if farmMode and farmMode:find("Underground") then
-                                                hrp.CFrame = CFrame.new(coinPos.X, coinPos.Y - 4.6, coinPos.Z)
+                                                hrp.CFrame = CFrame.new(coinPos.X, coinPos.Y - 2.5, coinPos.Z) * CFrame.Angles(math.rad(-90), 0, 0)
                                             end
                                             task.wait(0.03)
                                         end
