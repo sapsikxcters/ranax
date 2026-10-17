@@ -6170,23 +6170,28 @@ end
 IsCoinBagFull = function()
     local cur, mx, isFullDirect = getCoinBagLive()
 
-    -- 1) Exact "FULL" text on screen
+    -- 1) Exact "FULL" text on screen -> 100% full
     if isFullDirect == true then
         return true
     end
 
-    -- 2) Strict 40 Coin Check: EXACTLY 40 coins (or more)!
-    -- If below 40 (0 to 39), NEVER FULL! Keeps farming!
+    -- 2) Dynamic Max Check: 50 if Elite Gamepass, 40 if Normal
+    local targetMax = 40
+    if mx and mx >= 50 then
+        targetMax = 50
+    end
+
+    -- 3) Numeric check against targetMax (40 or 50):
     if cur and type(cur) == "number" then
-        if cur >= 40 then
+        if cur >= targetMax then
             return true
         else
-            return false -- 0..39: Farm continues uninterrupted!
+            return false -- Below capacity: Farm continues smoothly!
         end
     end
 
-    -- 3) Internal counter fallback: Exactly 40+ coins
-    if (_G.RanaxCoinsCollected or 0) >= 40 then
+    -- 4) Internal counter fallback
+    if (_G.RanaxCoinsCollected or 0) >= targetMax then
         return true
     end
 
@@ -6825,7 +6830,7 @@ task.spawn(function()
                         pcall(function() removeFarmFloat(char) end)
 
                         -- 2) FIRST TELEPORT ABOVE MAP (SAFE ROOF) WHEN BAG REACHES 40!
-                        notify("Coin Farm", "Bag Full (40)! Teleporting above map first...", 2.5, "arrow-up")
+                        local _, _maxB = getCoinBagLive(); notify("Coin Farm", "Bag Full (" .. tostring((_maxB and _maxB >= 50) and 50 or 40) .. ")! Teleporting above map first...", 2.5, "arrow-up")
                         pcall(TeleportAboveMap)
                         task.wait(0.4)
 
