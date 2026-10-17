@@ -6249,17 +6249,12 @@ end
 local function getCoinTargetPosition(coin)
     if not coin or not coin.Parent then return nil end
     local visual = coin:FindFirstChild("CoinVisual")
-    if visual then
+    if visual and visual.Parent then
         if visual:IsA("BasePart") then
             return visual.Position
         elseif visual:IsA("Model") then
             return visual:GetPivot().Position
         end
-    end
-    if coin:IsA("BasePart") then
-        return coin.Position
-    elseif coin:IsA("Model") then
-        return coin:GetPivot().Position
     end
     return nil
 end
@@ -6271,9 +6266,15 @@ local function getMapCoins()
     if cc then
         for _, c in ipairs(cc:GetChildren()) do
             if not bl[c] or bl[c] <= tick() then
-                local hasVisual = c:FindFirstChild("CoinVisual") ~= nil
-                if hasVisual or (c:IsA("BasePart") and c.Name == "Coin_Server") or (c.Parent and c.Parent.Name == "CoinContainer") then
-                    table.insert(coins, c)
+                local visual = c:FindFirstChild("CoinVisual")
+                if visual and visual.Parent then
+                    local isVis = true
+                    if visual:IsA("BasePart") and visual.Transparency >= 0.95 then
+                        isVis = false
+                    end
+                    if isVis then
+                        table.insert(coins, c)
+                    end
                 end
             end
         end
@@ -6284,8 +6285,10 @@ local function getMapCoins()
         local normal = workspace:FindFirstChild("Normal")
         if normal then
             for _, d in ipairs(normal:GetDescendants()) do
-                if d.Name == "Coin_Server" and (not bl[d] or bl[d] <= tick()) then
-                    table.insert(coins, d)
+                if d.Name == "CoinVisual" and d.Parent and (not bl[d.Parent] or bl[d.Parent] <= tick()) then
+                    if not (d:IsA("BasePart") and d.Transparency >= 0.95) then
+                        table.insert(coins, d.Parent)
+                    end
                 end
             end
         end
@@ -7133,6 +7136,11 @@ task.spawn(function()
                                 local timeoutLimit = tonumber(_G.CoinFarmAntiStuckTimeout) or 2.0
 
                                 while _G.CoinTween and closestCoin and closestCoin.Parent and (tick() - startWait < tweenTime + 0.1) do
+                                    -- Instant check: If coin was collected by another player while traveling, abort instantly!
+                                    if not closestCoin:FindFirstChild("CoinVisual") then
+                                        if _G.CoinTween then _G.CoinTween:Cancel(); _G.CoinTween = nil end
+                                        break
+                                    end
                                     if _G.DiedThisRound or _G.MurdererDiedThisRound or not (_G.SafeAutoFarm or _G.AutoCoins) or _G.CoinFarmHandlingBagFull then
                                         if _G.CoinTween then _G.CoinTween:Cancel(); _G.CoinTween = nil end
                                         break
