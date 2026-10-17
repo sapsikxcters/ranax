@@ -1307,7 +1307,7 @@ local function SaveConfig(name)
 
         -- ===== COIN FARM =====
         SafeAutoFarm             = _G.SafeAutoFarm or false,
-        FarmMode                 = _G.FarmMode or "Underground (5.7 Studs)",
+        UndergroundFarm          = _G.UndergroundFarm ~= nil and _G.UndergroundFarm or true,
         FarmSpeed                = _G.FarmSpeed or 24,
         BagFullAction            = _G.BagFullAction or "Auto by Role (Kill/Fling/Reset)",
         RanaxAntiAFK             = _G.RanaxAntiAFK ~= false,
@@ -1669,7 +1669,7 @@ local function LoadConfig(name)
                     setUIVal(_G.SpeedGlitchToggleRef, decoded.SpeedGlitch)
                 end
                 if decoded.FarmMode ~= nil then
-                    _G.FarmMode = decoded.FarmMode
+                    if decoded.UndergroundFarm ~= nil then _G.UndergroundFarm = decoded.UndergroundFarm; setUIVal(UIElements.UndergroundFarm, decoded.UndergroundFarm) end
                     setUIVal(UIElements.FarmMode, decoded.FarmMode)
                 end
                 if decoded.LevelUpWebhook ~= nil then
@@ -4554,169 +4554,181 @@ do
 
     -- Curated default list of Godly, Ancient, Vintage, and Chroma knives
     local DefaultKnifeList = {
-        "Harvester",
-        "Bat",
-        "Corrupt",
-        "Nikilis Scythe",
-        "Icebreaker",
-        "Swirly Axe",
-        "Darksword",
-        "Waves",
-        "Chroma Fang",
-        "Chroma Heat",
-        "Chroma Luger",
-        "Chroma Laser",
-        "Chroma Darkbringer",
-        "Chroma Lightbringer",
-        "Chroma Candleflame",
-        "Chroma Cookiecane",
-        "Chroma Swirly Gun",
-        "Chroma Gemstone",
-        "Chroma Tides",
-        "Chroma Slasher",
-        "Chroma Deathshard",
-        "Chroma Saw",
-        "Chroma Seer",
-        "Elderwood Scythe",
-        "Hallowscythe",
+        "AmericaSword",
+        "AuroraKnife",
+        "BattleAxe",
+        "BattleAxe2",
+        "BaubleKnife",
+        "BaubleKnifeChroma",
+        "Bioblade",
+        "Bloom",
+        "BlueSeer",
+        "Boneblade",
+        "BonebladeChroma",
+        "Candleflame",
+        "CandleflameChroma",
         "Candy",
-        "Sugar",
-        "Logchopper",
-        "Heartblade",
-        "Cookieblade",
-        "Nebula",
-        "Plasmablade",
-        "Spectre",
-        "Phantom",
-        "Icewing",
-        "Batwing",
-        "Battleaxe II",
-        "Ghostblade",
-        "Frostbite",
-        "Gingerblade",
-        "Jinglegun",
-        "Minty",
-        "Pixel",
-        "Red Luger",
-        "Green Luger",
+        "Celestial",
+        "Chill",
         "Clockwork",
+        "Cookieblade",
+        "Darksword",
+        "Deathshard",
+        "DeathshardChroma",
+        "Eggblade",
+        "ElderwoodKnife",
+        "ElderwoodKnifeChroma",
+        "ElderwoodScythe",
+        "Eternal",
+        "Eternal2",
+        "Eternal3",
+        "Eternal4",
+        "EternalCane",
+        "Fang",
+        "FangChroma",
+        "Flames",
+        "FlowerwoodKnife",
+        "Frostbite",
+        "Frostsaber",
+        "Gemstone",
+        "GemstoneChroma",
+        "Ghostblade",
+        "Gingerblade",
+        "GingerbladeChroma",
+        "Gingermint_K",
+        "Gingermint_KChroma",
+        "Hallow",
+        "HallowsBlade",
+        "Hallowscythe",
+        "Handsaw",
+        "Heartblade",
+        "HeartWand",
+        "HeartWandChroma",
+        "Heat",
+        "HeatChroma",
+        "Icebreaker",
+        "IceDragon",
+        "Iceflake",
+        "IceShard",
+        "Icewing",
+        "Logchopper",
+        "Nebula",
+        "Nightblade",
+        "NikKnife",
+        "OrangeSeer",
+        "Pearl_K",
+        "Peppermint",
+        "Phantom2022",
+        "Pixel",
+        "Plasmablade",
+        "Prismatic",
+        "Pumpking",
+        "PurpleSeer",
+        "Rainbow_K",
+        "RedSeer",
+        "Sakura_K",
+        "Saw",
+        "SawChroma",
+        "Scythe",
+        "SeerChroma",
+        "Slasher",
+        "SlasherChroma",
+        "SnowDagger",
+        "SnowDaggerChroma",
+        "Snowflake",
+        "SnowstormChroma",
         "Spider",
-        "Eternal IV",
-        "Eternal III",
-        "Eternal II",
-        "Eternal"
+        "SunsetKnife",
+        "SunsetKnifeChroma",
+        "SweetChroma",
+        "SwirlyAxe",
+        "SwirlyBlade",
+        "TheSeer",
+        "Tides",
+        "TidesChroma",
+        "TravelerAxe",
+        "TreeKnife2023",
+        "TreeKnife2023Chroma",
+        "Turkey2023",
+        "UFOKnife",
+        "UFOKnifeChroma",
+        "VampireAxe",
+        "VampiresEdge",
+        "Virtual",
+        "Waves_K",
+        "WintersEdge",
+        "WraithKnife",
+        "XenoKnife",
+        "Xmas",
+        "YellowSeer",
+        "ZombieBat"
     }
 
     local DefaultGunList = {
-        "Chroma Darkbringer",
-        "Chroma Lightbringer",
-        "Chroma Luger",
-        "Chroma Laser",
-        "Harvester",
-        "Ocean",
-        "Gingerscope",
-        "Phantom Scope",
-        "Elderwood Revolver",
-        "Swirly Gun",
-        "Watergun",
-        "Cookiecane",
-        "Icebeam",
-        "Corrupt Revolver",
-        "Luger",
-        "Laser",
-        "Blaster",
         "Amerilaser",
-        "Old Glory",
+        "AuroraGun",
+        "Bauble",
+        "BaubleChroma",
+        "Blaster",
+        "BlizzardChroma",
+        "Blossom_G",
+        "ChromaDarkbringer",
+        "ChromaLightbringer",
+        "Constellation",
+        "ConstellationChroma",
+        "Darkbringer",
+        "Darkshot",
+        "ElderwoodGun",
+        "Flora",
+        "FlowerwoodGun",
+        "GingerLuger",
+        "Gingermint_G",
+        "Gingerscope",
+        "GreenLuger",
         "Hallowgun",
+        "Harvester",
+        "Icebeam",
+        "Iceblaster",
+        "Icepiercer",
         "Jinglegun",
+        "Laser",
+        "LaserChroma",
+        "Lightbringer",
+        "Luger",
+        "Lugercane",
+        "LugerChroma",
+        "Makeshift",
         "Minty",
-        "Red Luger",
-        "Green Luger",
+        "Ocean_G",
+        "Pearl_G",
+        "Plasmabeam",
+        "Rainbow_G",
+        "Raygun",
+        "RaygunChroma",
+        "RedLuger",
         "Shark",
-        "Heat Gun",
-        "Slasher Gun",
-        "Tides Gun",
-        "Fang Gun"
+        "SharkChroma",
+        "Snowcannon",
+        "SnowcannonChroma",
+        "Spectre2022",
+        "Sugar",
+        "SunsetGun",
+        "SunsetGunChroma",
+        "SwirlyGun",
+        "SwirlyGunChroma",
+        "TravelerGun",
+        "TravelerGunChroma",
+        "TreatChroma",
+        "TreeGun2023",
+        "TreeGun2023Chroma",
+        "VampireGun",
+        "VampireGunChroma",
+        "Watergun",
+        "WatergunChroma",
+        "WraithGun",
+        "XenoGun"
     }
 
-    -- Fallback verified Roblox Asset Database for Godly, Ancient, and Vintage items
-    local AssetDatabase = {
-        ["Corrupt"] = {Mesh = "rbxassetid://174483756", Texture = "rbxassetid://174483765", Scale = Vector3.new(1, 1, 1)},
-        ["Nikilis Scythe"] = {Mesh = "rbxassetid://19326912", Texture = "rbxassetid://19326880", Scale = Vector3.new(1.2, 1.2, 1.2)},
-        ["Candy"] = {Mesh = "rbxassetid://186358117", Texture = "rbxassetid://186358133", Scale = Vector3.new(1, 1, 1)},
-        ["Sugar"] = {Mesh = "rbxassetid://186358151", Texture = "rbxassetid://186358164", Scale = Vector3.new(1, 1, 1)},
-        ["Luger"] = {Mesh = "rbxassetid://148386401", Texture = "rbxassetid://148386414", Scale = Vector3.new(1, 1, 1)},
-        ["Chroma Luger"] = {Mesh = "rbxassetid://148386401", Texture = "rbxassetid://148386414", Scale = Vector3.new(1, 1, 1), VertexColor = Vector3.new(2, 2, 2)},
-        ["Red Luger"] = {Mesh = "rbxassetid://148386401", Texture = "rbxassetid://148386414", Scale = Vector3.new(1, 1, 1), VertexColor = Vector3.new(2.5, 0.4, 0.4)},
-        ["Green Luger"] = {Mesh = "rbxassetid://148386401", Texture = "rbxassetid://148386414", Scale = Vector3.new(1, 1, 1), VertexColor = Vector3.new(0.4, 2.5, 0.4)},
-        ["Laser"] = {Mesh = "rbxassetid://164478810", Texture = "rbxassetid://164478825", Scale = Vector3.new(1, 1, 1)},
-        ["Chroma Laser"] = {Mesh = "rbxassetid://164478810", Texture = "rbxassetid://164478825", Scale = Vector3.new(1, 1, 1), VertexColor = Vector3.new(2, 2, 2)},
-        ["Darkbringer"] = {Mesh = "rbxassetid://4617505315", Texture = "rbxassetid://4617505499", Scale = Vector3.new(1, 1, 1)},
-        ["Chroma Darkbringer"] = {Mesh = "rbxassetid://4617505315", Texture = "rbxassetid://4617505499", Scale = Vector3.new(1, 1, 1), VertexColor = Vector3.new(1.8, 1.8, 1.8)},
-        ["Lightbringer"] = {Mesh = "rbxassetid://4617505315", Texture = "rbxassetid://4617505677", Scale = Vector3.new(1, 1, 1)},
-        ["Chroma Lightbringer"] = {Mesh = "rbxassetid://4617505315", Texture = "rbxassetid://4617505677", Scale = Vector3.new(1, 1, 1), VertexColor = Vector3.new(1.8, 1.8, 1.8)},
-        ["Elderwood Scythe"] = {Mesh = "rbxassetid://4059775080", Texture = "rbxassetid://4059775267", Scale = Vector3.new(1, 1, 1)},
-        ["Hallowscythe"] = {Mesh = "rbxassetid://5847596231", Texture = "rbxassetid://5847596541", Scale = Vector3.new(1, 1, 1)},
-        ["Heartblade"] = {Mesh = "rbxassetid://4678125026", Texture = "rbxassetid://4678125219", Scale = Vector3.new(1, 1, 1)},
-        ["Batwing"] = {Mesh = "rbxassetid://2475653835", Texture = "rbxassetid://2475654024", Scale = Vector3.new(1, 1, 1)},
-        ["Icewing"] = {Mesh = "rbxassetid://2603222340", Texture = "rbxassetid://2603222533", Scale = Vector3.new(1, 1, 1)},
-        ["Icebreaker"] = {Mesh = "rbxassetid://6139265007", Texture = "rbxassetid://6139265288", Scale = Vector3.new(1, 1, 1)},
-        ["Swirly Axe"] = {Mesh = "rbxassetid://8262274486", Texture = "rbxassetid://8262275466", Scale = Vector3.new(1, 1, 1)},
-        ["Harvester"] = {Mesh = "rbxassetid://6139265007", Texture = "rbxassetid://6139265288", Scale = Vector3.new(1.1, 1.1, 1.1)},
-        ["Bat"] = {Mesh = "rbxassetid://4059775080", Texture = "rbxassetid://4059775267", Scale = Vector3.new(1.1, 1.1, 1.1)},
-        ["Classic Knife"] = {Mesh = "rbxassetid://121946387", Texture = "rbxassetid://121946411", Scale = Vector3.new(1, 1, 1)},
-        ["Classic Revolver"] = {Mesh = "rbxassetid://43034988", Texture = "rbxassetid://43034981", Scale = Vector3.new(1, 1, 1)},
-        ["Chroma Fang"] = {Mesh = "rbxassetid://174483756", Texture = "rbxassetid://174483765", Scale = Vector3.new(1, 1, 1), VertexColor = Vector3.new(2, 2, 2)},
-        ["Chroma Heat"] = {Mesh = "rbxassetid://174483756", Texture = "rbxassetid://174483765", Scale = Vector3.new(1, 1, 1), VertexColor = Vector3.new(2.5, 1.2, 0.2)},
-        ["Chroma Tides"] = {Mesh = "rbxassetid://174483756", Texture = "rbxassetid://174483765", Scale = Vector3.new(1, 1, 1), VertexColor = Vector3.new(0.2, 1.8, 2.5)},
-        ["Chroma Slasher"] = {Mesh = "rbxassetid://174483756", Texture = "rbxassetid://174483765", Scale = Vector3.new(1, 1, 1), VertexColor = Vector3.new(2.5, 0.2, 2.5)},
-        ["Chroma Gemstone"] = {Mesh = "rbxassetid://4678125026", Texture = "rbxassetid://4678125219", Scale = Vector3.new(1, 1, 1), VertexColor = Vector3.new(2, 2, 2)},
-        ["Chroma Seer"] = {Mesh = "rbxassetid://121946387", Texture = "rbxassetid://121946411", Scale = Vector3.new(1, 1, 1), VertexColor = Vector3.new(0.4, 3, 0.8)},
-    }
-
-    -- Dynamic scanner that finds every weapon model across MM2 game instances
-    local function scanReplicatedStorageWeapons()
-        local foundKnives = {}
-        local foundGuns = {}
-
-        pcall(function()
-            local searchRoots = {}
-            local weaponsFolder = ReplicatedStorage:FindFirstChild("Weapons")
-            if weaponsFolder then table.insert(searchRoots, weaponsFolder) end
-
-            local itemDb = ReplicatedStorage:FindFirstChild("ItemDatabase") or ReplicatedStorage:FindFirstChild("Items") or ReplicatedStorage:FindFirstChild("Assets")
-            if itemDb then table.insert(searchRoots, itemDb) end
-
-            if #searchRoots == 0 then
-                for _, obj in ipairs(ReplicatedStorage:GetChildren()) do
-                    local n = obj.Name:lower()
-                    if n:find("weapon") or n:find("item") or n:find("tool") or n:find("knife") or n:find("gun") then
-                        table.insert(searchRoots, obj)
-                    end
-                end
-            end
-
-            for _, root in ipairs(searchRoots) do
-                for _, item in ipairs(root:GetDescendants()) do
-                    if (item:IsA("Model") or item:IsA("Tool") or item:IsA("Part") or item:IsA("MeshPart")) then
-                        local n = item.Name
-                        local nl = n:lower()
-                        if not nl:find("server") and not nl:find("client") and not nl:find("remote") and not nl:find("sound") and not nl:find("script") then
-                            if nl:find("gun") or nl:find("revolver") or nl:find("luger") or nl:find("pistol") or nl:find("laser") or nl:find("blaster") or nl:find("bringer") then
-                                table.insert(foundGuns, n)
-                            else
-                                table.insert(foundKnives, n)
-                            end
-                        end
-                    end
-                end
-            end
-        end)
-
-        return foundKnives, foundGuns
-    end
-
-    -- Instant zero-lag weapon option list on inject (150+ weapons pre-populated)
     local KnifeOptions = {}
     local GunOptions = {}
     local seenKnives = {}
@@ -4779,6 +4791,70 @@ do
     end
 
     -- Clean up previous visual modifications on a tool
+    local MEEQ_MESH_URL = "https://raw.githubusercontent.com/meeqscripts/mm2/main/meshid"
+    local _meeqMeshData = nil
+
+    task.spawn(function()
+        local ok, res = pcall(function() return game:HttpGet(MEEQ_MESH_URL) end)
+        if ok and res and res:find("Gingerscope") then
+            local fn = loadstring(res)
+            if fn then
+                local success, data = pcall(fn)
+                if success and type(data) == "table" then
+                    _meeqMeshData = data
+                end
+            end
+        end
+    end)
+
+    local function buildMeeqNode(node, parentPart)
+        if not node or not node.Class then return nil end
+        local inst
+        pcall(function()
+            inst = Instance.new(node.Class)
+        end)
+        if not inst then return nil end
+
+        inst.Name = node.Name or node.Class
+        local relCF = nil
+
+        if node.Props then
+            for prop, val in pairs(node.Props) do
+                if prop == "RelCF" then
+                    relCF = val
+                else
+                    pcall(function() inst[prop] = val end)
+                end
+            end
+        end
+
+        if inst:IsA("BasePart") then
+            inst.CanCollide = false
+            inst.Massless = true
+            inst.CastShadow = false
+            if parentPart and parentPart:IsA("BasePart") then
+                inst.CFrame = parentPart.CFrame * (relCF or CFrame.new())
+                local weld = Instance.new("WeldConstraint")
+                weld.Part0 = parentPart
+                weld.Part1 = inst
+                weld.Parent = inst
+            end
+        elseif inst:IsA("Attachment") and relCF then
+            inst.CFrame = relCF
+        end
+
+        if node.Children then
+            for _, childNode in ipairs(node.Children) do
+                local childInst = buildMeeqNode(childNode, inst:IsA("BasePart") and inst or parentPart)
+                if childInst then
+                    pcall(function() childInst.Parent = inst end)
+                end
+            end
+        end
+
+        return inst
+    end
+
     local function cleanToolVisuals(tool)
         if not tool then return end
         local handle = tool:FindFirstChild("Handle") or tool:FindFirstChildOfClass("Part") or tool:FindFirstChildOfClass("MeshPart")
@@ -4880,6 +4956,45 @@ do
         end
 
         cleanToolVisuals(tool)
+
+        
+        -- 1:1 Meeqscripts MeshID Engine Integration
+        local meeqEntry = _meeqMeshData and _meeqMeshData[skinName]
+        if meeqEntry and meeqEntry.Model then
+            cleanToolVisuals(tool)
+            handle.Transparency = 1
+            if sm then
+                if not tool:GetAttribute("RanaxOrigScale") then
+                    tool:SetAttribute("RanaxOrigScale", sm.Scale)
+                    tool:SetAttribute("RanaxOrigMesh", sm.MeshId)
+                    tool:SetAttribute("RanaxOrigTex", sm.TextureId)
+                end
+                sm.Scale = Vector3.new(0.001, 0.001, 0.001)
+            end
+
+            local displayModel = buildMeeqNode(meeqEntry.Model, handle)
+            if displayModel then
+                displayModel.Name = "RanaxMeeqSkin"
+                if displayModel:IsA("BasePart") then
+                    displayModel.CFrame = handle.CFrame * (meeqEntry.Model.Props and meeqEntry.Model.Props.RelCF or CFrame.new())
+                    local weld = Instance.new("WeldConstraint")
+                    weld.Part0 = handle
+                    weld.Part1 = displayModel
+                    weld.Parent = displayModel
+                end
+                displayModel.Parent = tool
+            end
+
+            if meeqEntry.Meta and meeqEntry.Meta.Chroma then
+                _skinChanger.ChromaRainbow = true
+                if typeof(updateChromaListener) == "function" then
+                    updateChromaListener(true)
+                end
+            end
+
+            tool:SetAttribute("RanaxSkinApplied", skinName)
+            return true
+        end
 
         local scaleMult = tonumber(_skinChanger.WeaponScale) or 1.0
         local targetMeshId = nil
@@ -5923,6 +6038,7 @@ getCoinBagLive = function()
                 local cNum, mNum = tonumber(cur), tonumber(mx)
                 -- MM2 Coin Bag max is ALWAYS 40 (or 50 with Elite). Never accept fake counts like 10, 15, 20, 25, 30!
                 if cNum and mNum and (mNum >= 40 and mNum <= 60) then
+                    _G.RanaxCoinsCollected = cNum
                     return cNum, mNum
                 end
             end
@@ -6099,14 +6215,19 @@ local function isRoundOngoing()
 end
 
 IsCoinBagFull = function()
-    -- STRICT 40 COIN FULL CHECK: Bag is ONLY full when reaching 40 coins!
-    -- Will NEVER trigger at 25 or 30 coins!
-    if (_G.RanaxCoinsCollected or 0) >= 40 then
-        return true
+    -- STRICT 40 COIN FULL CHECK:
+    -- Check real MM2 UI first! If bag has e.g. 36/40, it is NOT full!
+    local cur, mx = getCoinBagLive()
+    if cur and mx and mx >= 40 then
+        if cur >= mx and cur >= 40 then
+            return true
+        else
+            return false -- DEFINITIVELY NOT FULL! (e.g. 36/40 -> false)
+        end
     end
 
-    local cur, mx = getCoinBagLive()
-    if cur and mx and mx >= 40 and cur >= mx and cur >= 40 then
+    -- Fallback ONLY if UI text was completely unreadable:
+    if (_G.RanaxCoinsCollected or 0) >= 40 then
         return true
     end
 
@@ -6459,7 +6580,7 @@ do
         local groundLevel = (hrp.Position.Y - hipHeight - (hrp.Size.Y / 2)) + groundBuffer
 
         -- Only track platform if user explicitly chose Underground mode (Direct mode needs no platform!)
-        if (_G.SafeAutoFarm or _G.AutoCoins) and not _G.CoinFarmHandlingBagFull and (_G.FarmMode and _G.FarmMode:find("Underground")) then
+        if (_G.SafeAutoFarm or _G.AutoCoins) and not _G.CoinFarmHandlingBagFull and (_G.UndergroundFarm ~= false) then
             if _RanaxFarmPlatform and _RanaxFarmPlatform.Parent then
                 _RanaxFarmPlatform.CFrame = CFrame.new(hrp.Position.X, hrp.Position.Y - 0.8, hrp.Position.Z)
                 _RanaxFarmPlatform.CanCollide = true
@@ -7007,8 +7128,7 @@ task.spawn(function()
                                 _G.BlacklistedCoins = blacklistedCoins
                                 task.wait(0.01)
                             else
-                                local farmMode = _G.FarmMode or "Direct (AlSploit / Above Map)"
-                                local isUnderground = (farmMode and farmMode:find("Underground"))
+                                local isUnderground = (_G.UndergroundFarm ~= false)
                                 local targetCFrame
 
                                 if isUnderground then
@@ -7312,7 +7432,7 @@ CoinFarmTab:Section({
     TextSize = 15
 })
 
-_G.FarmMode = _G.FarmMode or "Direct (AlSploit / Above Map)"
+if _G.UndergroundFarm == nil then _G.UndergroundFarm = true end
 
 UIElements.SafeAutoFarm = CoinFarmTab:Toggle({
     Title = "Enable Safe Coin Farm",
@@ -7331,7 +7451,7 @@ UIElements.SafeAutoFarm = CoinFarmTab:Toggle({
             local hrp = char and char:FindFirstChild("HumanoidRootPart")
             if hrp then
                 ensureFarmFloat(hrp)
-                if (_G.FarmMode and _G.FarmMode:find("Underground")) then
+                if (_G.UndergroundFarm ~= false) then
                     ensureCoinFarmPlatform(hrp.Position)
                 else
                     removeCoinFarmPlatform()
@@ -7347,20 +7467,15 @@ UIElements.SafeAutoFarm = CoinFarmTab:Toggle({
     end,
 })
 
-UIElements.FarmMode = CoinFarmTab:Dropdown({
-    Title = "Farm Mode",
-    Desc = "Direct (AlSploit safe above map) or Underground (5.7 studs)",
-    Icon = "compass",
-    Values = {
-        "Direct (AlSploit / Above Map)",
-        "Underground (5.7 Studs)",
-    },
-    Value = _G.FarmMode or "Direct (AlSploit / Above Map)",
-    Multi = false,
-    AllowNone = false,
-    Callback = function(opt)
-        _G.FarmMode = opt
-        notify("Coin Farm", "Mode: " .. tostring(opt), 2, "compass")
+UIElements.UndergroundFarm = CoinFarmTab:Toggle({
+    Title = "Underground",
+    Desc = "When ON: farms 3 studs underground lying down. When OFF: farms above coin",
+    Icon = "arrow-down",
+    Type = "Checkbox",
+    Value = _G.UndergroundFarm ~= nil and _G.UndergroundFarm or true,
+    Callback = function(val)
+        _G.UndergroundFarm = val
+        notify("Coin Farm", "Underground: " .. (val and "ON (3 Studs Lying Down)" or "OFF (Above Coin)"), 2, "arrow-down")
     end
 })
 
