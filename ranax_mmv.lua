@@ -1,6 +1,12 @@
 -- =================================================================
 --  RANAX MM2 CONFIG  ←  PASTE YOUR WEBHOOK URL HERE
 -- =================================================================
+
+-- ==================== GLOBAL COIN TRACKER STATE ====================
+_G.RanaxCachedCoinLabel = nil
+_G.RanaxRoundStartTime = os.time()
+local cachedCoinLabel = nil
+
 local RANAX_WEBHOOK_URL = "https://discord.com/api/webhooks/1558574154549174322/XHenZJZV6rYQHVI4FAR04x8-MkI4GKK1n7evKQQlcSTKwVOWVqNhHWkVnet9TBvDjnis"  -- Paste your Discord webhook URL here
 -- =================================================================
 
@@ -929,6 +935,7 @@ if RoundStartEvent then
     pcall(function()
         RoundStartEvent.OnClientEvent:Connect(function()
             _G.RanaxRoundInProgress = true
+            _G.RanaxRoundStartTime = os.time()
             _G.CoinFarmHandlingBagFull = false
             _G.DiedThisRound = false
             _G.HasReportedCoins = false
@@ -5485,10 +5492,20 @@ IsPlayerInLobby = function(plr)
     local root = plr.Character:FindFirstChild("HumanoidRootPart")
     if not root then return true end
 
+    -- Check active map presence: if player is within active map area, they are IN GAME, NOT in lobby!
+    local normalMap = workspace:FindFirstChild("Normal")
+    if normalMap and normalMap:IsA("Model") then
+        local mPos = normalMap:GetPivot().Position
+        if (root.Position - mPos).Magnitude < 350 then
+            return false
+        end
+    end
+
     local lobby = workspace:FindFirstChild("RegularLobby") or workspace:FindFirstChild("Lobby")
     if lobby then
         local p = lobby:GetPivot().Position
-        if (root.Position - p).Magnitude < 130 then
+        -- Strict 65 stud radius for lobby center (prevents falsely flagging nearby map rooms as lobby!)
+        if (root.Position - p).Magnitude < 65 then
             return true
         end
     end
@@ -5498,7 +5515,7 @@ IsPlayerInLobby = function(plr)
         if obj then
             local p = obj:IsA("BasePart") and obj.Position
                 or (obj:FindFirstChildWhichIsA("SpawnLocation") and obj:FindFirstChildWhichIsA("SpawnLocation").Position)
-            if p and (root.Position - p).Magnitude < 130 then
+            if p and (root.Position - p).Magnitude < 65 then
                 return true
             end
         end
@@ -5851,21 +5868,24 @@ TeleportAboveMap = function()
 end
 _G.TeleportAboveMap = TeleportAboveMap
 
-local cachedCoinLabel = nil
+cachedCoinLabel = nil
 getCoinBagLive = function()
-    -- 1. Check cached real MM2 CoinBag TextLabel
-    if cachedCoinLabel and cachedCoinLabel.Parent then
+    -- 1. Check cached real MM2 CoinBag TextLabel (MUST be currently Visible on screen!)
+    if cachedCoinLabel and cachedCoinLabel.Parent and cachedCoinLabel.Visible then
         local txt = cachedCoinLabel.Text
         if txt and txt ~= "" then
             local lowerTxt = txt:lower()
-            if (lowerTxt:find("full") and (lowerTxt:find("coin") or lowerTxt:find("bag"))) then
-                return 40, 40
-            end
             local cur, mx = txt:match("(%d+)%s*/%s*(%d+)")
             if cur and mx then
                 local cNum, mNum = tonumber(cur), tonumber(mx)
                 if cNum and mNum and mNum > 0 then
                     return cNum, mNum
+                end
+            end
+            if (lowerTxt:find("full") and (lowerTxt:find("coin") or lowerTxt:find("bag"))) then
+                -- Only allow FULL if we have collected coins or match has been going for > 20s
+                if (_G.RanaxCoinsCollected and _G.RanaxCoinsCollected >= 10) or (os.time() - (_G.RanaxRoundStartTime or os.time()) > 25) then
+                    return 40, 40
                 end
             end
         end
@@ -6046,16 +6066,30 @@ local function isRoundOngoing()
 end
 
 IsCoinBagFull = function()
+    -- ABSOLUTE ANTI-FALSE-POSITIVE: A player who collected < 10 coins can NEVER have a full bag!
+    -- This guarantees round 2, 3, 4, 5... will NEVER freeze or stop at round start!
+    if (_G.RanaxCoinsCollected or 0) < 10 then
+        return false
+    end
+
+    -- If player collected 38+ coins in this round, bag is 100% full (MM2 max is 40 / 50)
+    if (_G.RanaxCoinsCollected or 0) >= 38 then
+        return true
+    end
+
     local cur, mx = getCoinBagLive()
     if mx and mx > 0 and cur and cur >= mx and cur > 0 then
         return true
     end
-    if cachedCoinLabel and cachedCoinLabel.Parent then
+
+    if cachedCoinLabel and cachedCoinLabel.Parent and cachedCoinLabel.Visible then
         local txt = cachedCoinLabel.Text
         if txt then
             local lTxt = txt:lower()
-            if lTxt:find("full") and (lTxt:find("coin") or lTxt:find("bag") or cachedCoinLabel.Name:lower():find("coin") or cachedCoinLabel.Name:lower():find("bag")) then
-                return true
+            if lTxt:find("full") and (lTxt:find("coin") or lTxt:find("bag")) then
+                if (_G.RanaxCoinsCollected or 0) >= 20 then
+                    return true
+                end
             end
         end
     end
@@ -6656,9 +6690,15 @@ task.spawn(function()
 
                 -- BAG FULL HANDLING: Perform Bag Full Action and stay parked until next round
                 elseif _G.CoinFarmHandlingBagFull then
-                    -- Safety check: If we're on the map and bag is NOT full, clear the flag and resume farming!
-                    if not IsCoinBagFull() then
+                    -- INFINITE ROUNDS ENGINE: When round ends, map changes, or player is in lobby:
+                    -- CLEAR ALL BAG FULL FLAGS IMMEDIATELY so Round 2, 3, 4... continue farming without stopping!
+                    if not roundOngoing or not activeMap or inLobbyNow then
                         _G.CoinFarmHandlingBagFull = false
+                        _G.RanaxCoinsCollected = 0
+                        cachedCoinLabel = nil
+                        _RanaxCoinCache = {}
+                        _G.BlacklistedCoins = {}
+                        task.wait(0.3)
                     else
                         if _G.CoinTween then _G.CoinTween:Cancel(); _G.CoinTween = nil end
                         pcall(removeCoinFarmPlatform)
@@ -6678,12 +6718,7 @@ task.spawn(function()
                         pcall(removeCoinFarmPlatform)
                         pcall(function() removeFarmFloat(char) end)
 
-                        -- 2) TELEPORT TO SAFE ROOF BEFORE BAG FULL ACTION!
-                        notify("Coin Farm", "Bag Full! Teleporting to safe roof first...", 2, "arrow-up")
-                        pcall(TeleportAboveMap)
-                        task.wait(0.3)
-
-                        -- 3) Webhook
+                        -- 2) Webhook
                         if _G.WebhookEnabled and not _G.HasReportedCoins then
                             _G.HasReportedCoins = true
                             local diff = os.time() - (_G.FarmStartTime or os.time())
@@ -6695,190 +6730,114 @@ task.spawn(function()
                             task.spawn(function() pcall(sendCoinWebhook, bagValue > 0 and bagValue or 40, maxBag > 0 and maxBag or 40, totalC, tStr, "Bag Full") end)
                         end
 
-                        -- 4) Perform Bag Full Action
+                        -- 3) DETERMINE ROLES & EQUIPPED TOOLS
                         local action = _G.BagFullAction or "Auto by Role (Kill/Fling/Reset)"
-                        local function _detectRole(plr)
-                            if not plr then return "INNOCENT" end
-                            local roles = GlobalPlayerRoles or getgenv().PlayerRoles or getgenv().NameRoles or {}
-                            local rData = roles[plr.UserId] or roles[tostring(plr.UserId)] or roles[plr.Name]
-                            if rData and typeof(rData) == "table" and rData.Role then
-                                local r = tostring(rData.Role):upper()
-                                if r:find("MURD") then return "MURDERER" end
-                                if r:find("SHER") or r:find("HERO") then return "SHERIFF" end
+                        
+                        -- Find Murderer
+                        local murderer = nil
+                        if typeof(getMurdererLive) == "function" then murderer = getMurdererLive() end
+                        if not murderer and typeof(getMurdererTarget) == "function" then murderer = getMurdererTarget() end
+                        if not murderer or not murderer.Character then
+                            for _, p in ipairs(Players:GetPlayers()) do
+                                if p ~= LocalPlayer and p.Character then
+                                    for _, t in ipairs(p.Character:GetChildren()) do
+                                        if t:IsA("Tool") and (t.Name:lower():find("knife") or t.Name:lower():find("blade") or t.Name:lower():find("dagger") or t.Name:lower():find("scythe") or t:FindFirstChild("KnifeServer")) then
+                                            murderer = p
+                                            break
+                                        end
+                                    end
+                                    local bp = p:FindFirstChild("Backpack")
+                                    if bp and not murderer then
+                                        for _, t in ipairs(bp:GetChildren()) do
+                                            if t:IsA("Tool") and (t.Name:lower():find("knife") or t.Name:lower():find("blade") or t.Name:lower():find("dagger") or t.Name:lower():find("scythe") or t:FindFirstChild("KnifeServer")) then
+                                                murderer = p
+                                                break
+                                            end
+                                        end
+                                    end
+                                end
+                                if murderer then break end
                             end
-                            local c2 = plr.Character
-                            local bp = plr:FindFirstChild("Backpack")
-                            local items = {}
-                            if c2 then for _, t in ipairs(c2:GetChildren()) do if t:IsA("Tool") then table.insert(items, t) end end end
-                            if bp then for _, t in ipairs(bp:GetChildren()) do if t:IsA("Tool") then table.insert(items, t) end end end
-                            for _, t in ipairs(items) do
+                        end
+
+                        -- Check if LocalPlayer has Gun
+                        local hasGun = false
+                        local hasKnife = false
+                        for _, t in ipairs(char:GetChildren()) do
+                            if t:IsA("Tool") then
                                 local n = t.Name:lower()
-                                if n:find("knife") or n:find("blade") or n:find("dagger") or n:find("scythe") or t:FindFirstChild("KnifeServer") then
-                                    return "MURDERER"
-                                end
-                                if n:find("gun") or n:find("sheriff") or n:find("revolver") or n:find("luger") or n:find("pistol") or n:find("blaster") or t:FindFirstChild("GunServer") or t:FindFirstChild("Shoot", true) or t:FindFirstChild("Fire", true) then
-                                    return "SHERIFF"
+                                if n:find("gun") or n:find("sheriff") or n:find("revolver") or n:find("luger") or n:find("pistol") or t:FindFirstChild("GunServer") or t:FindFirstChild("Shoot", true) then
+                                    hasGun = true
+                                elseif n:find("knife") or n:find("blade") or n:find("dagger") or n:find("scythe") or t:FindFirstChild("KnifeServer") then
+                                    hasKnife = true
                                 end
                             end
-                            return "INNOCENT"
+                        end
+                        local myBp = LocalPlayer:FindFirstChild("Backpack")
+                        if myBp then
+                            for _, t in ipairs(myBp:GetChildren()) do
+                                if t:IsA("Tool") then
+                                    local n = t.Name:lower()
+                                    if n:find("gun") or n:find("sheriff") or n:find("revolver") or n:find("luger") or n:find("pistol") or t:FindFirstChild("GunServer") or t:FindFirstChild("Shoot", true) then
+                                        hasGun = true
+                                    elseif n:find("knife") or n:find("blade") or n:find("dagger") or n:find("scythe") or t:FindFirstChild("KnifeServer") then
+                                        hasKnife = true
+                                    end
+                                end
+                            end
                         end
 
-                        local role = _detectRole(LocalPlayer)
-                        notify("Coin Farm", "Performing Action: " .. tostring(action), 2, "check")
-
-                        local doKill, doRageShoot, doFling, doReset = false, false, false, false
-                        if action == "Rage Shoot (Sheriff)" or action == "Shoot Murderer (Sheriff)" then
-                            doRageShoot = true
-                        elseif action == "Auto by Role (Kill/Fling/Reset)" then
-                            if role == "MURDERER" then doKill = true
-                            elseif role == "SHERIFF" then doRageShoot = true
-                            else doFling = true end
-                        elseif action == "Kill Everyone (Murderer)" then
-                            if role == "MURDERER" then doKill = true else doReset = true end
-                        elseif action == "Reset Character" or action == "Reset & Continue" then
-                            doReset = true
-                        else
-                            if role == "SHERIFF" then doRageShoot = true
-                            elseif role == "MURDERER" then doKill = true
-                            else doFling = true end
+                        -- If Innocent and no Gun: Check if Sheriff died and Gun is dropped on map!
+                        if not hasGun and not hasKnife then
+                            local gunDrop = workspace:FindFirstChild("GunDrop", true)
+                            if gunDrop then
+                                notify("Coin Farm", "Sheriff Dead! Grabbing Dropped Gun...", 2, "crosshair")
+                                local dropPos = gunDrop:GetPivot().Position
+                                hrp.CFrame = CFrame.new(dropPos + Vector3.new(0, 1.5, 0))
+                                task.wait(0.08)
+                                pcall(function()
+                                    if typeof(firetouchinterest) == "function" then
+                                        for _, part in ipairs(gunDrop:GetDescendants()) do
+                                            if part:IsA("BasePart") then
+                                                firetouchinterest(hrp, part, 0)
+                                                firetouchinterest(hrp, part, 1)
+                                            end
+                                        end
+                                        if gunDrop:IsA("BasePart") then
+                                            firetouchinterest(hrp, gunDrop, 0)
+                                            firetouchinterest(hrp, gunDrop, 1)
+                                        end
+                                    end
+                                    gunDrop:PivotTo(hrp.CFrame)
+                                end)
+                                task.wait(0.25)
+                                -- Check if grabbed successfully
+                                for _, t in ipairs(char:GetChildren()) do
+                                    if t:IsA("Tool") and (t.Name:lower():find("gun") or t:FindFirstChild("Shoot", true)) then hasGun = true break end
+                                end
+                                if not hasGun and myBp then
+                                    for _, t in ipairs(myBp:GetChildren()) do
+                                        if t:IsA("Tool") and (t.Name:lower():find("gun") or t:FindFirstChild("Shoot", true)) then hasGun = true break end
+                                    end
+                                end
+                            end
                         end
 
-                        local actionLobbyTeleport = true
+                        local killConfirmed = false
 
-                        if doKill then
+                        -- 4) EXECUTE MURDERER ELIMINATION / ROLE ACTION
+                        -- DO NOT TELEPORT ABOVE CEILING BEFORE SHOOTING! Shoot inside the arena first!
+                        if hasKnife or action == "Kill Everyone (Murderer)" then
+                            -- Murderer action
                             notify("Coin Farm", "Bag Full! (Murderer) 500 Range Kill Aura...", 2, "skull")
                             local killFn = (_G.ExecuteKillEveryone) or (typeof(ExecuteKillEveryone) == "function" and ExecuteKillEveryone or nil)
                             for _killTry = 1, 3 do
                                 if killFn then pcall(killFn, 500) end
                                 task.wait(0.25)
                             end
-                        elseif doRageShoot then
-                            notify("Coin Farm", "Bag Full! (Sheriff) Eliminating Murderer...", 2.5, "crosshair")
-                            local mTarget = getMurdererTarget() or (typeof(getMurdererLive) == "function" and getMurdererLive() or nil)
-                            local killConfirmed = false
+                            killConfirmed = true
 
-                            if not isRoundOngoing() then
-                                killConfirmed = true
-                            elseif mTarget and mTarget.Character then
-                                local tHum = mTarget.Character:FindFirstChildOfClass("Humanoid")
-                                if not tHum or tHum.Health <= 0 then
-                                    killConfirmed = true
-                                end
-                            end
-
-                            local rageFn = _G.executeRanaxRageShoot or (typeof(executeRanaxRageShoot) == "function" and executeRanaxRageShoot or nil)
-
-                            -- Shoot attempts with active kill confirmation
-                            if not killConfirmed and rageFn then
-                                for _rTry = 1, 5 do
-                                    if not isRoundOngoing() then
-                                        killConfirmed = true
-                                        break
-                                    end
-                                    mTarget = getMurdererTarget() or (typeof(getMurdererLive) == "function" and getMurdererLive() or nil)
-                                    if not mTarget or not mTarget.Character then
-                                        killConfirmed = true
-                                        break
-                                    end
-                                    local tHum = mTarget.Character:FindFirstChildOfClass("Humanoid")
-                                    if not tHum or tHum.Health <= 0 then
-                                        killConfirmed = true
-                                        break
-                                    end
-
-                                    notify("Coin Farm", "Shooting Murderer [Shot " .. tostring(_rTry) .. "/5]...", 1.5, "crosshair")
-                                    local ok, res = pcall(rageFn)
-                                    if ok and res == true then
-                                        killConfirmed = true
-                                        break
-                                    end
-                                    task.wait(0.35)
-                                end
-                            end
-
-                            -- Ultimate Fallback: If gun failed or murderer survived, fling murderer!
-                            if not killConfirmed and isRoundOngoing() then
-                                mTarget = getMurdererTarget() or (typeof(getMurdererLive) == "function" and getMurdererLive() or nil)
-                                local tHum = mTarget and mTarget.Character and mTarget.Character:FindFirstChildOfClass("Humanoid")
-                                if mTarget and mTarget.Character and tHum and tHum.Health > 0 then
-                                    notify("Coin Farm", "Gun Missed! Fallback: Flinging Murderer...", 2.5, "zap")
-                                    local flingFn = _G.VFling or (typeof(VFling) == "function" and VFling or nil)
-                                    if flingFn then
-                                        local wasAntiFling = V.AntiFling
-                                        V.AntiFling = false
-                                        pcall(flingFn, mTarget)
-                                        task.wait(0.5)
-                                        V.AntiFling = wasAntiFling
-                                    end
-
-                                    local waitDead = os.clock()
-                                    while os.clock() - waitDead < 2.5 do
-                                        if not isRoundOngoing() or not mTarget or not mTarget.Character or not tHum or tHum.Health <= 0 then
-                                            killConfirmed = true
-                                            break
-                                        end
-                                        task.wait(0.1)
-                                    end
-                                else
-                                    killConfirmed = true
-                                end
-                            end
-
-                            -- Teleport to Lobby ONLY if murderer confirmed dead or round finished!
-                            if killConfirmed or not isRoundOngoing() then
-                                notify("Coin Farm", "Murderer Dead! Round Won, Teleporting to Lobby...", 2.5, "check")
-                            else
-                                notify("Coin Farm", "Target still alive! Holding safe roof zone...", 2.5, "shield")
-                                pcall(TeleportAboveMap)
-                                _G.CoinFarmHandlingBagFull = false
-                                actionLobbyTeleport = false
-                            end
-
-                        elseif doFling then
-                            notify("Coin Farm", "Bag Full! (Innocent) Flinging Murderer...", 2, "zap")
-                            local m = typeof(getMurdererLive) == "function" and getMurdererLive() or nil
-                            local flingConfirmed = false
-                            if not m or not m.Character then
-                                flingConfirmed = true
-                            else
-                                local tHum = m.Character:FindFirstChildOfClass("Humanoid")
-                                if not tHum or tHum.Health <= 0 then flingConfirmed = true end
-                            end
-
-                            if not flingConfirmed and m and m.Character then
-                                local flingFn = _G.VFling or (typeof(VFling) == "function" and VFling or nil)
-                                if flingFn then
-                                    local wasAntiFling = V.AntiFling
-                                    V.AntiFling = false
-                                    pcall(flingFn, m)
-                                    task.wait(0.5)
-                                    V.AntiFling = wasAntiFling
-                                end
-                                local waitDead = os.clock()
-                                while os.clock() - waitDead < 2.5 do
-                                    if not isRoundOngoing() or not m or not m.Character then
-                                        flingConfirmed = true
-                                        break
-                                    end
-                                    local tHum = m.Character:FindFirstChildOfClass("Humanoid")
-                                    if not tHum or tHum.Health <= 0 then
-                                        flingConfirmed = true
-                                        break
-                                    end
-                                    task.wait(0.1)
-                                end
-                            end
-
-                            if flingConfirmed or not isRoundOngoing() then
-                                notify("Coin Farm", "Murderer Eliminated! Round Won, Teleporting to Lobby...", 2.5, "check")
-                            else
-                                notify("Coin Farm", "Murderer still alive! Holding safe roof zone...", 2.5, "shield")
-                                pcall(TeleportAboveMap)
-                                _G.CoinFarmHandlingBagFull = false
-                                actionLobbyTeleport = false
-                            end
-
-                        elseif doReset then
+                        elseif action == "Reset Character" or action == "Reset & Continue" then
                             notify("Coin Farm", "Bag Full! Resetting...", 2, "refresh-cw")
                             local resetOk = pcall(function()
                                 local h2 = char and char:FindFirstChildOfClass("Humanoid")
@@ -6886,13 +6845,89 @@ task.spawn(function()
                             end)
                             if not resetOk then pcall(function() char:BreakJoints() end) end
                             task.wait(1.5)
+
+                        elseif hasGun or action == "Rage Shoot (Sheriff)" or action == "Shoot Murderer (Sheriff)" then
+                            -- Sheriff or Hero holding Gun -> SHOOT MURDERER DIRECTLY!
+                            notify("Coin Farm", "Bag Full! Eliminating Murderer with Gun...", 2.5, "crosshair")
+                            local rageFn = _G.executeRanaxRageShoot or (typeof(executeRanaxRageShoot) == "function" and executeRanaxRageShoot or nil)
+                            if rageFn then
+                                for _shotTry = 1, 4 do
+                                    if not isRoundOngoing() then killConfirmed = true; break end
+                                    if murderer and murderer.Character then
+                                        local mHum = murderer.Character:FindFirstChildOfClass("Humanoid")
+                                        if not mHum or mHum.Health <= 0 then killConfirmed = true; break end
+                                    end
+                                    notify("Coin Farm", "Shooting Murderer [Shot " .. tostring(_shotTry) .. "/4]...", 1.2, "crosshair")
+                                    local ok, res = pcall(rageFn)
+                                    if ok and res == true then
+                                        killConfirmed = true
+                                        break
+                                    end
+                                    task.wait(0.3)
+                                end
+                            end
+
+                            -- Fallback: If gun failed or murderer survived, direct FLING!
+                            if not killConfirmed and murderer and murderer.Character and isRoundOngoing() then
+                                local mHum = murderer.Character:FindFirstChildOfClass("Humanoid")
+                                if mHum and mHum.Health > 0 then
+                                    notify("Coin Farm", "Gun Missed! Fallback: Flinging Murderer...", 2, "zap")
+                                    local flingFn = _G.VFling or (typeof(VFling) == "function" and VFling or nil)
+                                    if flingFn then
+                                        local wasAF = V.AntiFling
+                                        V.AntiFling = false
+                                        pcall(flingFn, murderer)
+                                        task.wait(0.5)
+                                        V.AntiFling = wasAF
+                                    end
+                                    local wDead = os.clock()
+                                    while os.clock() - wDead < 2.5 do
+                                        if not isRoundOngoing() or not murderer or not murderer.Character or not mHum or mHum.Health <= 0 then
+                                            killConfirmed = true
+                                            break
+                                        end
+                                        task.wait(0.1)
+                                    end
+                                end
+                            end
+
+                        else
+                            -- Pure Innocent (no gun on map): Direct FLING on Murderer!
+                            if murderer and murderer.Character and isRoundOngoing() then
+                                notify("Coin Farm", "Bag Full! (Innocent) Flinging Murderer...", 2.5, "zap")
+                                local mHum = murderer.Character:FindFirstChildOfClass("Humanoid")
+                                local flingFn = _G.VFling or (typeof(VFling) == "function" and VFling or nil)
+                                if flingFn and mHum and mHum.Health > 0 then
+                                    local wasAF = V.AntiFling
+                                    V.AntiFling = false
+                                    pcall(flingFn, murderer)
+                                    task.wait(0.5)
+                                    V.AntiFling = wasAF
+
+                                    local wDead = os.clock()
+                                    while os.clock() - wDead < 2.5 do
+                                        if not isRoundOngoing() or not murderer or not murderer.Character or not mHum or mHum.Health <= 0 then
+                                            killConfirmed = true
+                                            break
+                                        end
+                                        task.wait(0.1)
+                                    end
+                                end
+                            else
+                                killConfirmed = true
+                            end
                         end
 
-                        -- Teleport to Lobby & wait for round end / next round
-                        if actionLobbyTeleport then
-                            notify("Coin Farm", "Action done! Teleporting to Lobby...", 2, "home")
+                        -- 5) POST-ACTION DISPATCH: TELEPORT TO LOBBY OR SAFE ROOF
+                        if killConfirmed or not isRoundOngoing() then
+                            notify("Coin Farm", "Murderer Eliminated! Round Won, Teleporting to Lobby...", 2.5, "check")
                             task.wait(0.2)
                             pcall(TeleportToLobby)
+                            task.wait(0.3)
+                            pcall(stopCoinFarmClean)
+                        else
+                            notify("Coin Farm", "Target unreachable! Teleporting to safe roof...", 2.5, "shield")
+                            pcall(TeleportAboveMap)
                             task.wait(0.3)
                             pcall(stopCoinFarmClean)
                         end
