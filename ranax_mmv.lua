@@ -6461,9 +6461,11 @@ do
         -- Only track platform if user explicitly chose Underground mode (Direct mode needs no platform!)
         if (_G.SafeAutoFarm or _G.AutoCoins) and not _G.CoinFarmHandlingBagFull and (_G.FarmMode and _G.FarmMode:find("Underground")) then
             if _RanaxFarmPlatform and _RanaxFarmPlatform.Parent then
-                _RanaxFarmPlatform.CFrame = CFrame.new(hrp.Position.X, hrp.Position.Y - 3.1, hrp.Position.Z)
+                _RanaxFarmPlatform.CFrame = CFrame.new(hrp.Position.X, hrp.Position.Y - 0.8, hrp.Position.Z)
                 _RanaxFarmPlatform.CanCollide = true
             end
+            hrp.AssemblyLinearVelocity = Vector3.zero
+            hrp.AssemblyAngularVelocity = Vector3.zero
         end
 
         -- Noclip parts within radius 6 of player
@@ -7005,22 +7007,21 @@ task.spawn(function()
                                 _G.BlacklistedCoins = blacklistedCoins
                                 task.wait(0.01)
                             else
-                                pcall(function() removeFarmFloat(char) end)
-                                hum.PlatformStand = false
-                                hum.Sit = false
-
-                                local targetCFrame
                                 local farmMode = _G.FarmMode or "Direct (AlSploit / Above Map)"
-                                if (farmMode and farmMode:find("Underground")) then
-                                    -- EXACTLY 3 BLOCKS (STUDS) DIRECTLY UNDER THE COIN:
+                                local isUnderground = (farmMode and farmMode:find("Underground"))
+                                local targetCFrame
+
+                                if isUnderground then
+                                    -- EXACTLY 3 BLOCKS DIRECTLY UNDER COIN, ROCK-SOLID ANTI-GRAVITY FLOAT:
                                     local UNDERGROUND_DEPTH = 3.0
                                     local targetY = math.max(coinPos.Y - UNDERGROUND_DEPTH, MIN_SAFE_Y)
-                                    -- Character lying flat on back ("göt üstü yatıcak"): tilted -90 degrees on X axis, looking directly up at the coin!
                                     targetCFrame = CFrame.new(coinPos.X, targetY, coinPos.Z) * CFrame.Angles(math.rad(-90), 0, 0)
-                                    ensureCoinFarmPlatform(Vector3.new(coinPos.X, targetY - 1.0, coinPos.Z))
+                                    ensureCoinFarmPlatform(Vector3.new(coinPos.X, targetY - 0.8, coinPos.Z))
+                                    ensureFarmFloat(hrp)
                                     hum.PlatformStand = true
                                     hum.Sit = true
                                 else
+                                    pcall(function() removeFarmFloat(char) end)
                                     removeCoinFarmPlatform()
                                     targetCFrame = CFrame.new(coinPos.X, coinPos.Y + 2.8, coinPos.Z)
                                     hum.PlatformStand = false
@@ -7056,8 +7057,13 @@ task.spawn(function()
                                         end
                                     end
 
-                                    if _RanaxFarmPlatform and _RanaxFarmPlatform.Parent then
-                                        _RanaxFarmPlatform.CFrame = CFrame.new(hrp.Position.X, hrp.Position.Y - 1.0, hrp.Position.Z)
+                                    if isUnderground then
+                                        ensureFarmFloat(hrp)
+                                        hum.PlatformStand = true
+                                        hum.Sit = true
+                                        if _RanaxFarmPlatform and _RanaxFarmPlatform.Parent then
+                                            _RanaxFarmPlatform.CFrame = CFrame.new(hrp.Position.X, hrp.Position.Y - 0.8, hrp.Position.Z)
+                                        end
                                     end
 
                                     local currentDist = (hrp.Position - targetCFrame.Position).Magnitude
@@ -7110,8 +7116,12 @@ task.spawn(function()
                                                     end
                                                 end
                                             end)
-                                            if farmMode and farmMode:find("Underground") then
-                                                hrp.CFrame = CFrame.new(coinPos.X, coinPos.Y - 2.5, coinPos.Z) * CFrame.Angles(math.rad(-90), 0, 0)
+                                            if isUnderground then
+                                                -- STRICT 3 STUDS DEPTH AT ALL TIMES (NO HOPPING UP/DOWN!)
+                                                local targetY = math.max(coinPos.Y - 3.0, MIN_SAFE_Y)
+                                                hrp.CFrame = CFrame.new(coinPos.X, targetY, coinPos.Z) * CFrame.Angles(math.rad(-90), 0, 0)
+                                                hrp.AssemblyLinearVelocity = Vector3.zero
+                                                hrp.AssemblyAngularVelocity = Vector3.zero
                                             end
                                             task.wait(0.03)
                                         end
