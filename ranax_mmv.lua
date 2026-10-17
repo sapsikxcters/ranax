@@ -6013,56 +6013,34 @@ local function hookMurdererDeath(m)
 end
 
 local function isRoundOngoing()
-    -- 1) MM2 Harita kontrolu: Harita yoksa tur kesinlikle bitmistir
-    local map = (typeof(getActiveMapModel) == "function") and getActiveMapModel() or workspace:FindFirstChild("Normal")
-    if not map then
-        _G.RanaxRoundInProgress = false
-        _detectedMurderer = nil
-        return false
-    end
-
-    -- Harita workspace'te mevcut, tur calisiyor!
-    _G.RanaxRoundInProgress = true
-
-    -- 2) Lobi kontrolu: LocalPlayer su an lobide mi?
-    if (typeof(IsPlayerInLobby) == "function") and IsPlayerInLobby(LocalPlayer) then
-        return false
-    end
-
-    -- 3) Katil kontrolu & Serif vurdugu gibi aninda durdurma
-    local m = getMurdererLive()
-    if m then
-        _detectedMurderer = m
-        hookMurdererDeath(m)
-        if m.Character then
-            local hum = m.Character:FindFirstChildOfClass("Humanoid")
-            if hum and (hum.Health <= 0 or hum:GetState() == Enum.HumanoidStateType.Dead) then
-                _G.RanaxRoundInProgress = false
-                _detectedMurderer = nil
-                return false
-            end
-        else
-            _G.RanaxRoundInProgress = false
-            _detectedMurderer = nil
-            return false
-        end
-    end
-
-    -- 4) MM2 Oyun Sonu UI kontrolu (Innocents Win / Round Over)
-    local pg = LocalPlayer:FindFirstChild("PlayerGui")
-    if pg then
-        local mainGui = pg:FindFirstChild("MainGui") or pg:FindFirstChild("Game") or pg:FindFirstChild("MainGUI")
-        if mainGui then
-            local roundEndUI = mainGui:FindFirstChild("RoundEnd") or mainGui:FindFirstChild("EndScreen") or mainGui:FindFirstChild("Victory")
-            if roundEndUI and roundEndUI.Visible then
-                _G.RanaxRoundInProgress = false
-                _detectedMurderer = nil
-                return false
+    -- Indestructible Round Detection:
+    -- If active map "Normal" or any CoinContainer exists in workspace, game is in progress!
+    local normal = workspace:FindFirstChild("Normal")
+    if normal and normal:IsA("Model") then
+        local pg = LocalPlayer:FindFirstChild("PlayerGui")
+        if pg then
+            local mainGui = pg:FindFirstChild("MainGui") or pg:FindFirstChild("Game") or pg:FindFirstChild("MainGUI")
+            if mainGui then
+                local roundEndUI = mainGui:FindFirstChild("RoundEnd") or mainGui:FindFirstChild("EndScreen") or mainGui:FindFirstChild("Victory")
+                if roundEndUI and roundEndUI.Visible then
+                    return false
+                end
             end
         end
+        return true
     end
 
-    return true
+    local cc = workspace:FindFirstChild("CoinContainer") or workspace:FindFirstChild("Coins")
+    if cc and #cc:GetChildren() > 0 then
+        return true
+    end
+
+    local map = (typeof(getActiveMapModel) == "function") and getActiveMapModel()
+    if map then
+        return true
+    end
+
+    return false
 end
 
 IsCoinBagFull = function()
@@ -6102,123 +6080,98 @@ end
 local _RanaxCoinCache = {}  -- [coin] = true
 local _coinCacheReady = false
 
--- AlSploit & MM2 Gercek Coin Kontrolu: Sadece CoinVisual iceren canli coinler toplanir!
+-- AlSploit & MM2 Live Coin Verification (Zero false negatives on Delta/Solara/Wave)
 local function isCollectibleCoin(coin)
-    if not coin or not coin.Parent or not coin:IsA("BasePart") then return false end
-    if coin.Name ~= "Coin_Server" then return false end
-    if not coin:FindFirstChild("TouchInterest") then return false end
-    -- CoinVisual YOKSA bu coin alinmis ya da tur bitmistir (bos spawn yeri) -> ASLA GITME!
-    if not coin:FindFirstChild("CoinVisual") then return false end
-    local bl = _G.BlacklistedCoins or {}
-    if bl[coin] and (bl[coin] > tick()) then return false end
-    return true
+    if not coin or not coin.Parent then return false end
+    local bl = _G.BlacklistedCoins
+    if bl and bl[coin] and (bl[coin] > tick()) then return false end
+
+    -- MM2 Coin identification:
+    if coin:IsA("BasePart") then
+        local name = coin.Name:lower()
+        if name:find("coin") then
+            if coin:FindFirstChild("CoinVisual") then
+                return true
+            elseif coin.Parent and coin.Parent.Name:lower():find("coin") then
+                return true
+            end
+        end
+    elseif coin:IsA("Model") then
+        if coin:FindFirstChild("CoinVisual") or coin.Name:lower():find("coin") then
+            return true
+        end
+    end
+
+    return false
 end
 
-local function _rebuildCoinCache()
-    _RanaxCoinCache = {}
-    local map = (typeof(getActiveMapModel) == "function") and getActiveMapModel()
-    local searchContainers = {
+local function getCoinTargetPosition(coin)
+    if not coin or not coin.Parent then return nil end
+    local visual = coin:FindFirstChild("CoinVisual")
+    if visual then
+        if visual:IsA("BasePart") then
+            return visual.Position
+        elseif visual:IsA("Model") then
+            return visual:GetPivot().Position
+        end
+    end
+    if coin:IsA("BasePart") then
+        return coin.Position
+    elseif coin:IsA("Model") then
+        return coin:GetPivot().Position
+    end
+    return nil
+end
+
+local function getMapCoins()
+    local coins = {}
+    local seen = {}
+
+    local function addCoin(c)
+        if c and not seen[c] and isCollectibleCoin(c) then
+            seen[c] = true
+            table.insert(coins, c)
+        end
+    end
+
+    local normal = workspace:FindFirstChild("Normal")
+    local containers = {
         workspace:FindFirstChild("CoinContainer"),
         workspace:FindFirstChild("Coins"),
-        workspace:FindFirstChild("Normal") and workspace.Normal:FindFirstChild("CoinContainer"),
-        map and map:FindFirstChild("CoinContainer"),
-        map and map:FindFirstChild("Coins"),
-        map,
-        workspace:FindFirstChild("Normal")
+        normal and normal:FindFirstChild("CoinContainer"),
+        normal and normal:FindFirstChild("Coins")
     }
-
-    local seen = {}
-    for _, container in ipairs(searchContainers) do
-        if container then
-            for _, v in ipairs(container:GetChildren()) do
-                if not seen[v] and isCollectibleCoin(v) then
-                    seen[v] = true
-                    _RanaxCoinCache[v] = true
-                elseif v:IsA("Model") and (v.Name:find("Coin") or v.Name == "Spawns") then
-                    for _, sub in ipairs(v:GetChildren()) do
-                        if not seen[sub] and isCollectibleCoin(sub) then
-                            seen[sub] = true
-                            _RanaxCoinCache[sub] = true
-                        end
+    for _, cont in ipairs(containers) do
+        if cont then
+            for _, child in ipairs(cont:GetChildren()) do
+                addCoin(child)
+                if child:IsA("Model") then
+                    for _, sub in ipairs(child:GetChildren()) do
+                        addCoin(sub)
                     end
                 end
             end
         end
     end
 
-    -- Direct fallback if containers were empty: check workspace children for Coin_Server
-    if next(_RanaxCoinCache) == nil then
-        for _, v in ipairs(workspace:GetChildren()) do
-            if v.Name == "Coin_Server" and isCollectibleCoin(v) and not seen[v] then
-                seen[v] = true
-                _RanaxCoinCache[v] = true
+    if #coins == 0 then
+        local searchRoot = normal or workspace
+        for _, obj in ipairs(searchRoot:GetChildren()) do
+            if obj.Name == "Coin_Server" or (obj:IsA("Model") and obj.Name:find("Coin")) then
+                addCoin(obj)
             end
         end
     end
 
-    _coinCacheReady = true
+    return coins
 end
 
--- Pure conditional workspace listeners (LITERALLY ZERO workspace event overhead when modules are OFF!)
-local _coinDescendantAddedConn = nil
-local _coinDescendantRemovedConn = nil
-local function updateWorkspaceCoinWatchers()
-    local needWatchers = (_G.SafeAutoFarm or _G.AutoCoins or _G.CoinESPEnabled)
-    if needWatchers then
-        if not _coinDescendantAddedConn then
-            _coinDescendantAddedConn = workspace.DescendantAdded:Connect(function(v)
-                if not (_G.SafeAutoFarm or _G.AutoCoins or _G.CoinESPEnabled) then return end
-                if v.Name == "Coin_Server" and v:IsA("BasePart") then
-                    if isCollectibleCoin(v) then _RanaxCoinCache[v] = true end
-                elseif v.Name == "CoinVisual" and v.Parent and v.Parent.Name == "Coin_Server" then
-                    if isCollectibleCoin(v.Parent) then _RanaxCoinCache[v.Parent] = true end
-                end
-            end)
-        end
-        if not _coinDescendantRemovedConn then
-            _coinDescendantRemovedConn = workspace.DescendantRemoving:Connect(function(v)
-                if v.Name == "Coin_Server" then
-                    _RanaxCoinCache[v] = nil
-                elseif v.Name == "CoinVisual" and v.Parent then
-                    _RanaxCoinCache[v.Parent] = nil
-                end
-            end)
-        end
-    else
-        if _coinDescendantAddedConn then _coinDescendantAddedConn:Disconnect(); _coinDescendantAddedConn = nil end
-        if _coinDescendantRemovedConn then _coinDescendantRemovedConn:Disconnect(); _coinDescendantRemovedConn = nil end
-    end
-end
-_G.RanaxUpdateWorkspaceCoinWatchers = updateWorkspaceCoinWatchers
-
-local function getCoinTargetPosition(coin)
-    if not coin or not coin.Parent then return nil end
-    -- The server hitbox is ALWAYS the BasePart (Coin_Server) itself!
-    -- Never use rotating cosmetic models which have shifted pivots!
-    if coin:IsA("BasePart") then
-        return coin.Position
-    end
-    local visual = coin:FindFirstChild("CoinVisual")
-    if visual and visual:IsA("BasePart") then
-        return visual.Position
-    end
-    if coin:IsA("Model") then
-        return coin:GetPivot().Position
-    end
-    return nil
-end
-
--- Sadece gercekten CoinVisual'i olan aktif coinleri listeler
 local function _getCoinsFromCache()
-    local list = {}
-    for coin, _ in pairs(_RanaxCoinCache) do
-        if isCollectibleCoin(coin) then
-            list[#list + 1] = coin
-        else
-            _RanaxCoinCache[coin] = nil
-        end
-    end
-    return list
+    return getMapCoins()
+end
+
+local function _rebuildCoinCache()
+    return getMapCoins()
 end
 
 local function FindNearestCoin(MaxDistance)
@@ -6228,34 +6181,18 @@ local function FindNearestCoin(MaxDistance)
     local hrp = char and char:FindFirstChild("HumanoidRootPart")
     if not hrp then return nil, math.huge end
 
-    -- Only coins with CoinVisual = uncollected
-    for _, v in ipairs(_getCoinsFromCache()) do
-        local Distance = (hrp.Position - v.Position).Magnitude
-        if Distance <= NearestCoinDistance then
-            NearestCoinDistance = Distance
-            NearestCoin = v
+    for _, v in ipairs(getMapCoins()) do
+        local cPos = getCoinTargetPosition(v)
+        if cPos then
+            local Distance = (hrp.Position - cPos).Magnitude
+            if Distance <= NearestCoinDistance then
+                NearestCoinDistance = Distance
+                NearestCoin = v
+            end
         end
     end
 
     return NearestCoin, NearestCoinDistance
-end
-
--- IsCoinBagFull already defined globally above
-
-
-local _lastCoinCacheRebuild = 0
-local function getMapCoins()
-    -- Use cache: only uncollected coins (have CoinVisual)
-    local cached = _getCoinsFromCache()
-    if #cached > 0 then return cached end
-    -- Throttled rebuild: maximum once every 4 seconds to prevent FPS drop in lobby
-    local now = os.clock()
-    if now - _lastCoinCacheRebuild > 4 then
-        _lastCoinCacheRebuild = now
-        pcall(_rebuildCoinCache)
-        return _getCoinsFromCache()
-    end
-    return cached
 end
 
 -- ==================== RANAX COIN ESP ENGINE ====================
@@ -6650,34 +6587,30 @@ task.spawn(function()
                 pcall(stopCoinFarmClean)
                 task.wait(0.5)
             else
-                local inLobbyNow = (typeof(IsPlayerInLobby) == "function") and IsPlayerInLobby(LocalPlayer) or false
-                local roundOngoing = isRoundOngoing()
-                local activeMap = (typeof(getActiveMapModel) == "function") and getActiveMapModel() or workspace:FindFirstChild("Normal")
+                -- Find all available coins on map right now
+                local mapCoins = getMapCoins()
 
-                -- DETECT NEW ROUND START & RESET STALE CACHES
-                -- When in lobby, round ends, or no map in workspace: reset round-specific data!
-                if inLobbyNow or not roundOngoing or not activeMap then
+                -- BETWEEN ROUNDS / LOBBY (Zero coins in game map):
+                if #mapCoins == 0 then
                     if _G.CoinTween then _G.CoinTween:Cancel(); _G.CoinTween = nil end
                     pcall(removeCoinFarmPlatform)
                     pcall(function() removeFarmFloat(char) end)
-                    
-                    -- ALWAYS reset round locks when in lobby or between rounds!
+
+                    -- Clear round locks while waiting for map to spawn coins
                     _G.DiedThisRound = false
                     _G.CoinFarmHandlingBagFull = false
                     _G.HasReportedCoins = false
                     _G.RanaxCoinsCollected = 0
                     _G.BlacklistedCoins = {}
-                    _RanaxCoinCache = {}
                     cachedCoinLabel = nil
-                    _detectedMurderer = nil
 
                     if hrp then
                         hrp.AssemblyLinearVelocity = Vector3.zero
                         hrp.AssemblyAngularVelocity = Vector3.zero
                     end
-                    task.wait(0.3)
+                    task.wait(0.4)
 
-                -- USER DIED DURING THIS MATCH: DO NOT RE-ENTER COIN FARM UNTIL NEXT ROUND!
+                -- USER DIED DURING THIS MATCH: Wait until coins reset in next round
                 elseif _G.DiedThisRound then
                     if _G.CoinTween then _G.CoinTween:Cancel(); _G.CoinTween = nil end
                     pcall(removeCoinFarmPlatform)
@@ -6686,7 +6619,7 @@ task.spawn(function()
                         hrp.AssemblyLinearVelocity = Vector3.zero
                         hrp.AssemblyAngularVelocity = Vector3.zero
                     end
-                    task.wait(0.4)
+                    task.wait(0.5)
 
                 -- BAG FULL HANDLING: Perform Bag Full Action and stay parked until next round
                 elseif _G.CoinFarmHandlingBagFull then
@@ -6934,35 +6867,9 @@ task.spawn(function()
 
                     else
                         -- COLLECT COINS ON ACTIVE MAP
-                        -- 1) Prioritize exact coins tracked and displayed by Coin ESP!
-                        local coins = {}
-                        local seen = {}
-                        local blacklistedCoins = _G.BlacklistedCoins or {}
-                        _G.BlacklistedCoins = blacklistedCoins
-
-                        if _G.RanaxTrackedCoins then
-                            for coin, _ in pairs(_G.RanaxTrackedCoins) do
-                                if coin and coin.Parent and not seen[coin] and isCollectibleCoin(coin) then
-                                    seen[coin] = true
-                                    table.insert(coins, coin)
-                                end
-                            end
-                        end
-
-                        -- 2) Fallback to map cache if Coin ESP is off or empty
-                        if #coins == 0 then
-                            for _, coin in ipairs(getMapCoins()) do
-                                if coin and coin.Parent and not seen[coin] and isCollectibleCoin(coin) then
-                                    seen[coin] = true
-                                    table.insert(coins, coin)
-                                end
-                            end
-                        end
-
                         local closestCoin, minDist = nil, math.huge
-                        for _, coin in ipairs(coins) do
-                            -- Real BasePart position, zero offset
-                            local cPos = (coin:IsA("BasePart") and coin.Position) or ((typeof(getCoinTargetPosition) == "function") and getCoinTargetPosition(coin)) or coin.Position
+                        for _, coin in ipairs(mapCoins) do
+                            local cPos = (typeof(getCoinTargetPosition) == "function") and getCoinTargetPosition(coin) or (coin:IsA("BasePart") and coin.Position)
                             if cPos then
                                 local dist = (hrp.Position - cPos).Magnitude
                                 if dist < minDist then
