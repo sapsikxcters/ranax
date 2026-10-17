@@ -4083,13 +4083,13 @@ do
     local EMOTES_DATA = {
         ["Zen (MM2)"] = {
             Remote = "zen",
-            R6 = "rbxassetid://3169476239",
-            R15 = "rbxassetid://3303162803",
+            R6 = "rbxassetid://313762630",
+            R15 = "rbxassetid://71136284141200",
             Looped = true
         },
         ["Ninja (MM2)"] = {
             Remote = "ninja",
-            R6 = "rbxassetid://656117878",
+            R6 = "rbxassetid://204292303",
             R15 = "rbxassetid://656118341",
             Looped = true
         },
@@ -4101,31 +4101,31 @@ do
         },
         ["Dab (MM2)"] = {
             Remote = "dab",
-            R6 = "rbxassetid://2482347209",
+            R6 = "rbxassetid://183412246",
             R15 = "rbxassetid://10714345598",
             Looped = false
         },
         ["Zombie (MM2)"] = {
             Remote = "zombie",
-            R6 = "rbxassetid://3565463727",
+            R6 = "rbxassetid://616158929",
             R15 = "rbxassetid://3303165245",
             Looped = true
         },
         ["Sit (MM2)"] = {
             Remote = "sit",
-            R6 = "rbxassetid://2506281708",
+            R6 = "rbxassetid://179224234",
             R15 = "rbxassetid://2506281708",
             Looped = true
         },
         ["Hero (MM2)"] = {
             Remote = "hero",
-            R6 = "rbxassetid://3303162803",
+            R6 = "rbxassetid://184574340",
             R15 = "rbxassetid://3303162803",
             Looped = true
         },
         ["Headless (MM2)"] = {
             Remote = "headless",
-            R6 = "rbxassetid://3303162803",
+            R6 = "rbxassetid://121572214",
             R15 = "rbxassetid://3303162803",
             Looped = true
         },
@@ -6857,46 +6857,44 @@ task.spawn(function()
                             task.wait(1.5)
 
                         elseif hasGun or action == "Rage Shoot (Sheriff)" or action == "Shoot Murderer (Sheriff)" then
-                            notify("Coin Farm", "Bag Full! Eliminating Murderer with Gun...", 2.5, "crosshair")
+                            notify("Coin Farm", "Bag Full! (Sheriff) Eliminating Murderer with Gun...", 2.5, "crosshair")
                             local rageFn = _G.executeRanaxRageShoot or (typeof(executeRanaxRageShoot) == "function" and executeRanaxRageShoot or nil)
-                            if rageFn then
-                                for _shotTry = 1, 4 do
-                                    if not isRoundOngoing() then killConfirmed = true; break end
-                                    if murderer and murderer.Character then
-                                        local mHum = murderer.Character:FindFirstChildOfClass("Humanoid")
-                                        if not mHum or mHum.Health <= 0 then killConfirmed = true; break end
-                                    end
-                                    notify("Coin Farm", "Shooting Murderer [Shot " .. tostring(_shotTry) .. "/4]...", 1.2, "crosshair")
+                            local shootStart = os.clock()
+                            local shotCount = 0
+
+                            -- Sheriff NEVER flings! Keep safe distance and shoot with proper gun cooldown until Murderer is dead!
+                            while os.clock() - shootStart < 20 and isRoundOngoing() do
+                                if not murderer or not murderer.Character then
+                                    killConfirmed = true
+                                    break
+                                end
+                                local mHum = murderer.Character:FindFirstChildOfClass("Humanoid")
+                                if not mHum or mHum.Health <= 0 then
+                                    killConfirmed = true
+                                    break
+                                end
+
+                                shotCount = shotCount + 1
+                                notify("Coin Farm", "Shooting Murderer [Shot " .. tostring(shotCount) .. "]...", 1.0, "crosshair")
+
+                                if rageFn then
                                     local ok, res = pcall(rageFn)
                                     if ok and res == true then
                                         killConfirmed = true
                                         break
                                     end
-                                    task.wait(0.3)
                                 end
+
+                                -- Respect MM2 gun fire-rate cooldown between shots
+                                task.wait(0.75)
                             end
 
-                            -- Fallback: If gun failed or murderer survived, direct FLING!
-                            if not killConfirmed and murderer and murderer.Character and isRoundOngoing() then
+                            if not isRoundOngoing() then
+                                killConfirmed = true
+                            elseif murderer and murderer.Character then
                                 local mHum = murderer.Character:FindFirstChildOfClass("Humanoid")
-                                if mHum and mHum.Health > 0 then
-                                    notify("Coin Farm", "Gun Missed! Fallback: Flinging Murderer...", 2, "zap")
-                                    local flingFn = _G.VFling or (typeof(VFling) == "function" and VFling or nil)
-                                    if flingFn then
-                                        local wasAF = V.AntiFling
-                                        V.AntiFling = false
-                                        pcall(flingFn, murderer)
-                                        task.wait(0.5)
-                                        V.AntiFling = wasAF
-                                    end
-                                    local wDead = os.clock()
-                                    while os.clock() - wDead < 2.5 do
-                                        if not isRoundOngoing() or not murderer or not murderer.Character or not mHum or mHum.Health <= 0 then
-                                            killConfirmed = true
-                                            break
-                                        end
-                                        task.wait(0.1)
-                                    end
+                                if not mHum or mHum.Health <= 0 then
+                                    killConfirmed = true
                                 end
                             end
 
@@ -8110,28 +8108,30 @@ do
         local remote = getSheriffShootRemote(gun) or gun:FindFirstChild("Shoot", true) or ReplicatedStorage:FindFirstChild("ShootGun")
         if not remote then return false, "Shoot remote not found" end
 
-        -- 4. Arena Floor Direct Line of Sight (6 studs behind murderer on ground level)
-        -- No ceiling collision, no floor collision, direct line-of-sight guarantee!
+        -- 4. Safe Vantage Point Shooting (Position 16 studs back, 4.5 studs up -- OUT OF KNIFE RANGE!)
         local oldCF = myHRP.CFrame
         local lookDir = tHRP.CFrame.LookVector
-        local behindPos = tHRP.Position - (Vector3.new(lookDir.X, 0, lookDir.Z).Unit * 6.5) + Vector3.new(0, 0.5, 0)
-        local strikeCF = CFrame.lookAt(behindPos, tHRP.Position)
+        local safePos = tHRP.Position - (Vector3.new(lookDir.X, 0, lookDir.Z).Unit * 16.0) + Vector3.new(0, 4.5, 0)
+        local strikeCF = CFrame.lookAt(safePos, tHRP.Position)
         myHRP.CFrame = strikeCF
         char:PivotTo(strikeCF)
         myHRP.AssemblyLinearVelocity = Vector3.zero
         myHRP.Velocity = Vector3.zero
 
-        -- Wait 0.18s for Roblox server replication of shooter on the arena floor
-        task.wait(0.18)
+        -- Wait 0.15s for shooter replication
+        task.wait(0.15)
 
         local tHead = target.Character:FindFirstChild("Head") or tHRP
         local targetPos = tHead.Position
         local handle = gun:FindFirstChild("Handle") or myHRP
         local originPos = handle.Position
 
-        -- MM2 standard shoot calls
+        -- Comprehensive MM2 Gun Shoot Remote formats
         pcall(function() remote:FireServer(handle.CFrame, CFrame.new(targetPos)) end)
         pcall(function() remote:FireServer(CFrame.lookAt(originPos, targetPos), CFrame.new(targetPos)) end)
+        pcall(function() remote:FireServer(CFrame.lookAt(originPos, targetPos), targetPos) end)
+        pcall(function() remote:FireServer(1, targetPos) end)
+        pcall(function() remote:FireServer(targetPos) end)
         pcall(function() gun:Activate() end)
 
         -- 5. Active Kill Verification: Check if Murderer died from shot
@@ -8145,43 +8145,7 @@ do
             task.wait(0.04)
         end
 
-        -- If survived first shot, fire immediate follow-up shot
-        if not targetDied and tHum and tHum.Health > 0 then
-            task.wait(0.15)
-            pcall(function() remote:FireServer(handle.CFrame, CFrame.new(tHead.Position)) end)
-            pcall(function() remote:FireServer(CFrame.lookAt(handle.Position, tHead.Position), CFrame.new(tHead.Position)) end)
-            pcall(function() gun:Activate() end)
-            local followCheck = os.clock()
-            while os.clock() - followCheck < 0.5 do
-                if not target or not target.Character or not tHum or not tHum.Parent or tHum.Health <= 0 then
-                    targetDied = true
-                    break
-                end
-                task.wait(0.04)
-            end
-        end
-
-        -- 6. Ultimate Fallback: If gun failed, FLING THE MURDERER directly!
-        if not targetDied and tHum and tHum.Health > 0 then
-            local flingFn = _G.VFling or (typeof(VFling) == "function" and VFling or nil)
-            if flingFn then
-                local wasAntiFling = V.AntiFling
-                V.AntiFling = false
-                pcall(flingFn, target)
-                task.wait(0.5)
-                V.AntiFling = wasAntiFling
-
-                local flingCheck = os.clock()
-                while os.clock() - flingCheck < 2.0 do
-                    if not target or not target.Character or not tHum or not tHum.Parent or tHum.Health <= 0 then
-                        targetDied = true
-                        break
-                    end
-                    task.wait(0.08)
-                end
-            end
-        end
-
+        -- NO SUICIDAL FLING! A Sheriff has a gun and shoots from safe distance.
         if targetDied then
             notify("Rage Shoot", "Eliminated Murderer: " .. tostring(target.Name), 2.5, "skull")
             return true, target.Name
