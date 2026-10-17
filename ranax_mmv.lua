@@ -10697,7 +10697,7 @@ do
         local folder = getNoCollisionFolder()
         if not folder then return end
 
-        for _, part in ipairs(pChar:GetChildren()) do
+        for _, part in ipairs(pChar:GetDescendants()) do
             if part:IsA("BasePart") then
                 part.CanCollide = false
                 local cName = "NC_" .. player.Name .. "_" .. part.Name
@@ -10792,7 +10792,7 @@ do
                         end
                     end
 
-                    for _, p in ipairs(pChar:GetChildren()) do
+                    for _, p in ipairs(pChar:GetDescendants()) do
                         if p:IsA("BasePart") then
                             if p.CanCollide then p.CanCollide = false end
                             if isFlinger then
