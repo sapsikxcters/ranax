@@ -5992,20 +5992,14 @@ TeleportAboveMap = function()
 
     local safeAboveCF = CFrame.new(targetX, targetY, targetZ)
 
-    -- Smooth anti-kick transition instead of instant teleport
+    -- Instant direct teleport above map (NO FLY / NO TWEEN):
+    if _G.CoinTween then _G.CoinTween:Cancel(); _G.CoinTween = nil end
+    pcall(function() removeFarmFloat(char) end)
+
     hrp.AssemblyLinearVelocity = Vector3.zero
     hrp.AssemblyAngularVelocity = Vector3.zero
-
-    local dist = (hrp.Position - safeAboveCF.Position).Magnitude
-    if dist > 6 then
-        local twInfo = TweenInfo.new(math.clamp(dist / 24, 0.15, 0.6), Enum.EasingStyle.Linear)
-        local tw = TweenService:Create(hrp, twInfo, {CFrame = safeAboveCF})
-        tw:Play()
-        tw.Completed:Wait()
-    else
-        hrp.CFrame = safeAboveCF
-    end
-
+    hrp.CFrame = safeAboveCF
+    task.wait(0.03)
     hrp.AssemblyLinearVelocity = Vector3.zero
     hrp.AssemblyAngularVelocity = Vector3.zero
 
