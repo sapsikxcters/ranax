@@ -324,20 +324,17 @@ pcall(function() Window:SetToggleKey(Enum.KeyCode.LeftControl) end)
 
 -- ==================== WINDUi SCROLL RECOVERY & FIX ENGINE ====================
 -- Run ONCE on load, NEVER on every mouse click/touch (which caused massive continuous FPS drops!)
+-- Safe lightweight scroll adjustment (WindUI internal only, zero CoreGui scan)
 task.spawn(function()
-    task.wait(1)
+    task.wait(1.5)
     pcall(function()
-        local parentGui = (typeof(gethui) == "function" and gethui()) or game:GetService("CoreGui") or (LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui"))
-        if not parentGui then return end
-        local windUi = parentGui:FindFirstChild("WindUI") or parentGui:FindFirstChild("RanaxHub_MM2")
-        local target = windUi or parentGui
-        for _, obj in ipairs(target:GetChildren()) do
-            if obj:IsA("ScreenGui") or obj == windUi then
-                for _, sf in ipairs(obj:GetDescendants()) do
-                    if sf:IsA("ScrollingFrame") then
-                        if sf.ScrollingEnabled == false then sf.ScrollingEnabled = true end
-                        if sf.ScrollBarThickness == 0 then sf.ScrollBarThickness = 3 end
-                    end
+        local parentGui = (typeof(gethui) == "function" and gethui()) or (LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui"))
+        local windUi = parentGui and (parentGui:FindFirstChild("WindUI") or parentGui:FindFirstChild("RanaxHub_MM2"))
+        if windUi then
+            for _, sf in ipairs(windUi:GetDescendants()) do
+                if sf:IsA("ScrollingFrame") then
+                    if sf.ScrollingEnabled == false then sf.ScrollingEnabled = true end
+                    if sf.ScrollBarThickness == 0 then sf.ScrollBarThickness = 3 end
                 end
             end
         end
@@ -2453,6 +2450,8 @@ UIElements.ESPCoinToggle = ESPTab:Toggle({
     Value = _G.CoinESPEnabled or false,
     Callback = function(state)
         _G.CoinESPEnabled = state
+        if typeof(_G.RanaxUpdateWorkspaceCoinWatchers) == "function" then _G.RanaxUpdateWorkspaceCoinWatchers() end
+        if typeof(_G.RanaxUpdateCoinDistListener) == "function" then _G.RanaxUpdateCoinDistListener(state) end
         if typeof(_G.toggleCoinESP) == "function" then
             _G.toggleCoinESP(state)
         end
@@ -4561,7 +4560,7 @@ do
         return foundKnives, foundGuns
     end
 
-    local dynamicKnives, dynamicGuns = scanReplicatedStorageWeapons()
+    -- Instant zero-lag weapon option list on inject (150+ weapons pre-populated)
     local KnifeOptions = {}
     local GunOptions = {}
     local seenKnives = {}
@@ -4570,16 +4569,21 @@ do
     for _, k in ipairs(DefaultKnifeList) do
         if not seenKnives[k] then seenKnives[k] = true; table.insert(KnifeOptions, k) end
     end
-    for _, k in ipairs(dynamicKnives) do
-        if not seenKnives[k] then seenKnives[k] = true; table.insert(KnifeOptions, k) end
-    end
-
     for _, g in ipairs(DefaultGunList) do
         if not seenGuns[g] then seenGuns[g] = true; table.insert(GunOptions, g) end
     end
-    for _, g in ipairs(dynamicGuns) do
-        if not seenGuns[g] then seenGuns[g] = true; table.insert(GunOptions, g) end
-    end
+
+    -- Run deep scan in background thread after 5s so inject has 0 FPS drop!
+    task.spawn(function()
+        task.wait(5)
+        local dynK, dynG = scanReplicatedStorageWeapons()
+        for _, k in ipairs(dynK) do
+            if not seenKnives[k] then seenKnives[k] = true; table.insert(KnifeOptions, k) end
+        end
+        for _, g in ipairs(dynG) do
+            if not seenGuns[g] then seenGuns[g] = true; table.insert(GunOptions, g) end
+        end
+    end)
 
     -- Deep-search for weapon source model or parts in ReplicatedStorage or other players
     local function findWeaponSource(weaponName)
@@ -4884,42 +4888,57 @@ do
         end
     end
 
-    -- Chroma RGB Rainbow Cycle on RenderStepped
-    local _lastChromaTick = 0
-    RunService.RenderStepped:Connect(function()
-        if not _skinChanger.ChromaRainbow then return end
-        local now = os.clock()
-        if now - _lastChromaTick < 0.04 then return end
-        _lastChromaTick = now
+    -- Chroma RGB Rainbow Cycle (Connects ONLY when ChromaRainbow is ON, 0 FPS cost when OFF!)
+    local _chromaConn = nil
+    local function updateChromaListener(active)
+        if active then
+            if _chromaConn then return end
+            local _lastChromaTick = 0
+            _chromaConn = RunService.RenderStepped:Connect(function()
+                if not _skinChanger.ChromaRainbow then
+                    if _chromaConn then _chromaConn:Disconnect(); _chromaConn = nil end
+                    return
+                end
+                local now = os.clock()
+                if now - _lastChromaTick < 0.05 then return end
+                _lastChromaTick = now
 
-        local speed = tonumber(_skinChanger.ChromaSpeed) or 1.0
-        local hue = (os.clock() * speed * 0.4) % 1
-        local chromaColor = Color3.fromHSV(hue, 1, 1)
+                local speed = tonumber(_skinChanger.ChromaSpeed) or 1.0
+                local hue = (os.clock() * speed * 0.4) % 1
+                local chromaColor = Color3.fromHSV(hue, 1, 1)
 
-        local char = LocalPlayer.Character
-        if not char then return end
+                local char = LocalPlayer.Character
+                if not char then return end
 
-        for _, tool in ipairs(char:GetChildren()) do
-            if tool:IsA("Tool") then
-                local handle = tool:FindFirstChild("Handle") or tool:FindFirstChildOfClass("BasePart")
-                if handle then
-                    local sm = handle:FindFirstChildOfClass("SpecialMesh") or handle:FindFirstChild("Mesh")
-                    if sm then
-                        sm.VertexColor = Vector3.new(chromaColor.R * 2, chromaColor.G * 2, chromaColor.B * 2)
-                    end
-                    local hl = tool:FindFirstChild("RanaxGlowHighlight")
-                    if hl then
-                        hl.FillColor = chromaColor
-                        hl.OutlineColor = chromaColor
-                    end
-                    local pl = handle:FindFirstChild("RanaxGlowLight")
-                    if pl then
-                        pl.Color = chromaColor
+                for _, tool in ipairs(char:GetChildren()) do
+                    if tool:IsA("Tool") then
+                        local handle = tool:FindFirstChild("Handle") or tool:FindFirstChildOfClass("BasePart")
+                        if handle then
+                            local sm = handle:FindFirstChildOfClass("SpecialMesh") or handle:FindFirstChild("Mesh")
+                            if sm then
+                                sm.VertexColor = Vector3.new(chromaColor.R * 2, chromaColor.G * 2, chromaColor.B * 2)
+                            end
+                            local hl = tool:FindFirstChild("RanaxGlowHighlight")
+                            if hl then
+                                hl.FillColor = chromaColor
+                                hl.OutlineColor = chromaColor
+                            end
+                            local pl = handle:FindFirstChild("RanaxGlowLight")
+                            if pl then
+                                pl.Color = chromaColor
+                            end
+                        end
                     end
                 end
+            end)
+        else
+            if _chromaConn then
+                _chromaConn:Disconnect()
+                _chromaConn = nil
             end
         end
-    end)
+    end
+    _G.RanaxUpdateChromaListener = updateChromaListener
 
     -- Auto-hook character and backpack weapons
     local function hookTool(tool)
@@ -5982,28 +6001,37 @@ local function _rebuildCoinCache()
     _coinCacheReady = true
 end
 
--- Only update cache when Coin Farm or Coin ESP is actually active (Zero overhead when modules are OFF!)
-workspace.DescendantAdded:Connect(function(v)
-    if not (_G.SafeAutoFarm or _G.AutoCoins or _G.CoinESPEnabled) then return end
-    if v.Name == "Coin_Server" and v:IsA("BasePart") then
-        if isCollectibleCoin(v) then
-            _RanaxCoinCache[v] = true
+-- Pure conditional workspace listeners (LITERALLY ZERO workspace event overhead when modules are OFF!)
+local _coinDescendantAddedConn = nil
+local _coinDescendantRemovedConn = nil
+local function updateWorkspaceCoinWatchers()
+    local needWatchers = (_G.SafeAutoFarm or _G.AutoCoins or _G.CoinESPEnabled)
+    if needWatchers then
+        if not _coinDescendantAddedConn then
+            _coinDescendantAddedConn = workspace.DescendantAdded:Connect(function(v)
+                if not (_G.SafeAutoFarm or _G.AutoCoins or _G.CoinESPEnabled) then return end
+                if v.Name == "Coin_Server" and v:IsA("BasePart") then
+                    if isCollectibleCoin(v) then _RanaxCoinCache[v] = true end
+                elseif v.Name == "CoinVisual" and v.Parent and v.Parent.Name == "Coin_Server" then
+                    if isCollectibleCoin(v.Parent) then _RanaxCoinCache[v.Parent] = true end
+                end
+            end)
         end
-    elseif v.Name == "CoinVisual" and v.Parent and v.Parent.Name == "Coin_Server" then
-        if isCollectibleCoin(v.Parent) then
-            _RanaxCoinCache[v.Parent] = true
+        if not _coinDescendantRemovedConn then
+            _coinDescendantRemovedConn = workspace.DescendantRemoving:Connect(function(v)
+                if v.Name == "Coin_Server" then
+                    _RanaxCoinCache[v] = nil
+                elseif v.Name == "CoinVisual" and v.Parent then
+                    _RanaxCoinCache[v.Parent] = nil
+                end
+            end)
         end
+    else
+        if _coinDescendantAddedConn then _coinDescendantAddedConn:Disconnect(); _coinDescendantAddedConn = nil end
+        if _coinDescendantRemovedConn then _coinDescendantRemovedConn:Disconnect(); _coinDescendantRemovedConn = nil end
     end
-end)
-
-workspace.DescendantRemoving:Connect(function(v)
-    if not (_G.SafeAutoFarm or _G.AutoCoins or _G.CoinESPEnabled) then return end
-    if v.Name == "Coin_Server" then
-        _RanaxCoinCache[v] = nil
-    elseif v.Name == "CoinVisual" and v.Parent then
-        _RanaxCoinCache[v.Parent] = nil
-    end
-end)
+end
+_G.RanaxUpdateWorkspaceCoinWatchers = updateWorkspaceCoinWatchers
 
 local function getCoinTargetPosition(coin)
     if not coin or not coin.Parent then return nil end
@@ -6189,25 +6217,40 @@ do
         end
     end)
 
-    -- Dynamic live distance text on RenderStepped (Throttled for maximum FPS)
-    local _lastCoinDistUpdate = 0
-    RunService.RenderStepped:Connect(function()
-        if not _G.CoinESPEnabled then return end
-        local now = os.clock()
-        if now - _lastCoinDistUpdate < 0.15 then return end
-        _lastCoinDistUpdate = now
+    -- Dynamic live distance text (Connects ONLY when CoinESP is active, 0 overhead when OFF!)
+    local _coinDistConn = nil
+    local function updateCoinDistListener(active)
+        if active then
+            if _coinDistConn then return end
+            local _lastCoinDistUpdate = 0
+            _coinDistConn = RunService.RenderStepped:Connect(function()
+                if not _G.CoinESPEnabled then
+                    if _coinDistConn then _coinDistConn:Disconnect(); _coinDistConn = nil end
+                    return
+                end
+                local now = os.clock()
+                if now - _lastCoinDistUpdate < 0.25 then return end
+                _lastCoinDistUpdate = now
 
-        local char = LocalPlayer.Character
-        local hrp = char and char:FindFirstChild("HumanoidRootPart")
-        if not hrp then return end
+                local char = LocalPlayer.Character
+                local hrp = char and char:FindFirstChild("HumanoidRootPart")
+                if not hrp then return end
 
-        for coin, data in pairs(_trackedCoins) do
-            if coin and coin.Parent and data.label then
-                local dist = math.floor((hrp.Position - coin.Position).Magnitude)
-                data.label.Text = "🪙 " .. tostring(dist) .. "m"
+                for coin, data in pairs(_trackedCoins) do
+                    if coin and coin.Parent and data.label then
+                        local dist = math.floor((hrp.Position - coin.Position).Magnitude)
+                        data.label.Text = "🪙 " .. tostring(dist) .. "m"
+                    end
+                end
+            end)
+        else
+            if _coinDistConn then
+                _coinDistConn:Disconnect()
+                _coinDistConn = nil
             end
         end
-    end)
+    end
+    _G.RanaxUpdateCoinDistListener = updateCoinDistListener
 end
 
 LocalPlayer.CharacterAdded:Connect(function()
