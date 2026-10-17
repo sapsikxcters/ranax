@@ -7103,7 +7103,14 @@ task.spawn(function()
                                     ensureCoinFarmPlatform(Vector3.new(coinPos.X, targetY - 0.8, coinPos.Z))
                                     ensureFarmFloat(hrp)
                                     hum.PlatformStand = true
-                                    hum.Sit = true
+                                    hum.Sit = false
+                                    -- Cancel sitting animations to keep character completely straight horizontal on back
+                                    pcall(function()
+                                        for _, track in ipairs(hum:GetPlayingAnimationTracks()) do
+                                            if track.Name:lower():find("sit") then track:Stop() end
+                                        end
+                                        hum:ChangeState(Enum.HumanoidStateType.Physics)
+                                    end)
                                 else
                                     pcall(function() removeFarmFloat(char) end)
                                     removeCoinFarmPlatform()
@@ -7144,7 +7151,7 @@ task.spawn(function()
                                     if isUnderground then
                                         ensureFarmFloat(hrp)
                                         hum.PlatformStand = true
-                                        hum.Sit = true
+                                        hum.Sit = false
                                         if _RanaxFarmPlatform and _RanaxFarmPlatform.Parent then
                                             _RanaxFarmPlatform.CFrame = CFrame.new(hrp.Position.X, hrp.Position.Y - 0.8, hrp.Position.Z)
                                         end
