@@ -6029,55 +6029,57 @@ _G.TeleportAboveMap = TeleportAboveMap
 
 cachedCoinLabel = nil
 getCoinBagLive = function()
-    -- 1. Check cached real MM2 CoinBag TextLabel (MUST be currently Visible on screen!)
-    if cachedCoinLabel and cachedCoinLabel.Parent and cachedCoinLabel.Visible then
-        local txt = cachedCoinLabel.Text
-        if txt and txt ~= "" then
-            local cur, mx = txt:match("(%d+)%s*/%s*(%d+)")
-            if cur and mx then
-                local cNum, mNum = tonumber(cur), tonumber(mx)
-                -- MM2 Coin Bag max is ALWAYS 40 (or 50 with Elite). Never accept fake counts like 10, 15, 20, 25, 30!
-                if cNum and mNum and (mNum >= 40 and mNum <= 60) then
-                    _G.RanaxCoinsCollected = cNum
-                    return cNum, mNum
-                end
-            end
-        end
-    end
-
-    cachedCoinLabel = nil
     local pgui = LocalPlayer:FindFirstChild("PlayerGui")
     if pgui then
         local mg = pgui:FindFirstChild("MainGUI") or pgui:FindFirstChild("MainGui") or pgui:FindFirstChild("Gui")
         if mg then
-            -- Direct check inside Game -> CoinBag first
+            -- 1. Direct check inside Game -> CoinBag first
             local gameFrame = mg:FindFirstChild("Game") or mg
             local cbObj = gameFrame:FindFirstChild("CoinBag", true) or gameFrame:FindFirstChild("Coins", true)
             if cbObj then
-                local tl = cbObj:IsA("TextLabel") and cbObj or cbObj:FindFirstChildOfClass("TextLabel", true)
-                if tl and tl.Visible then
-                    local cur, mx = tl.Text:match("(%d+)%s*/%s*(%d+)")
-                    if cur and mx then
-                        local cNum, mNum = tonumber(cur), tonumber(mx)
-                        if cNum and mNum and (mNum >= 40 and mNum <= 60) then
-                            cachedCoinLabel = tl
-                            return cNum, mNum
+                for _, tl in ipairs(cbObj:GetDescendants()) do
+                    if tl:IsA("TextLabel") then
+                        local txt = tl.Text
+                        if txt and txt ~= "" then
+                            local low = txt:lower()
+                            if low:find("full") or low:find("max") then
+                                _G.RanaxCoinsCollected = 40
+                                return 40, 40, true
+                            end
+                            local cur, mx = txt:match("(%d+)%s*/%s*(%d+)")
+                            if cur and mx then
+                                local cNum, mNum = tonumber(cur), tonumber(mx)
+                                if cNum and mNum and mNum >= 40 then
+                                    if cNum > (_G.RanaxCoinsCollected or 0) then _G.RanaxCoinsCollected = cNum end
+                                    return cNum, mNum, (cNum >= mNum and cNum >= 40)
+                                end
+                            end
+                            local singleNum = tonumber(txt:match("^%s*(%d+)%s*$"))
+                            if singleNum and singleNum >= 40 then
+                                _G.RanaxCoinsCollected = singleNum
+                                return singleNum, 40, true
+                            end
                         end
                     end
                 end
             end
 
-            -- Search visible text labels inside MainGUI for real (xx / 40 or xx / 50)
+            -- 2. Scan all TextLabels in MainGUI
             for _, desc in ipairs(mg:GetDescendants()) do
-                if desc:IsA("TextLabel") and desc.Visible then
+                if desc:IsA("TextLabel") then
                     local txt = desc.Text
                     if txt and txt ~= "" then
+                        local low = txt:lower()
+                        if (low:find("coin") or low:find("bag") or desc.Name:lower():find("coin")) and (low:find("full") or low:find("max")) then
+                            _G.RanaxCoinsCollected = 40
+                            return 40, 40, true
+                        end
                         local cur, mx = txt:match("(%d+)%s*/%s*(%d+)")
                         if cur and mx then
                             local cNum, mNum = tonumber(cur), tonumber(mx)
                             if cNum and mNum and (mNum >= 40 and mNum <= 60) then
-                                cachedCoinLabel = desc
-                                return cNum, mNum
+                                if cNum > (_G.RanaxCoinsCollected or 0) then _G.RanaxCoinsCollected = cNum end
+                                return cNum, mNum, (cNum >= mNum and cNum >= 40)
                             end
                         end
                     end
@@ -6086,7 +6088,8 @@ getCoinBagLive = function()
         end
     end
 
-    return (_G.RanaxCoinsCollected or 0), 40
+    local tracked = _G.RanaxCoinsCollected or 0
+    return tracked, 40, (tracked >= 40)
 end
 
 local _detectedMurderer = nil
@@ -6215,18 +6218,19 @@ local function isRoundOngoing()
 end
 
 IsCoinBagFull = function()
-    -- STRICT 40 COIN FULL CHECK:
-    -- Check real MM2 UI first! If bag has e.g. 36/40, it is NOT full!
-    local cur, mx = getCoinBagLive()
-    if cur and mx and mx >= 40 then
-        if cur >= mx and cur >= 40 then
-            return true
-        else
-            return false -- DEFINITIVELY NOT FULL! (e.g. 36/40 -> false)
-        end
+    local cur, mx, isFullDirect = getCoinBagLive()
+
+    -- 1) Direct "FULL" / "MAX" flag on screen
+    if isFullDirect == true then
+        return true
     end
 
-    -- Fallback ONLY if UI text was completely unreadable:
+    -- 2) Numeric check: Bag is full when cur >= mx and cur >= 40
+    if cur and mx and cur >= mx and cur >= 40 then
+        return true
+    end
+
+    -- 3) Internal collected counter fallback (when reaches 40 coins)
     if (_G.RanaxCoinsCollected or 0) >= 40 then
         return true
     end
