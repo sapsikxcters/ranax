@@ -4236,20 +4236,49 @@ do
     local _currentTrack = nil
     local _spammerThread = nil
 
-    local function getEmoteRemote()
-        local repRemotes = ReplicatedStorage:FindFirstChild("Remotes")
-        if repRemotes then
-            local gp = repRemotes:FindFirstChild("Gameplay") or repRemotes:FindFirstChild("Misc")
-            if gp then
-                local r = gp:FindFirstChild("PlayEmote") or gp:FindFirstChild("Emote")
-                if r and r:IsA("RemoteEvent") then return r end
+    -- Universal MM2 Emote Trigger: supports BindableEvent, RemoteEvent & Animate Bindable
+    local function fireMM2EmoteEvent(arg)
+        -- 1. Native MM2 ReplicatedStorage.PlayEmote (BindableEvent / RemoteEvent)
+        pcall(function()
+            local pe = ReplicatedStorage:FindFirstChild("PlayEmote")
+            if pe then
+                if pe:IsA("BindableEvent") then
+                    pe:Fire(arg)
+                elseif pe:IsA("RemoteEvent") then
+                    pe:FireServer(arg)
+                end
             end
-            local r = repRemotes:FindFirstChild("PlayEmote") or repRemotes:FindFirstChild("Emote")
-            if r and r:IsA("RemoteEvent") then return r end
-        end
-        local rootRemote = ReplicatedStorage:FindFirstChild("PlayEmote")
-        if rootRemote and rootRemote:IsA("RemoteEvent") then return rootRemote end
-        return nil
+        end)
+
+        -- 2. Check ReplicatedStorage.Remotes descendants
+        pcall(function()
+            local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+            if remotes then
+                for _, d in ipairs(remotes:GetDescendants()) do
+                    if d.Name == "PlayEmote" or d.Name == "Emote" then
+                        if d:IsA("BindableEvent") then
+                            pcall(function() d:Fire(arg) end)
+                        elseif d:IsA("RemoteEvent") then
+                            pcall(function() d:FireServer(arg) end)
+                        end
+                    end
+                end
+            end
+        end)
+
+        -- 3. Check Character Animate PlayEmote
+        pcall(function()
+            local char = LocalPlayer.Character
+            local anim = char and char:FindFirstChild("Animate")
+            local pe = anim and (anim:FindFirstChild("PlayEmote") or anim:FindFirstChild("Emote"))
+            if pe then
+                if pe:IsA("BindableFunction") then
+                    pcall(function() pe:Invoke(arg) end)
+                elseif pe:IsA("BindableEvent") then
+                    pcall(function() pe:Fire(arg) end)
+                end
+            end
+        end)
     end
 
     local function stopEmoteInternal()
@@ -4266,10 +4295,10 @@ do
             _currentTrack = nil
         end
         _G.RanaxCurrentEmoteTrack = nil
-        local remote = getEmoteRemote()
-        if remote then
-            pcall(function() remote:FireServer("") end)
-        end
+
+        -- Stop MM2 native emote
+        fireMM2EmoteEvent("")
+        fireMM2EmoteEvent("none")
     end
     _G.RanaxStopEmote = stopEmoteInternal
 
@@ -4279,21 +4308,31 @@ do
         if not data then return end
 
         stopEmoteInternal()
+        task.wait(0.04)
 
         local char = LocalPlayer.Character
         if not char then return end
         local hum = char:FindFirstChildOfClass("Humanoid")
         if not (hum and hum.Health > 0) then return end
 
-        -- 1. Try MM2 server emote remote
-        if data.Remote then
-            local remote = getEmoteRemote()
-            if remote then
-                pcall(function() remote:FireServer(data.Remote) end)
+        -- 1. If it has an MM2 Remote name (Zen, Ninja, Floss, Dab, Sit, Zombie, Hero, Headless):
+        if data.Remote and data.Remote ~= "" then
+            fireMM2EmoteEvent(data.Remote)
+            _G.RanaxEmoteActive = true
+            return
+        end
+
+        -- 2. Standard Roblox Humanoid emotes (wave, laugh, cheer, point)
+        local rawLower = tostring(emoteName):lower()
+        if rawLower == "wave" or rawLower == "laugh" or rawLower == "cheer" or rawLower == "point" then
+            local played = pcall(function() return hum:PlayEmote(rawLower) end)
+            if played then
+                _G.RanaxEmoteActive = true
+                return
             end
         end
 
-        -- 2. Client-side Animation Track load (works 100% even if gamepass unowned)
+        -- 3. Custom / Non-MM2 Animation Track load (Kazotsky Kick, CaramellDansen, Default Dance, etc.)
         local is_r15 = isR15(char)
         local animId = is_r15 and (data.R15 or data.R6) or (data.R6 or data.R15)
         if not animId then return end
@@ -4305,7 +4344,7 @@ do
         local ok, track = pcall(function() return animator:LoadAnimation(anim) end)
         if ok and track then
             local loopMode = (_G.RanaxEmoteLoop ~= false)
-            track.Priority = Enum.AnimationPriority.Action4
+            track.Priority = Enum.AnimationPriority.Action
             track.Looped = loopMode
             local spd = tonumber(_G.RanaxEmoteSpeed) or 1.0
             track:Play(0.15)
