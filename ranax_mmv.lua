@@ -4530,10 +4530,10 @@ local SkinChangerTab = Window:Tab({
 
 do
     local _skinChanger = {
-        KnifeEnabled = false,
-        GunEnabled = false,
-        SelectedKnife = "Harvester",
-        SelectedGun = "Chroma Darkbringer",
+        KnifeEnabled = true,
+        GunEnabled = true,
+        SelectedKnife = "Scythe",
+        SelectedGun = "Harvester",
         ChromaRainbow = false,
         ChromaSpeed = 1.0,
         CustomAura = "None",
@@ -4791,156 +4791,205 @@ do
     end
 
     -- Clean up previous visual modifications on a tool
-    local MEEQ_MESH_URL = "https://raw.githubusercontent.com/meeqscripts/mm2/main/meshid"
-    local _meeqMeshData = nil
-
-    task.spawn(function()
-        local ok, res = pcall(function() return game:HttpGet(MEEQ_MESH_URL) end)
-        if ok and res and res:find("Gingerscope") then
-            local fn = loadstring(res)
-            if fn then
-                local success, data = pcall(fn)
-                if success and type(data) == "table" then
-                    _meeqMeshData = data
-                end
-            end
-        end
-    end)
-
-    local function buildMeeqNode(node, parentPart)
-        if not node or not node.Class then return nil end
-        local inst
-        pcall(function()
-            inst = Instance.new(node.Class)
-        end)
-        if not inst then return nil end
-
-        inst.Name = node.Name or node.Class
-        local relCF = nil
-
-        if node.Props then
-            for prop, val in pairs(node.Props) do
-                if prop == "RelCF" then
-                    relCF = val
-                else
-                    pcall(function() inst[prop] = val end)
-                end
-            end
-        end
-
-        if inst:IsA("BasePart") then
-            inst.CanCollide = false
-            inst.Massless = true
-            inst.CastShadow = false
-            if parentPart and parentPart:IsA("BasePart") then
-                inst.CFrame = parentPart.CFrame * (relCF or CFrame.new())
-                local weld = Instance.new("WeldConstraint")
-                weld.Part0 = parentPart
-                weld.Part1 = inst
-                weld.Parent = inst
-            end
-        elseif inst:IsA("Attachment") and relCF then
-            inst.CFrame = relCF
-        end
-
-        if node.Children then
-            for _, childNode in ipairs(node.Children) do
-                local childInst = buildMeeqNode(childNode, inst:IsA("BasePart") and inst or parentPart)
-                if childInst then
-                    pcall(function() childInst.Parent = inst end)
-                end
-            end
-        end
-
-        return inst
-    end
+    local MeeqWeaponDatabase = {
+    ["Gingerscope"] = { MeshId = "rbxassetid://15374602183", TextureId = "rbxassetid://15409041564", Type = "Gun" },
+    ["Harvester"] = { MeshId = "rbxassetid://7775027413", TextureId = "http://www.roblox.com/asset/?id=7775245551", Type = "Gun" },
+    ["Icepiercer"] = { MeshId = "rbxassetid://11868991644", TextureId = "rbxassetid://11869075814", Type = "Gun" },
+    ["Amerilaser"] = { MeshId = "http://www.roblox.com/asset/?id=116657254", TextureId = "https://www.roblox.com/asset/?id=445884341", Scale = Vector3.new(0.7, 0.7, 0.7), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Type = "Gun" },
+    ["BaubleChroma"] = { MeshId = "rbxassetid://107813118898769", TextureId = "rbxassetid://137012201908941", Scale = Vector3.new(0.0471, 0.0471, 0.0471), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Chroma = true, Type = "Gun" },
+    ["Bauble"] = { MeshId = "rbxassetid://107813118898769", TextureId = "rbxassetid://137012201908941", Scale = Vector3.new(0.0471, 0.0471, 0.0471), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Type = "Gun" },
+    ["Blaster"] = { MeshId = "http://www.roblox.com/asset/?id=92656610", TextureId = "https://www.roblox.com/asset/?id=386269992", Scale = Vector3.new(0.4, 0.45, 0.5), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Type = "Gun" },
+    ["BlizzardChroma"] = { MeshId = "rbxassetid://77235373292363", TextureId = "rbxassetid://110354859513948", Scale = Vector3.new(0.04334, 0.04334, 0.04334), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Chroma = true, Type = "Gun" },
+    ["Blossom_G"] = { MeshId = "rbxassetid://12322809632", TextureId = "rbxassetid://12322809917", Scale = Vector3.new(0.04763, 0.04413, 0.04382), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Type = "Gun" },
+    ["AuroraGun"] = { MeshId = "rbxassetid://16070198638", TextureId = "rbxassetid://107873598804292", Type = "Gun" },
+    ["ConstellationChroma"] = { MeshId = "rbxassetid://124598402927958", TextureId = "rbxassetid://123603327635244", Scale = Vector3.new(0.10123, 0.10123, 0.10123), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Chroma = true, Type = "Gun" },
+    ["Constellation"] = { MeshId = "rbxassetid://124598402927958", TextureId = "rbxassetid://79010754957272", Type = "Gun" },
+    ["Darkbringer"] = { MeshId = "rbxassetid://4730813852", TextureId = "rbxassetid://4728494788", Scale = Vector3.new(0.03841, 0.035, 0.035), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Type = "Gun" },
+    ["ChromaDarkbringer"] = { MeshId = "rbxassetid://4730813852", TextureId = "rbxassetid://4728494788", Scale = Vector3.new(0.03639, 0.035, 0.035), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Chroma = true, Type = "Gun" },
+    ["Darkshot"] = { MeshId = "", TextureId = "", Type = "Gun" },
+    ["ElderwoodGun"] = { MeshId = "rbxassetid://4210029922", TextureId = "http://www.roblox.com/asset/?id=4210038158", Type = "Gun" },
+    ["TreeGun2023Chroma"] = { MeshId = "rbxassetid://15408864925", TextureId = "rbxassetid://15694616343", Scale = Vector3.new(0.021, 0.021, 0.0205), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Chroma = true, Type = "Gun" },
+    ["TreeGun2023"] = { MeshId = "rbxassetid://15408864995", TextureId = "rbxassetid://15408849730", Type = "Gun" },
+    ["Flora"] = { MeshId = "rbxassetid://108253816085047", TextureId = "rbxassetid://116621225933096", Type = "Gun" },
+    ["FlowerwoodGun"] = { MeshId = "rbxassetid://16895099893", TextureId = "rbxassetid://16895448237", Type = "Gun" },
+    ["GingerLuger"] = { MeshId = "http://www.roblox.com/asset/?id=95356090", TextureId = "rbxassetid://2702668339", Scale = Vector3.new(1.8, 1.8, 1.8), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Type = "Gun" },
+    ["Gingermint_G"] = { MeshId = "rbxassetid://11866444071", TextureId = "rbxassetid://11866444253", Scale = Vector3.new(0.04606, 0.04606, 0.04606), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Type = "Gun" },
+    ["GreenLuger"] = { MeshId = "http://www.roblox.com/asset/?id=95356090", TextureId = "http://www.roblox.com/asset/?id=126534866", Scale = Vector3.new(1.8, 1.8, 1.8), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(0, 1, 0), Type = "Gun" },
+    ["Hallowgun"] = { MeshId = "rbxassetid://5841866437", TextureId = "http://www.roblox.com/asset/?id=5841868338", Type = "Gun" },
+    ["Icebeam"] = { MeshId = "rbxassetid://8310908064", TextureId = "rbxassetid://8231066536", Type = "Gun" },
+    ["Iceblaster"] = { MeshId = "rbxassetid://6125828567", TextureId = "rbxassetid://6120563948", Type = "Gun" },
+    ["Jinglegun"] = { MeshId = "rbxassetid://6125843704", TextureId = "rbxassetid://6125843755", Scale = Vector3.new(1, 1, 1), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Type = "Gun" },
+    ["LaserChroma"] = { MeshId = "rbxassetid://130099641", TextureId = "rbxassetid://3171220436", Scale = Vector3.new(0.5, 0.5, 0.5), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Chroma = true, Type = "Gun" },
+    ["Laser"] = { MeshId = "http://www.roblox.com/asset?id=130099641", TextureId = "http://www.roblox.com/asset?id=161254231", Scale = Vector3.new(0.5, 0.5, 0.5), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Type = "Gun" },
+    ["Lightbringer"] = { MeshId = "rbxassetid://4730813852", TextureId = "http://www.roblox.com/asset/?id=4728487789", Scale = Vector3.new(0.039, 0.039, 0.039), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Type = "Gun" },
+    ["ChromaLightbringer"] = { MeshId = "rbxassetid://4730813852", TextureId = "rbxassetid://5278764604", Scale = Vector3.new(0.03639, 0.035, 0.035), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Chroma = true, Type = "Gun" },
+    ["Luger"] = { MeshId = "http://www.roblox.com/asset/?id=95356090", TextureId = "http://www.roblox.com/asset/?id=126534866", Scale = Vector3.new(1.8, 1.8, 1.8), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Type = "Gun" },
+    ["LugerChroma"] = { MeshId = "rbxassetid://95356090", TextureId = "rbxassetid://3171206966", Scale = Vector3.new(1.8, 1.8, 1.8), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Chroma = true, Type = "Gun" },
+    ["Lugercane"] = { MeshId = "rbxassetid://95356090", TextureId = "rbxassetid://4835358188", Scale = Vector3.new(1.8, 1.8, 1.8), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Type = "Gun" },
+    ["Makeshift"] = { MeshId = "rbxassetid://11158364935", TextureId = "http://www.roblox.com/asset/?id=11274360089", Type = "Gun" },
+    ["Minty"] = { MeshId = "rbxassetid://4528424409", TextureId = "rbxassetid://4528424475", Type = "Gun" },
+    ["Ocean_G"] = { MeshId = "rbxassetid://13928587755", TextureId = "rbxassetid://13928590054", Scale = Vector3.new(0.07872, 0.04308, 0.04678), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Type = "Gun" },
+    ["Pearl_G"] = { MeshId = "rbxassetid://18280804203", TextureId = "rbxassetid://18280805635", Type = "Gun" },
+    ["Plasmabeam"] = { MeshId = "rbxassetid://9702755186", TextureId = "rbxassetid://10015208201", Scale = Vector3.new(0.04235, 0.04632, 0.04392), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Type = "Gun" },
+    ["Rainbow_G"] = { MeshId = "rbxassetid://12921221200", TextureId = "rbxassetid://12921231088", Type = "Gun" },
+    ["RaygunChroma"] = { MeshId = "rbxassetid://115447220952926", TextureId = "rbxassetid://127881437685243", Scale = Vector3.new(0.0472, 0.0472, 0.0472), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Chroma = true, Type = "Gun" },
+    ["Raygun"] = { MeshId = "rbxassetid://115447220952926", TextureId = "rbxassetid://127881437685243", Type = "Gun" },
+    ["RedLuger"] = { MeshId = "http://www.roblox.com/asset/?id=95356090", TextureId = "http://www.roblox.com/asset/?id=126534866", Scale = Vector3.new(1.8, 1.8, 1.8), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 0.2, 0.3), Type = "Gun" },
+    ["SharkChroma"] = { MeshId = "rbxassetid://118269783", TextureId = "rbxassetid://3171214838", Scale = Vector3.new(0.44, 0.44, 0.44), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Chroma = true, Type = "Gun" },
+    ["Shark"] = { MeshId = "http://www.roblox.com/asset/?id=118269783", TextureId = "rbxassetid://1106696354", Scale = Vector3.new(0.44, 0.44, 0.44), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Type = "Gun" },
+    ["Snowcannon"] = { MeshId = "rbxassetid://99836890880541", TextureId = "rbxassetid://122392330922281", Type = "Gun" },
+    ["SnowcannonChroma"] = { MeshId = "rbxassetid://99836890880541", TextureId = "rbxassetid://84894022221722", Scale = Vector3.new(0.04964, 0.04964, 0.04964), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Chroma = true, Type = "Gun" },
+    ["WraithGun"] = { MeshId = "rbxassetid://79527507796407", TextureId = "rbxassetid://80102752403085", Type = "Gun" },
+    ["Spectre2022"] = { MeshId = "rbxassetid://11165536294", TextureId = "rbxassetid://11165715120", Scale = Vector3.new(0.05246, 0.05246, 0.05246), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Type = "Gun" },
+    ["Sugar"] = { MeshId = "http://www.roblox.com/asset/?id=101086719", TextureId = "http://www.roblox.com/asset/?id=101086650", Scale = Vector3.new(0.5, 0.5, 0.5), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Type = "Gun" },
+    ["SunsetGun"] = { MeshId = "rbxassetid://109742397574153", TextureId = "rbxassetid://71731808219690", Scale = Vector3.new(0.04585, 0.04585, 0.04585), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Type = "Gun" },
+    ["SunsetGunChroma"] = { MeshId = "rbxassetid://109742397574153", TextureId = "rbxassetid://71731808219690", Scale = Vector3.new(0.0471, 0.0471, 0.0471), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Chroma = true, Type = "Gun" },
+    ["SwirlyGunChroma"] = { MeshId = "rbxassetid://8310911339", TextureId = "rbxassetid://10044501316", Scale = Vector3.new(1, 1, 1), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Chroma = true, Type = "Gun" },
+    ["SwirlyGun"] = { MeshId = "rbxassetid://8310911339", TextureId = "rbxassetid://8293539377", Type = "Gun" },
+    ["TravelerGun"] = { MeshId = "rbxassetid://15090814396", TextureId = "rbxassetid://15090814672", Type = "Gun" },
+    ["TravelerGunChroma"] = { MeshId = "rbxassetid://15090814396", TextureId = "rbxassetid://15090814672", Scale = Vector3.new(0.04839, 0.0491, 0.04924), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Chroma = true, Type = "Gun" },
+    ["TreatChroma"] = { MeshId = "rbxassetid://135790480817772", TextureId = "rbxassetid://71260815789113", Scale = Vector3.new(0.05384, 0.05384, 0.05384), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Chroma = true, Type = "Gun" },
+    ["VampireGun"] = { MeshId = "rbxassetid://126591885289479", TextureId = "rbxassetid://104946799389637", Type = "Gun" },
+    ["VampireGunChroma"] = { MeshId = "rbxassetid://126591885289479", TextureId = "rbxassetid://104946799389637", Scale = Vector3.new(0.05, 0.05, 0.05), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Chroma = true, Type = "Gun" },
+    ["WatergunChroma"] = { MeshId = "rbxassetid://18280999342", TextureId = "rbxassetid://18281003313", Scale = Vector3.new(0.03947, 0.03947, 0.03947), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Chroma = true, Type = "Gun" },
+    ["Watergun"] = { MeshId = "rbxassetid://18280999342", TextureId = "rbxassetid://18281003313", Scale = Vector3.new(0.03947, 0.03947, 0.03947), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Type = "Gun" },
+    ["XenoGun"] = { MeshId = "rbxassetid://96867436912658", TextureId = "rbxassetid://103568875118220", Type = "Gun" },
+    ["Scythe"] = { MeshId = "http://www.roblox.com/asset/?id=305826272", TextureId = "rbxassetid://2511673515", Scale = Vector3.new(1, 1, 1), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Type = "Knife" },
+    ["Celestial"] = { MeshId = "rbxassetid://109711282082830", TextureId = "rbxassetid://79010754957272", Type = "Knife" },
+    ["ElderwoodScythe"] = { MeshId = "rbxassetid://4217523241", TextureId = "http://www.roblox.com/asset/?id=4210044808", Type = "Knife" },
+    ["Hallowscythe"] = { MeshId = "rbxassetid://5841877975", TextureId = "http://www.roblox.com/asset/?id=5841879647", Type = "Knife" },
+    ["Icebreaker"] = { MeshId = "rbxassetid://6124173614", TextureId = "rbxassetid://6124173821", Type = "Knife" },
+    ["Icewing"] = { MeshId = "rbxassetid://3183449780", TextureId = "rbxassetid://2279588369", Scale = Vector3.new(0.085, 0.085, 0.085), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Type = "Knife" },
+    ["Logchopper"] = { MeshId = "http://www.roblox.com/asset?id=4535643726", TextureId = "rbxassetid://5211110240", Scale = Vector3.new(0.96, 0.96, 0.96), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Type = "Knife" },
+    ["NikKnife"] = { MeshId = "http://www.roblox.com/asset/?id=305826272", TextureId = "rbxassetid://2533345412", Scale = Vector3.new(1, 1, 1), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Type = "Knife" },
+    ["SwirlyAxe"] = { MeshId = "rbxassetid://8293463844", TextureId = "rbxassetid://8293464070", Type = "Knife" },
+    ["TravelerAxe"] = { MeshId = "rbxassetid://15057341638", TextureId = "rbxassetid://15057460725", Type = "Knife" },
+    ["VampireAxe"] = { MeshId = "rbxassetid://92263601594064", TextureId = "rbxassetid://73008954478338", Type = "Knife" },
+    ["UFOKnife"] = { MeshId = "rbxassetid://86649405964534", TextureId = "rbxassetid://94763497877100", Type = "Knife" },
+    ["UFOKnifeChroma"] = { MeshId = "rbxassetid://86649405964534", TextureId = "rbxassetid://94763497877100", Scale = Vector3.new(0.07697, 0.07697, 0.07697), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Chroma = true, Type = "Knife" },
+    ["AuroraKnife"] = { MeshId = "rbxassetid://16025287191", TextureId = "rbxassetid://97521579968070", Type = "Knife" },
+    ["ZombieBat"] = { MeshId = "rbxassetid://11182796403", TextureId = "rbxassetid://11192090515", Type = "Knife" },
+    ["BattleAxe"] = { MeshId = "rbxassetid://1084767698", TextureId = "rbxassetid://1084767901", Scale = Vector3.new(0.56, 0.56, 0.56), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Type = "Knife" },
+    ["BattleAxe2"] = { MeshId = "rbxassetid://2397016406", TextureId = "rbxassetid://2513526862", Type = "Knife" },
+    ["Bioblade"] = { MeshId = "rbxassetid://4662600017", TextureId = "http://www.roblox.com/asset/?id=4751538400", Type = "Knife" },
+    ["Bloom"] = { MeshId = "rbxassetid://73266355643345", TextureId = "rbxassetid://103489229144925", Type = "Knife" },
+    ["BlueSeer"] = { MeshId = "http://www.roblox.com/asset?id=156092238", TextureId = "rbxassetid://3184062977", Scale = Vector3.new(0.7, 0.91, 1), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Type = "Knife" },
+    ["Boneblade"] = { MeshId = "rbxassetid://1857106669", TextureId = "rbxassetid://2516324337", Scale = Vector3.new(0.7, 0.7, 0.7), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Type = "Knife" },
+    ["BonebladeChroma"] = { MeshId = "rbxassetid://1857106669", TextureId = "rbxassetid://2513578115", Scale = Vector3.new(0.73, 0.73, 0.73), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Chroma = true, Type = "Knife" },
+    ["Candleflame"] = { MeshId = "rbxassetid://7791364860", TextureId = "rbxassetid://7791364988", Type = "Knife" },
+    ["CandleflameChroma"] = { MeshId = "rbxassetid://7791364860", TextureId = "rbxassetid://7806078587", Scale = Vector3.new(0.06, 0.06, 0.06), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Chroma = true, Type = "Knife" },
+    ["Candy"] = { MeshId = "http://www.roblox.com/asset/?id=19040337", TextureId = "http://www.roblox.com/asset/?id=19040326", Scale = Vector3.new(1.1, 1.4, 1.1), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Type = "Knife" },
+    ["Chill"] = { MeshId = "http://www.roblox.com/asset/?id=105329941", TextureId = "http://www.roblox.com/asset/?id=105978218", Scale = Vector3.new(0.5, 0.5, 0.5), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Type = "Knife" },
+    ["Clockwork"] = { MeshId = "http://www.roblox.com/asset/?id=352571495", TextureId = "http://www.roblox.com/asset/?id=352570357", Scale = Vector3.new(1.1, 1.6, 1.2), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Type = "Knife" },
+    ["Cookieblade"] = { MeshId = "rbxassetid://6123168377", TextureId = "rbxassetid://6123168583", Type = "Knife" },
+    ["Gingermint_K"] = { MeshId = "", TextureId = "", Type = "Knife" },
+    ["Gingermint_KChroma"] = { MeshId = "", TextureId = "rbxassetid://11883888650", Chroma = true, Type = "Knife" },
+    ["Darksword"] = { MeshId = "rbxassetid://15020899066", TextureId = "rbxassetid://15020899218", Scale = Vector3.new(0.08, 0.08, 0.08), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Type = "Knife" },
+    ["Deathshard"] = { MeshId = "http://www.roblox.com/asset/?id=62275962 ", TextureId = "http://www.roblox.com/asset/?id=192567360", Scale = Vector3.new(0.75, 0.75, 0.75), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Type = "Knife" },
+    ["DeathshardChroma"] = { MeshId = "rbxassetid://62275962", TextureId = "rbxassetid://3167029738", Scale = Vector3.new(0.8, 0.8, 0.8), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Chroma = true, Type = "Knife" },
+    ["Eggblade"] = { MeshId = "rbxassetid://6596834762", TextureId = "http://www.roblox.com/asset/?id=6596824396", Type = "Knife" },
+    ["ElderwoodKnife"] = { MeshId = "rbxassetid://11238166013", TextureId = "rbxassetid://11238176757", Scale = Vector3.new(0.07, 0.07, 0.07), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Type = "Knife" },
+    ["ElderwoodKnifeChroma"] = { MeshId = "rbxassetid://11238166013", TextureId = "http://www.roblox.com/asset/?id=11370088878", Scale = Vector3.new(0.07, 0.07, 0.07), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Chroma = true, Type = "Knife" },
+    ["Eternal"] = { MeshId = "rbxassetid://532155954", TextureId = "rbxassetid://532156041", Scale = Vector3.new(0.45, 0.45, 0.45), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Type = "Knife" },
+    ["Eternal2"] = { MeshId = "rbxassetid://532155954", TextureId = "rbxassetid://2585776718", Scale = Vector3.new(0.45, 0.45, 0.45), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Type = "Knife" },
+    ["Eternal3"] = { MeshId = "rbxassetid://532155954", TextureId = "rbxassetid://5238664918", Scale = Vector3.new(0.47, 0.47, 0.47), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Type = "Knife" },
+    ["Eternal4"] = { MeshId = "rbxassetid://532155954", TextureId = "rbxassetid://5222717744", Scale = Vector3.new(0.47, 0.47, 0.47), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Type = "Knife" },
+    ["EternalCane"] = { MeshId = "rbxassetid://3132923779", TextureId = "rbxassetid://4488374804", Scale = Vector3.new(0.95, 0.95, 0.95), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Type = "Knife" },
+    ["TreeKnife2023"] = { MeshId = "rbxassetid://15408281195", TextureId = "rbxassetid://15408244684", Scale = Vector3.new(0.0046, 0.0046, 0.0046), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Type = "Knife" },
+    ["TreeKnife2023Chroma"] = { MeshId = "rbxassetid://15408281298", TextureId = "rbxassetid://15693337518", Scale = Vector3.new(0.0046, 0.0046, 0.0046), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Chroma = true, Type = "Knife" },
+    ["Fang"] = { MeshId = "http://www.roblox.com/asset/?id=117500241", TextureId = "http://www.roblox.com/asset/?id=117500388", Scale = Vector3.new(0.4, 0.4, 0.4), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Type = "Knife" },
+    ["FangChroma"] = { MeshId = "rbxassetid://117500241", TextureId = "rbxassetid://3167057391", Scale = Vector3.new(0.4, 0.37, 0.37), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Chroma = true, Type = "Knife" },
+    ["Flames"] = { MeshId = "http://www.roblox.com/asset/?id=238314098", TextureId = "http://www.roblox.com/asset/?id=238314124", Scale = Vector3.new(0.6, 0.8, 0.73), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Type = "Knife" },
+    ["FlowerwoodKnife"] = { MeshId = "rbxassetid://16883629972", TextureId = "rbxassetid://16895441338", Type = "Knife" },
+    ["Frostbite"] = { MeshId = "http://www.roblox.com/asset?id=4528435571", TextureId = "rbxassetid://5211130051", Scale = Vector3.new(1.1, 1.1, 1.1), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Type = "Knife" },
+    ["Frostsaber"] = { MeshId = "rbxassetid://1192795322", TextureId = "rbxassetid://1192795941", Scale = Vector3.new(0.55, 0.55, 0.6), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Type = "Knife" },
+    ["Gemstone"] = { MeshId = "rbxassetid://1626714161", TextureId = "rbxassetid://3183579677", Scale = Vector3.new(25, 25, 25), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Type = "Knife" },
+    ["GemstoneChroma"] = { MeshId = "rbxassetid://1626714161", TextureId = "rbxassetid://3183577898", Scale = Vector3.new(25, 25, 25), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Chroma = true, Type = "Knife" },
+    ["Ghostblade"] = { MeshId = "rbxassetid://4217554208", TextureId = "rbxassetid://5007736173", Scale = Vector3.new(0.05, 0.05, 0.05), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Type = "Knife" },
+    ["GingerbladeChroma"] = { MeshId = "rbxassetid://2682453204", TextureId = "rbxassetid://2672327402", Scale = Vector3.new(0.61, 0.61, 0.61), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Chroma = true, Type = "Knife" },
+    ["Gingerblade"] = { MeshId = "rbxassetid://2682453204", TextureId = "rbxassetid://2682446647", Scale = Vector3.new(0.61, 0.61, 0.61), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Type = "Knife" },
+    ["HallowsBlade"] = { MeshId = "http://www.roblox.com/asset?id=179155055", TextureId = "rbxassetid://1132750758", Scale = Vector3.new(0.55, 0.55, 0.555), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Type = "Knife" },
+    ["Hallow"] = { MeshId = "http://www.roblox.com/asset?id=179155055", TextureId = "http://www.roblox.com/asset?id=179155105", Scale = Vector3.new(0.57, 0.57, 0.57), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Type = "Knife" },
+    ["Handsaw"] = { MeshId = "", TextureId = "", Type = "Knife" },
+    ["HeartWandChroma"] = { MeshId = "rbxassetid://77738838473091", TextureId = "rbxassetid://78842905206144", Scale = Vector3.new(0.07821, 0.07821, 0.07821), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Chroma = true, Type = "Knife" },
+    ["HeartWand"] = { MeshId = "rbxassetid://77738838473091", TextureId = "rbxassetid://76246633927299", Type = "Knife" },
+    ["Heartblade"] = { MeshId = "rbxassetid://6404140078", TextureId = "http://www.roblox.com/asset/?id=6413074818", Type = "Knife" },
+    ["HeatChroma"] = { MeshId = "http://www.roblox.com/asset/?id=105333894", TextureId = "http://www.roblox.com/asset/?id=105334003", Scale = Vector3.new(0.33, 0.33, 0.33), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Chroma = true, Type = "Knife" },
+    ["Heat"] = { MeshId = "http://www.roblox.com/asset/?id=105333894", TextureId = "http://www.roblox.com/asset/?id=105334003", Scale = Vector3.new(0.3, 0.3, 0.3), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Type = "Knife" },
+    ["IceDragon"] = { MeshId = "http://www.roblox.com/asset/?id=165708869 ", TextureId = "http://www.roblox.com/asset/?id=165708903 ", Scale = Vector3.new(0.5, 0.5, 0.5), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Type = "Knife" },
+    ["IceShard"] = { MeshId = "http://www.roblox.com/asset/?id=188539751", TextureId = "http://www.roblox.com/asset/?id=188539820", Scale = Vector3.new(0.85, 0.85, 0.85), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Type = "Knife" },
+    ["Iceflake"] = { MeshId = "rbxassetid://8231045240", TextureId = "rbxassetid://8231046270", Type = "Knife" },
+    ["Nebula"] = { MeshId = "rbxassetid://6596839942", TextureId = "http://www.roblox.com/asset/?id=6256756879", Type = "Knife" },
+    ["Nightblade"] = { MeshId = "http://www.roblox.com/asset/?id=103838505", TextureId = "http://www.roblox.com/asset/?id=103838996", Scale = Vector3.new(0.7, 0.45, 0.5), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(0.4, 0.4, 0.4), Type = "Knife" },
+    ["AmericaSword"] = { MeshId = "http://www.roblox.com/asset/?id=262027449", TextureId = "https://www.roblox.com/asset/?id=445805934", Scale = Vector3.new(0.6, 0.6, 0.6), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Type = "Knife" },
+    ["OrangeSeer"] = { MeshId = "http://www.roblox.com/asset?id=156092238", TextureId = "rbxassetid://3184063179", Scale = Vector3.new(0.7, 0.91, 1), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Type = "Knife" },
+    ["BaubleKnife"] = { MeshId = "rbxassetid://116508096109443", TextureId = "rbxassetid://135843404105980", Type = "Knife" },
+    ["BaubleKnifeChroma"] = { MeshId = "rbxassetid://116508096109443", TextureId = "rbxassetid://101916509598198", Scale = Vector3.new(0.07326, 0.07326, 0.07326), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Chroma = true, Type = "Knife" },
+    ["Pearl_K"] = { MeshId = "rbxassetid://18276861801", TextureId = "rbxassetid://18276866373", Type = "Knife" },
+    ["Peppermint"] = { MeshId = "rbxassetid://6085025295", TextureId = "rbxassetid://6074789360", Scale = Vector3.new(0.07, 0.07, 0.07), Offset = Vector3.new(0, 0.3, -0.1), VertexColor = Vector3.new(1, 1, 1), Type = "Knife" },
+    ["Phantom2022"] = { MeshId = "", TextureId = "", Type = "Knife" },
+    ["Pixel"] = { MeshId = "http://www.roblox.com/asset/?id=361629844", TextureId = "http://www.roblox.com/asset/?id=361630114", Scale = Vector3.new(3, 3, 3), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Type = "Knife" },
+    ["Plasmablade"] = { MeshId = "rbxassetid://9702732853", TextureId = "rbxassetid://10015130416", Type = "Knife" },
+    ["Prismatic"] = { MeshId = "rbxassetid://5355753728", TextureId = "rbxassetid://5355747943", Scale = Vector3.new(0.06, 0.06917, 0.06), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Type = "Knife" },
+    ["Pumpking"] = { MeshId = "http://www.roblox.com/asset/?id=94840342", TextureId = "rbxassetid://1164426571", Scale = Vector3.new(0.4, 0.4, 0.4), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Type = "Knife" },
+    ["PurpleSeer"] = { MeshId = "http://www.roblox.com/asset?id=156092238", TextureId = "rbxassetid://3184063317", Scale = Vector3.new(0.7, 0.91, 1), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Type = "Knife" },
+    ["Rainbow_K"] = { MeshId = "rbxassetid://12921240966", TextureId = "rbxassetid://12921241867", Type = "Knife" },
+    ["RedSeer"] = { MeshId = "http://www.roblox.com/asset?id=156092238", TextureId = "rbxassetid://3184063443", Scale = Vector3.new(0.7, 0.91, 1), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Type = "Knife" },
+    ["Sakura_K"] = { MeshId = "rbxassetid://12307707430", TextureId = "rbxassetid://12307707797", Type = "Knife" },
+    ["Saw"] = { MeshId = "http://www.roblox.com/asset?id=168119698", TextureId = "http://www.roblox.com/asset?id=168119736", Scale = Vector3.new(0.5, 0.5, 0.5), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Type = "Knife" },
+    ["SawChroma"] = { MeshId = "rbxassetid://168119698", TextureId = "rbxassetid://3171086347", Scale = Vector3.new(0.5, 0.5, 0.55), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Chroma = true, Type = "Knife" },
+    ["TheSeer"] = { MeshId = "http://www.roblox.com/asset?id=156092238", TextureId = "http://www.roblox.com/asset?id=156092253 ", Scale = Vector3.new(0.7, 0.91, 1), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Type = "Knife" },
+    ["SeerChroma"] = { MeshId = "rbxassetid://156092238", TextureId = "rbxassetid://3184059718", Scale = Vector3.new(0.7, 0.91, 1), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Chroma = true, Type = "Knife" },
+    ["SlasherChroma"] = { MeshId = "rbxassetid://283709822", TextureId = "rbxassetid://3171107559", Scale = Vector3.new(0.45, 0.45, 0.45), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Chroma = true, Type = "Knife" },
+    ["Slasher"] = { MeshId = "http://www.roblox.com/asset/?id=283709822", TextureId = "http://www.roblox.com/asset/?id=313894904", Scale = Vector3.new(0.45, 0.45, 0.45), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Type = "Knife" },
+    ["SnowDaggerChroma"] = { MeshId = "rbxassetid://140633396635861", TextureId = "rbxassetid://109403096491788", Scale = Vector3.new(0.05978, 0.05978, 0.05978), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Chroma = true, Type = "Knife" },
+    ["SnowDagger"] = { MeshId = "rbxassetid://140633396635861", TextureId = "rbxassetid://77812964601215", Type = "Knife" },
+    ["Snowflake"] = { MeshId = "rbxassetid://582120569", TextureId = "rbxassetid://582120836", Scale = Vector3.new(0.6, 0.6, 0.6), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Type = "Knife" },
+    ["SnowstormChroma"] = { MeshId = "rbxassetid://86944837615327", TextureId = "rbxassetid://86253759560362", Scale = Vector3.new(0.07705, 0.07705, 0.07705), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Chroma = true, Type = "Knife" },
+    ["Spider"] = { MeshId = "http://www.roblox.com/asset/?id=302165984", TextureId = "rbxassetid://7596177341", Scale = Vector3.new(0.6, 0.6, 0.6), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Type = "Knife" },
+    ["WraithKnife"] = { MeshId = "rbxassetid://112444333460928", TextureId = "rbxassetid://131787177447081", Type = "Knife" },
+    ["SunsetKnifeChroma"] = { MeshId = "rbxassetid://137082284051764", TextureId = "rbxassetid://93782017269677", Scale = Vector3.new(0.07, 0.07, 0.07), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Chroma = true, Type = "Knife" },
+    ["SunsetKnife"] = { MeshId = "rbxassetid://137082284051764", TextureId = "rbxassetid://95001575076131", Scale = Vector3.new(0.07391, 0.07391, 0.07391), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Type = "Knife" },
+    ["SweetChroma"] = { MeshId = "rbxassetid://88250692342609", TextureId = "rbxassetid://87741741305052", Scale = Vector3.new(0.06913, 0.06913, 0.06913), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Chroma = true, Type = "Knife" },
+    ["SwirlyBlade"] = { MeshId = "rbxassetid://8302964090", TextureId = "rbxassetid://8302965681", Type = "Knife" },
+    ["Tides"] = { MeshId = "http://www.roblox.com/asset/?id=238314382", TextureId = "http://www.roblox.com/asset/?id=238314431", Scale = Vector3.new(0.7, 0.9, 0.7), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Type = "Knife" },
+    ["TidesChroma"] = { MeshId = "rbxassetid://238314382", TextureId = "rbxassetid://3171168641", Scale = Vector3.new(0.7, 0.9, 0.7), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Chroma = true, Type = "Knife" },
+    ["Turkey2023"] = { MeshId = "rbxassetid://15320557481", TextureId = "rbxassetid://15320558272", Scale = Vector3.new(0.056, 0.056, 0.056), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Type = "Knife" },
+    ["VampiresEdge"] = { MeshId = "rbxassetid://5841895234", TextureId = "http://www.roblox.com/asset/?id=5842343736", Type = "Knife" },
+    ["Virtual"] = { MeshId = "http://www.roblox.com/asset/?id=130101214", TextureId = "https://www.roblox.com/asset/?id=386250868", Scale = Vector3.new(0.6, 0.6, 0.7), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Type = "Knife" },
+    ["Waves_K"] = { MeshId = "rbxassetid://13916938702", TextureId = "rbxassetid://13916939964", Type = "Knife" },
+    ["WintersEdge"] = { MeshId = "http://www.roblox.com/asset/?id=93108071", TextureId = "http://www.roblox.com/asset/?id=93112631", Scale = Vector3.new(0.45, 0.45, 0.45), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Type = "Knife" },
+    ["XenoKnife"] = { MeshId = "rbxassetid://136619680236977", TextureId = "rbxassetid://113651973865393", Type = "Knife" },
+    ["Xmas"] = { MeshId = "rbxassetid://187852667", TextureId = "rbxassetid://187852629", Scale = Vector3.new(0.6, 0.6, 0.6), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Type = "Knife" },
+    ["YellowSeer"] = { MeshId = "http://www.roblox.com/asset?id=156092238", TextureId = "rbxassetid://3184063623", Scale = Vector3.new(0.7, 0.91, 1), Offset = Vector3.new(0, 0, 0), VertexColor = Vector3.new(1, 1, 1), Type = "Knife" },
+}
 
     local function cleanToolVisuals(tool)
         if not tool then return end
-        local handle = tool:FindFirstChild("Handle") or tool:FindFirstChildOfClass("Part") or tool:FindFirstChildOfClass("MeshPart")
-        if not handle then return end
-
-        pcall(function()
-            for _, c in ipairs(handle:GetChildren()) do
-                if c.Name == "RanaxCustomVisual" or c.Name == "RanaxCustomAura" or c.Name == "RanaxGlowLight" or c.Name == "RanaxWeaponEffect" then
-                    c:Destroy()
-                end
+        for _, child in ipairs(tool:GetChildren()) do
+            if child.Name == "RanaxVisualPart" or child.Name == "RanaxGlowHighlight" or child.Name == "RanaxMeeqSkin" then
+                pcall(function() child:Destroy() end)
             end
-            for _, c in ipairs(tool:GetChildren()) do
-                if c.Name == "RanaxGlowHighlight" or c.Name == "RanaxVisualPart" then
-                    c:Destroy()
-                end
-            end
-
-            -- Restore original SpecialMesh properties if saved
-            local sm = handle:FindFirstChildOfClass("SpecialMesh") or handle:FindFirstChild("Mesh")
-            if sm and tool:GetAttribute("RanaxOrigMesh") then
-                sm.MeshId = tool:GetAttribute("RanaxOrigMesh") or sm.MeshId
-                sm.TextureId = tool:GetAttribute("RanaxOrigTex") or sm.TextureId
-                local origScale = tool:GetAttribute("RanaxOrigScale")
-                if origScale and typeof(origScale) == "Vector3" then
-                    sm.Scale = origScale
-                end
-                local origVc = tool:GetAttribute("RanaxOrigVC")
-                if origVc and typeof(origVc) == "Vector3" then
-                    sm.VertexColor = origVc
-                end
-            end
-
-            handle.Transparency = 0
-        end)
-    end
-
-    -- Apply custom aura particle effects
-    local function applyAuraEffect(handle, auraType)
-        if not handle or auraType == "None" then return end
-        local pe = Instance.new("ParticleEmitter")
-        pe.Name = "RanaxCustomAura"
-        pe.Rate = 22
-        pe.Lifetime = NumberRange.new(0.5, 1.2)
-        pe.Speed = NumberRange.new(0.5, 2.5)
-
-        if auraType == "Fire Flame Aura" then
-            pe.Color = ColorSequence.new({
-                ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 180, 0)),
-                ColorSequenceKeypoint.new(0.6, Color3.fromRGB(255, 60, 0)),
-                ColorSequenceKeypoint.new(1, Color3.fromRGB(80, 0, 0))
-            })
-            pe.Size = NumberSequence.new({NumberSequenceKeypoint.new(0, 0.4), NumberSequenceKeypoint.new(1, 0)})
-            pe.Texture = "rbxassetid://243098098"
-        elseif auraType == "Ghost Void Smoke" then
-            pe.Color = ColorSequence.new(Color3.fromRGB(150, 0, 255), Color3.fromRGB(20, 0, 60))
-            pe.Size = NumberSequence.new({NumberSequenceKeypoint.new(0, 0.6), NumberSequenceKeypoint.new(1, 1.2)})
-            pe.Transparency = NumberSequence.new(0.3, 1)
-            pe.Texture = "rbxassetid://243664672"
-        elseif auraType == "Sparkles / Stars" then
-            pe.Color = ColorSequence.new(Color3.fromRGB(255, 255, 120), Color3.fromRGB(255, 255, 255))
-            pe.Size = NumberSequence.new({NumberSequenceKeypoint.new(0, 0.3), NumberSequenceKeypoint.new(1, 0)})
-            pe.Texture = "rbxassetid://242635489"
-        elseif auraType == "Lightning Sparks" then
-            pe.Color = ColorSequence.new(Color3.fromRGB(0, 220, 255), Color3.fromRGB(255, 255, 255))
-            pe.Rate = 35
-            pe.Speed = NumberRange.new(2, 6)
-            pe.Texture = "rbxassetid://243098098"
-        elseif auraType == "Blood Drip" then
-            pe.Color = ColorSequence.new(Color3.fromRGB(180, 0, 0), Color3.fromRGB(60, 0, 0))
-            pe.Size = NumberSequence.new({NumberSequenceKeypoint.new(0, 0.35), NumberSequenceKeypoint.new(1, 0.1)})
-            pe.Speed = NumberRange.new(0.2, 1.0)
-            pe.Texture = "rbxassetid://241594419"
         end
-
-        pe.Parent = handle
+        local handle = tool:FindFirstChild("Handle") or tool:FindFirstChildOfClass("BasePart")
+        if handle then
+            handle.Transparency = 0
+            for _, child in ipairs(handle:GetChildren()) do
+                if child.Name == "RanaxWeaponEffect" or child.Name == "RanaxGlowLight" or child.Name == "RanaxMeeqSkin" then
+                    pcall(function() child:Destroy() end)
+                end
+            end
+        end
     end
 
-    -- Core Skin Swap Engine (Direct Mesh & Texture Transformer)
+    -- Direct Native Skin Transformer (Zero HTTP lag, 100% reliable on all executors)
     local function applySkinToTool(tool, skinName)
         if not tool or not tool:IsA("Tool") then return false end
-        local handle = tool:FindFirstChild("Handle") or tool:FindFirstChildOfClass("Part") or tool:FindFirstChildOfClass("MeshPart")
+        local handle = tool:FindFirstChild("Handle") or tool:FindFirstChildOfClass("BasePart")
         if not handle then return false end
 
-        -- Ensure SpecialMesh exists on handle for reliable rendering
         local sm = handle:FindFirstChildOfClass("SpecialMesh") or handle:FindFirstChild("Mesh")
-        if not sm and not handle:IsA("MeshPart") then
+        if not sm then
             sm = Instance.new("SpecialMesh")
             sm.Name = "Mesh"
             sm.MeshType = Enum.MeshType.FileMesh
@@ -4948,7 +4997,7 @@ do
         end
 
         -- Backup original tool mesh properties once
-        if sm and not tool:GetAttribute("RanaxOrigMesh") and sm.MeshId ~= "" then
+        if not tool:GetAttribute("RanaxOrigMesh") and sm.MeshId ~= "" then
             tool:SetAttribute("RanaxOrigMesh", sm.MeshId)
             tool:SetAttribute("RanaxOrigTex", sm.TextureId)
             tool:SetAttribute("RanaxOrigScale", sm.Scale)
@@ -4957,151 +5006,62 @@ do
 
         cleanToolVisuals(tool)
 
-        
-        -- 1:1 Meeqscripts MeshID Engine Integration
-        local meeqEntry = _meeqMeshData and _meeqMeshData[skinName]
-        if meeqEntry and meeqEntry.Model then
-            cleanToolVisuals(tool)
-            handle.Transparency = 1
-            if sm then
-                if not tool:GetAttribute("RanaxOrigScale") then
-                    tool:SetAttribute("RanaxOrigScale", sm.Scale)
-                    tool:SetAttribute("RanaxOrigMesh", sm.MeshId)
-                    tool:SetAttribute("RanaxOrigTex", sm.TextureId)
-                end
-                sm.Scale = Vector3.new(0.001, 0.001, 0.001)
-            end
+        local scaleMult = tonumber(_skinChanger.WeaponScale) or 1.0
+        local weapon = MeeqWeaponDatabase[skinName]
 
-            local displayModel = buildMeeqNode(meeqEntry.Model, handle)
-            if displayModel then
-                displayModel.Name = "RanaxMeeqSkin"
-                if displayModel:IsA("BasePart") then
-                    displayModel.CFrame = handle.CFrame * (meeqEntry.Model.Props and meeqEntry.Model.Props.RelCF or CFrame.new())
-                    local weld = Instance.new("WeldConstraint")
-                    weld.Part0 = handle
-                    weld.Part1 = displayModel
-                    weld.Parent = displayModel
-                end
-                displayModel.Parent = tool
-            end
+        if weapon and weapon.MeshId and weapon.MeshId ~= "" then
+            sm.MeshId = weapon.MeshId
+            sm.TextureId = weapon.TextureId or ""
+            sm.Scale = (weapon.Scale or Vector3.new(1, 1, 1)) * scaleMult
+            if weapon.Offset then sm.Offset = weapon.Offset else sm.Offset = Vector3.zero end
+            if weapon.VertexColor then sm.VertexColor = weapon.VertexColor else sm.VertexColor = Vector3.new(1, 1, 1) end
+            handle.Transparency = 0
 
-            if meeqEntry.Meta and meeqEntry.Meta.Chroma then
+            if weapon.Chroma then
                 _skinChanger.ChromaRainbow = true
                 if typeof(updateChromaListener) == "function" then
                     updateChromaListener(true)
                 end
             end
 
+            -- Custom Glow
+            if _skinChanger.GlowEnabled then
+                local pl = Instance.new("PointLight")
+                pl.Name = "RanaxGlowLight"
+                pl.Range = 12
+                pl.Brightness = 3
+                pl.Color = _skinChanger.GlowColor
+                pl.Parent = handle
+
+                local hl = Instance.new("Highlight")
+                hl.Name = "RanaxGlowHighlight"
+                hl.FillTransparency = 0.5
+                hl.OutlineTransparency = 0.1
+                hl.FillColor = _skinChanger.GlowColor
+                hl.OutlineColor = _skinChanger.GlowColor
+                hl.Adornee = tool
+                hl.Parent = tool
+            end
+
             tool:SetAttribute("RanaxSkinApplied", skinName)
             return true
         end
 
-        local scaleMult = tonumber(_skinChanger.WeaponScale) or 1.0
-        local targetMeshId = nil
-        local targetTextureId = nil
-        local targetScale = Vector3.new(1, 1, 1)
-        local targetVc = nil
-        local targetOffset = nil
-        local sourceModel = findWeaponSource(skinName)
-
-        if sourceModel then
-            local srcHandle = sourceModel:FindFirstChild("Handle") or sourceModel:FindFirstChildOfClass("MeshPart") or sourceModel:FindFirstChildOfClass("Part") or sourceModel
-            local srcSm = srcHandle and (srcHandle:FindFirstChildOfClass("SpecialMesh") or srcHandle:FindFirstChild("Mesh"))
-
-            if srcSm then
-                targetMeshId = srcSm.MeshId
-                targetTextureId = srcSm.TextureId
-                targetScale = srcSm.Scale or Vector3.new(1, 1, 1)
-                targetOffset = srcSm.Offset
-                targetVc = srcSm.VertexColor
-            elseif srcHandle and srcHandle:IsA("MeshPart") then
-                targetMeshId = srcHandle.MeshId
-                targetTextureId = srcHandle.TextureID
-            end
-
-            -- Copy any particle emitters, beams, or lights from source handle
-            if srcHandle then
-                for _, effect in ipairs(srcHandle:GetChildren()) do
-                    if effect:IsA("ParticleEmitter") or effect:IsA("PointLight") or effect:IsA("Beam") or effect:IsA("Fire") or effect:IsA("Smoke") then
-                        local effectClone = effect:Clone()
-                        effectClone.Name = "RanaxWeaponEffect"
-                        effectClone.Parent = handle
-                    end
-                end
-            end
-
-            -- If the source weapon is a multi-part model, weld any extra decorative parts
-            if sourceModel:IsA("Model") and srcHandle then
-                for _, part in ipairs(sourceModel:GetChildren()) do
-                    if part:IsA("BasePart") and part ~= srcHandle then
-                        local extraPart = part:Clone()
-                        extraPart.Name = "RanaxVisualPart"
-                        extraPart.CanCollide = false
-                        extraPart.Massless = true
-                        extraPart.CastShadow = false
-                        extraPart.Anchored = false
-                        extraPart.CFrame = handle.CFrame * srcHandle.CFrame:ToObjectSpace(part.CFrame)
-
-                        local weld = Instance.new("WeldConstraint")
-                        weld.Part0 = handle
-                        weld.Part1 = extraPart
-                        weld.Parent = extraPart
-
-                        extraPart.Parent = tool
-                    end
-                end
-            end
-        end
-
-        -- If not found dynamically in game files, fallback to curated AssetDatabase
-        if not targetMeshId or targetMeshId == "" then
-            local fallback = AssetDatabase[skinName]
-            if fallback then
-                targetMeshId = fallback.Mesh
-                targetTextureId = fallback.Texture
-                targetScale = fallback.Scale or Vector3.new(1, 1, 1)
-                targetVc = fallback.VertexColor
-            end
-        end
-
-        -- Apply to weapon SpecialMesh directly
-        if sm and targetMeshId and targetMeshId ~= "" then
-            sm.MeshId = targetMeshId
-            if targetTextureId then sm.TextureId = targetTextureId end
-            sm.Scale = targetScale * scaleMult
-            if targetOffset then sm.Offset = targetOffset end
-            if targetVc then sm.VertexColor = targetVc end
+        -- Fallback to AssetDatabase if any
+        local fallback = AssetDatabase and AssetDatabase[skinName]
+        if fallback and fallback.Mesh then
+            sm.MeshId = fallback.Mesh
+            if fallback.Texture then sm.TextureId = fallback.Texture end
+            sm.Scale = (fallback.Scale or Vector3.new(1, 1, 1)) * scaleMult
+            if fallback.VertexColor then sm.VertexColor = fallback.VertexColor end
             handle.Transparency = 0
+            tool:SetAttribute("RanaxSkinApplied", skinName)
+            return true
         end
 
-        -- Custom Glow
-        if _skinChanger.GlowEnabled then
-            local pl = Instance.new("PointLight")
-            pl.Name = "RanaxGlowLight"
-            pl.Range = 12
-            pl.Brightness = 3
-            pl.Color = _skinChanger.GlowColor
-            pl.Parent = handle
-
-            local hl = Instance.new("Highlight")
-            hl.Name = "RanaxGlowHighlight"
-            hl.FillTransparency = 0.7
-            hl.OutlineTransparency = 0.1
-            hl.FillColor = _skinChanger.GlowColor
-            hl.OutlineColor = _skinChanger.GlowColor
-            hl.Parent = tool
-        end
-
-        -- Custom Aura
-        if _skinChanger.CustomAura and _skinChanger.CustomAura ~= "None" then
-            applyAuraEffect(handle, _skinChanger.CustomAura)
-        end
-
-        tool:SetAttribute("RanaxSkinApplied", skinName)
-        return true
+        return false
     end
 
-    -- Weapon categorizer: distinguishes knife from gun accurately
     local function isKnife(tool)
         if not tool or not tool:IsA("Tool") then return false end
         local n = tool.Name:lower()
@@ -5148,11 +5108,11 @@ do
             end
 
             if knifeMatch and _skinChanger.KnifeEnabled then
-                if tool:GetAttribute("RanaxSkinApplied") ~= _skinChanger.SelectedKnife or not tool.Handle:FindFirstChild("RanaxWeaponEffect") then
+                if tool:GetAttribute("RanaxSkinApplied") ~= _skinChanger.SelectedKnife then
                     applySkinToTool(tool, _skinChanger.SelectedKnife)
                 end
             elseif gunMatch and _skinChanger.GunEnabled then
-                if tool:GetAttribute("RanaxSkinApplied") ~= _skinChanger.SelectedGun or not tool.Handle:FindFirstChild("RanaxWeaponEffect") then
+                if tool:GetAttribute("RanaxSkinApplied") ~= _skinChanger.SelectedGun then
                     applySkinToTool(tool, _skinChanger.SelectedGun)
                 end
             end
