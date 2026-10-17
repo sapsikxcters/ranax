@@ -1229,6 +1229,17 @@ local function GetConfigList()
     return list
 end
 
+
+-- ==================== FORWARD DECLARATIONS FOR CONFIG SYSTEM ====================
+local PlayerESPToggle = nil
+local NameESPToggle = nil
+local GunDropToggle = nil
+local TrapESPToggle = nil
+local AutoGrabGunToggle = nil
+local RemoveBarrierAutomaticToggle = nil
+local GhostModeToggle = nil
+local GameStatusHUDToggle = nil
+
 local function SaveConfig(name)
     if not name or name:match("^%s*$") then name = "default" end
     EnsureConfigDir()
@@ -1249,6 +1260,12 @@ local function SaveConfig(name)
         JerkKeybind         = getKey(UIElements.JerkKeybind,         "JerkKeybind",         "J"),
         EmoteKeybind        = getKey(UIElements.EmoteKeybind,        "EmoteKeybind",        "None"),
 
+        -- ===== ESP MODULES =====
+        PlayerESP           = (UIElements.PlayerESPToggle and UIElements.PlayerESPToggle.Value) or (PlayerESPToggle and PlayerESPToggle.Value) or (getgenv().PlayerESPActive == true) or false,
+        NameESP             = (UIElements.NameESPToggle and UIElements.NameESPToggle.Value) or (NameESPToggle and NameESPToggle.Value) or (getgenv().NameESPActive == true) or false,
+        GunDropESP          = (UIElements.GunDropToggle and UIElements.GunDropToggle.Value) or (GunDropToggle and GunDropToggle.Value) or false,
+        TrapESP             = (UIElements.TrapESPToggle and UIElements.TrapESPToggle.Value) or (TrapESPToggle and TrapESPToggle.Value) or false,
+        CoinESP             = (UIElements.ESPCoinToggle and UIElements.ESPCoinToggle.Value) or (UIElements.CoinESPToggle and UIElements.CoinESPToggle.Value) or (_G.CoinESPEnabled == true) or false,
 
         -- ===== KNIFE TOOLS & KILL AURA =====
         KnifeKillAuraEnabled  = _G.KnifeKillAuraEnabled or false,
@@ -1276,30 +1293,46 @@ local function SaveConfig(name)
         SheriffKillEffectStyle    = _G.SheriffKillEffectStyle or "All Combined",
         SheriffKillCamDuration    = _G.SheriffKillCamDuration or 1.8,
 
-
         -- ===== COIN FARM =====
         SafeAutoFarm             = _G.SafeAutoFarm or false,
+        FarmMode                 = _G.FarmMode or "Underground (5.7 Studs)",
         FarmSpeed                = _G.FarmSpeed or 24,
         BagFullAction            = _G.BagFullAction or "Auto by Role (Kill/Fling/Reset)",
         RanaxAntiAFK             = _G.RanaxAntiAFK ~= false,
         WebhookURL               = _G.WebhookURL or "",
         WebhookEnabled           = _G.WebhookEnabled or false,
+        LevelUpWebhook           = (UIElements.LevelUpWebhook and UIElements.LevelUpWebhook.Value) or false,
         CoinFarmAntiStuck        = _G.CoinFarmAntiStuck ~= false,
         CoinFarmAntiStuckTimeout = _G.CoinFarmAntiStuckTimeout or 2.5,
-        CoinESPEnabled           = _G.CoinESPEnabled or false,
-
-        -- ===== ESP MODULES =====
-        PlayerESP           = (getgenv().PlayerESPActive == true) or (PlayerESPToggle and PlayerESPToggle.Value) or false,
-        NameESP             = (getgenv().NameESPActive == true) or (NameESPToggle and NameESPToggle.Value) or false,
-        GunDropESP          = (GunDropToggle and GunDropToggle.Value) or false,
-        TrapESP             = (TrapESPToggle and TrapESPToggle.Value) or false,
-        CoinESP             = _G.CoinESPEnabled or false,
 
         -- ===== WALLHOP & JERK =====
         WallhopTurnTime     = _G.WallhopTurnTime or 0.06,
         WallhopAutoJump     = _G.WallhopAutoJump ~= false,
         WallhopCameraSnap   = _G.WallhopCameraSnap ~= false,
         JerkSpeed           = _G.JerkSpeed or 1.0,
+
+        -- ===== EMOTES =====
+        SelectedEmote       = _G.RanaxSelectedEmote or "Zen (MM2)",
+        EmoteLoop           = _G.RanaxEmoteLoop ~= false,
+        EmoteWalk           = _G.RanaxEmoteWalk ~= false,
+        EmoteSpeed          = _G.RanaxEmoteSpeed or 1.0,
+
+        -- ===== SKIN CHANGER =====
+        KnifeSkinEnabled    = (_skinChanger and _skinChanger.KnifeEnabled) or false,
+        SelectedKnife       = (_skinChanger and _skinChanger.SelectedKnife) or "Default",
+        GunSkinEnabled      = (_skinChanger and _skinChanger.GunEnabled) or false,
+        SelectedGun         = (_skinChanger and _skinChanger.SelectedGun) or "Default",
+        ChromaRainbow       = (_skinChanger and _skinChanger.ChromaRainbow) or false,
+        ChromaSpeed         = (_skinChanger and _skinChanger.ChromaSpeed) or 1.0,
+        WeaponGlow          = (_skinChanger and _skinChanger.WeaponGlow) or false,
+        WeaponScale         = (_skinChanger and _skinChanger.WeaponScale) or 1.0,
+
+        -- ===== MISC & UTILITIES =====
+        AutoGrabGun         = (UIElements.AutoGrabGunToggle and UIElements.AutoGrabGunToggle.Value) or (AutoGrabGunToggle and AutoGrabGunToggle.Value) or (getgenv().AutoGrabGunActive == true) or false,
+        RemoveBarriers      = (UIElements.RemoveBarrierAutomaticToggle and UIElements.RemoveBarrierAutomaticToggle.Value) or (RemoveBarrierAutomaticToggle and RemoveBarrierAutomaticToggle.Value) or (getgenv().RemoveBarrierAutomaticActive == true) or false,
+        SpeedGlitch         = _G.SpeedGlitchActive or false,
+        SpeedGlitchBoost    = _G.SpeedGlitchBoost or 50,
+        RanaxSprayDecalID   = _G.RanaxSprayDecalID or "18933215907",
 
         -- ===== PROTECTION & NOTIFICATIONS =====
         AntiFling           = V.AntiFling or false,
@@ -1310,11 +1343,7 @@ local function SaveConfig(name)
         RanaxNotifyEnabled  = getgenv().RanaxNotifyEnabled ~= false,
         RoleNotify          = V.RoleNotify ~= false,
         SheriffDeathNotify  = V.SheriffDeathNotify ~= false,
-
-        -- ===== MISC & PERFORMANCE =====
-        SpeedGlitchBoost   = _G.SpeedGlitchBoost or 50,
-        RanaxSprayDecalID  = _G.RanaxSprayDecalID or "18933215907",
-        FpsBoosterActive   = _G.FpsBoosterActive or false,
+        FpsBoosterActive    = _G.FpsBoosterActive or false,
     }
     
     local jsonStr = HttpService:JSONEncode(configData)
@@ -1587,6 +1616,81 @@ local function LoadConfig(name)
                 if decoded.FpsBoosterActive ~= nil then
                     _G.FpsBoosterActive = decoded.FpsBoosterActive
                     setUIVal(UIElements.FpsBoosterToggle, decoded.FpsBoosterActive)
+                end
+
+                
+                -- ===== ESP MODULES RESTORE =====
+                if decoded.PlayerESP ~= nil then
+                    local targetTgl = UIElements.PlayerESPToggle or PlayerESPToggle
+                    setUIVal(targetTgl, decoded.PlayerESP)
+                end
+                if decoded.NameESP ~= nil then
+                    local targetTgl = UIElements.NameESPToggle or NameESPToggle
+                    setUIVal(targetTgl, decoded.NameESP)
+                end
+                if decoded.GunDropESP ~= nil then
+                    local targetTgl = UIElements.GunDropToggle or GunDropToggle
+                    setUIVal(targetTgl, decoded.GunDropESP)
+                end
+                if decoded.TrapESP ~= nil then
+                    local targetTgl = UIElements.TrapESPToggle or TrapESPToggle
+                    setUIVal(targetTgl, decoded.TrapESP)
+                end
+                if decoded.CoinESP ~= nil then
+                    _G.CoinESPEnabled = decoded.CoinESP
+                    setUIVal(UIElements.CoinESPToggle or UIElements.ESPCoinToggle, decoded.CoinESP)
+                    if typeof(_G.RanaxUpdateWorkspaceCoinWatchers) == "function" then _G.RanaxUpdateWorkspaceCoinWatchers() end
+                    if typeof(_G.RanaxUpdateCoinDistListener) == "function" then _G.RanaxUpdateCoinDistListener(decoded.CoinESP) end
+                end
+
+                -- ===== MISC & UTILITIES RESTORE =====
+                if decoded.AutoGrabGun ~= nil then
+                    local targetTgl = UIElements.AutoGrabGunToggle or AutoGrabGunToggle
+                    setUIVal(targetTgl, decoded.AutoGrabGun)
+                end
+                if decoded.RemoveBarriers ~= nil then
+                    local targetTgl = UIElements.RemoveBarrierAutomaticToggle or RemoveBarrierAutomaticToggle
+                    setUIVal(targetTgl, decoded.RemoveBarriers)
+                end
+                if decoded.SpeedGlitch ~= nil then
+                    _G.SpeedGlitchActive = decoded.SpeedGlitch
+                    setUIVal(_G.SpeedGlitchToggleRef, decoded.SpeedGlitch)
+                end
+                if decoded.FarmMode ~= nil then
+                    _G.FarmMode = decoded.FarmMode
+                    setUIVal(UIElements.FarmMode, decoded.FarmMode)
+                end
+                if decoded.LevelUpWebhook ~= nil then
+                    setUIVal(UIElements.LevelUpWebhook, decoded.LevelUpWebhook)
+                end
+
+                -- ===== EMOTE SYSTEM RESTORE =====
+                if decoded.SelectedEmote ~= nil then
+                    _G.RanaxSelectedEmote = decoded.SelectedEmote
+                end
+                if decoded.EmoteLoop ~= nil then
+                    _G.RanaxEmoteLoop = decoded.EmoteLoop
+                end
+                if decoded.EmoteWalk ~= nil then
+                    _G.RanaxEmoteWalk = decoded.EmoteWalk
+                end
+                if decoded.EmoteSpeed ~= nil then
+                    _G.RanaxEmoteSpeed = decoded.EmoteSpeed
+                end
+
+                -- ===== SKIN CHANGER RESTORE =====
+                if _skinChanger then
+                    if decoded.KnifeSkinEnabled ~= nil then _skinChanger.KnifeEnabled = decoded.KnifeSkinEnabled end
+                    if decoded.SelectedKnife ~= nil then _skinChanger.SelectedKnife = decoded.SelectedKnife end
+                    if decoded.GunSkinEnabled ~= nil then _skinChanger.GunEnabled = decoded.GunSkinEnabled end
+                    if decoded.SelectedGun ~= nil then _skinChanger.SelectedGun = decoded.SelectedGun end
+                    if decoded.ChromaRainbow ~= nil then
+                        _skinChanger.ChromaRainbow = decoded.ChromaRainbow
+                        if typeof(_G.RanaxUpdateChromaListener) == "function" then _G.RanaxUpdateChromaListener(decoded.ChromaRainbow) end
+                    end
+                    if decoded.ChromaSpeed ~= nil then _skinChanger.ChromaSpeed = decoded.ChromaSpeed end
+                    if decoded.WeaponGlow ~= nil then _skinChanger.WeaponGlow = decoded.WeaponGlow end
+                    if decoded.WeaponScale ~= nil then _skinChanger.WeaponScale = decoded.WeaponScale end
                 end
 
                 CurrentConfigName = name
@@ -1971,7 +2075,8 @@ local function GetRoleColor(player, playerRoles)
     return RoleColors.Innocent
 end
 
-local PlayerESPToggle; PlayerESPToggle = ESPTab:Toggle({
+PlayerESPToggle = ESPTab:Toggle({
+
     Title = "Player ESP",
     Desc = "Allows you to see Players through walls",
     Icon = "eye",
@@ -2121,7 +2226,7 @@ local function getRanaxEspContainer()
     return container
 end
 
-local NameESPToggle; NameESPToggle = ESPTab:Toggle({
+NameESPToggle = ESPTab:Toggle({
     Title = "Player Names ESP",
     Desc = "Shows username, role and distance above all players",
     Icon = "app-window",
@@ -2320,7 +2425,7 @@ local NameESPToggle; NameESPToggle = ESPTab:Toggle({
 
 ESPTab:Divider()
 
-local GunDropToggle; GunDropToggle = ESPTab:Toggle({
+GunDropToggle = ESPTab:Toggle({
     Title = "Gun Drop ESP",
     Desc = "Highlights dropped gun (if there is one)",
     Icon = "bow-arrow",
@@ -2382,7 +2487,7 @@ local GunDropToggle; GunDropToggle = ESPTab:Toggle({
     end
 })
 
-local TrapESPToggle; TrapESPToggle = ESPTab:Toggle({
+TrapESPToggle = ESPTab:Toggle({
     Title = "Allows you to see traps",
     Desc = "Self-Explanatory",
     Icon = "shield-check",
@@ -2563,7 +2668,7 @@ GrabGunKeybind = MiscTab:Keybind({
 })
 UIElements.GrabGunKeybind = GrabGunKeybind
 
-local AutoGrabGunToggle = MiscTab:Toggle({
+AutoGrabGunToggle = MiscTab:Toggle({
     Title = "Auto Grab Gun",
     Desc = "Automatically grabs the Sheriff gun whenever it drops",
     Icon = "circle-star",
@@ -2733,7 +2838,7 @@ local BarrierRemoverButton = MiscTab:Button({
     end
 })
 
-local RemoveBarrierAutomaticToggle = MiscTab:Toggle({
+RemoveBarrierAutomaticToggle = MiscTab:Toggle({
     Title = "Automatic Remove Barriers",
     Desc = "Removes barriers / invisible walls automatically",
     Icon = "brick-wall-shield",
