@@ -4,7 +4,7 @@ local UserInputService = game:GetService("UserInputService")
 local CoreGui = game:GetService("CoreGui")
 local LocalPlayer = Players.LocalPlayer
 
-local SCRIPT_RAW_URL = "https://raw.githubusercontent.com/xCters/RanaxMM2/main/ranax_mmv.lua"
+local SCRIPT_RAW_URL = "https://raw.githubusercontent.com/sapsikxcters/ranax/main/ranax_mmv.lua"
 local LOOTLABS_LINK  = "https://loot-link.com/s?exampleRanaxKey"
 local DISCORD_LINK   = "https://discord.gg/ranax"
 
