@@ -5765,13 +5765,56 @@ TeleportToLobby = function()
     local char = LocalPlayer.Character
     local hrp = char and char:FindFirstChild("HumanoidRootPart")
     local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if not (hrp and hum and hum.Health > 0) then return end
+
+    hum.PlatformStand = false
+    hum.Sit = false
+    pcall(function() hum:ChangeState(Enum.HumanoidStateType.GettingUp) end)
+    hrp.AssemblyLinearVelocity = Vector3.zero
+    hrp.AssemblyAngularVelocity = Vector3.zero
+
+    local targetCFrame = nil
     local lobby = workspace:FindFirstChild("RegularLobby") or workspace:FindFirstChild("Lobby")
-    if hrp and hum and lobby then
-        hum.PlatformStand = false
-        hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+    if lobby then
+        local spawns = lobby:FindFirstChild("Spawns") or lobby:FindFirstChild("Spawn")
+        if spawns then
+            local sps = {}
+            for _, s in ipairs(spawns:GetDescendants()) do
+                if s:IsA("BasePart") or s:IsA("SpawnLocation") then
+                    table.insert(sps, s)
+                end
+            end
+            if #sps > 0 then
+                targetCFrame = sps[math.random(1, #sps)].CFrame + Vector3.new(0, 3.5, 0)
+            end
+        end
+        if not targetCFrame then
+            for _, s in ipairs(lobby:GetDescendants()) do
+                if s:IsA("SpawnLocation") or (s.Name:lower():find("spawn") and s:IsA("BasePart")) then
+                    targetCFrame = s.CFrame + Vector3.new(0, 3.5, 0)
+                    break
+                end
+            end
+        end
+        if not targetCFrame then
+            targetCFrame = lobby:GetPivot() + Vector3.new(0, 5, 0)
+        end
+    end
+
+    if not targetCFrame then
+        local sp = workspace:FindFirstChild("SpawnLocation", true)
+        if sp and sp:IsA("BasePart") then
+            targetCFrame = sp.CFrame + Vector3.new(0, 3.5, 0)
+        else
+            targetCFrame = CFrame.new(-108.5, 140, -11.5)
+        end
+    end
+
+    if targetCFrame then
+        hrp.CFrame = targetCFrame
+        task.wait(0.05)
         hrp.AssemblyLinearVelocity = Vector3.zero
         hrp.AssemblyAngularVelocity = Vector3.zero
-        hrp.CFrame = lobby:GetPivot() + Vector3.new(0, 5, 0)
     end
 end
 
@@ -6061,13 +6104,27 @@ local function onMurdererDied(m)
     local char = LocalPlayer.Character
     pcall(function() removeFarmFloat(char) end)
     local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
     if hrp then
         hrp.AssemblyLinearVelocity = Vector3.zero
         hrp.AssemblyAngularVelocity = Vector3.zero
     end
+    if hum then
+        hum.PlatformStand = false
+        hum.Sit = false
+        pcall(function() hum:ChangeState(Enum.HumanoidStateType.GettingUp) end)
+    end
 
     local mName = (m and m.DisplayName) or (m and m.Name) or "Murderer"
-    notify("Coin Farm", "Murderer (" .. mName .. ") died! Farm stopped until next round...", 3.0, "skull")
+    notify("Coin Farm", "Murderer (" .. mName .. ") died! Farm stopped, teleporting to Lobby...", 3.0, "skull")
+
+    -- TELEPORT TO LOBBY AS REQUESTED!
+    task.spawn(function()
+        task.wait(0.05)
+        pcall(TeleportToLobby)
+        task.wait(0.15)
+        pcall(stopCoinFarmClean)
+    end)
 end
 
 local function hookMurdererDeath(m)
@@ -6759,7 +6816,7 @@ task.spawn(function()
                     end
                     task.wait(0.5)
 
-                -- MURDERER DIED DURING THIS MATCH: Stop instantly and wait until match ends & new round starts!
+                -- MURDERER DIED DURING THIS MATCH: Stop instantly and teleport to lobby until next round!
                 elseif _G.MurdererDiedThisRound then
                     if _G.CoinTween then _G.CoinTween:Cancel(); _G.CoinTween = nil end
                     pcall(removeCoinFarmPlatform)
@@ -6768,6 +6825,7 @@ task.spawn(function()
                         hrp.AssemblyLinearVelocity = Vector3.zero
                         hrp.AssemblyAngularVelocity = Vector3.zero
                     end
+                    pcall(TeleportToLobby)
                     task.wait(0.5)
 
                 -- BAG FULL HANDLING: Parked until round ends
@@ -7147,10 +7205,19 @@ task.spawn(function()
                                     end
 
                                     -- Check if Murderer died mid-flight to coin
-                                    if _currentTrackedMurderer then
-                                        local mHum = _currentTrackedMurderer.Character and _currentTrackedMurderer.Character:FindFirstChildOfClass("Humanoid")
-                                        if mHum and mHum.Health <= 0 then
-                                            onMurdererDied(_currentTrackedMurderer)
+                                    local activeM = _currentTrackedMurderer or (typeof(getMurdererLive) == "function" and getMurdererLive())
+                                    if activeM then
+                                        local isMDead = false
+                                        if not activeM.Parent or not activeM.Character or not activeM.Character.Parent then
+                                            isMDead = true
+                                        else
+                                            local mHum = activeM.Character:FindFirstChildOfClass("Humanoid")
+                                            if not mHum or mHum.Health <= 0 then
+                                                isMDead = true
+                                            end
+                                        end
+                                        if isMDead then
+                                            onMurdererDied(activeM)
                                             if _G.CoinTween then _G.CoinTween:Cancel(); _G.CoinTween = nil end
                                             break
                                         end
