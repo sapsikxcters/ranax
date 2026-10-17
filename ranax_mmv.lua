@@ -6030,29 +6030,50 @@ TeleportAboveMap = function()
 end
 _G.TeleportAboveMap = TeleportAboveMap
 
+local function isGuiActuallyVisible(guiObj)
+    if not guiObj then return false end
+    if not guiObj.Visible then return false end
+    if guiObj:IsA("TextLabel") or guiObj:IsA("TextButton") then
+        if guiObj.TextTransparency and guiObj.TextTransparency >= 0.95 then return false end
+    end
+    local current = guiObj.Parent
+    while current and current:IsA("GuiObject") do
+        if not current.Visible then return false end
+        current = current.Parent
+    end
+    return true
+end
+
+local _hasEliteCached = nil
+local function checkEliteGamepass()
+    if _hasEliteCached ~= nil then return _hasEliteCached end
+    local owns = false
+    pcall(function()
+        owns = MarketplaceService:UserOwnsGamePassAsync(LocalPlayer.UserId, 135739)
+    end)
+    _hasEliteCached = owns
+    return owns
+end
+
 cachedCoinLabel = nil
 getCoinBagLive = function()
     local pgui = LocalPlayer:FindFirstChild("PlayerGui")
-    if not pgui then return (_G.RanaxCoinsCollected or 0), 40, false end
+    local defaultMax = checkEliteGamepass() and 50 or 40
+    if not pgui then return (_G.RanaxCoinsCollected or 0), defaultMax, false end
 
     local mg = pgui:FindFirstChild("MainGUI") or pgui:FindFirstChild("MainGui") or pgui:FindFirstChild("Gui")
-    if not mg then return (_G.RanaxCoinsCollected or 0), 40, false end
+    if not mg then return (_G.RanaxCoinsCollected or 0), defaultMax, false end
 
-    -- 1. MM2 CoinBag frame search: Check visible labels inside Game -> CoinBag
+    -- 1. MM2 CoinBag frame search: Check actually visible labels inside Game -> CoinBag
     local gameFrame = mg:FindFirstChild("Game") or mg
     local cbObj = gameFrame:FindFirstChild("CoinBag", true) or gameFrame:FindFirstChild("Coins", true)
 
-    if cbObj then
+    if cbObj and isGuiActuallyVisible(cbObj) then
         for _, tl in ipairs(cbObj:GetDescendants()) do
-            if tl:IsA("TextLabel") and tl.Visible then
+            if tl:IsA("TextLabel") and isGuiActuallyVisible(tl) then
                 local txt = tl.Text
                 if txt and txt ~= "" then
-                    -- Exact word match for "FULL" or "FULL!" (prevents false match on "Max Coins: 40")
-                    if txt:match("^%s*[Ff][Uu][Ll][Ll]!*%s*$") then
-                        return 40, 40, true
-                    end
-
-                    -- Standard "xx / xx" format (e.g. "0 / 40", "36 / 40", "40 / 40")
+                    -- Format A: Standard "xx / xx" (e.g. "25 / 40", "40 / 40", "50 / 50")
                     local cur, mx = txt:match("(%d+)%s*/%s*(%d+)")
                     if cur and mx then
                         local cNum, mNum = tonumber(cur), tonumber(mx)
@@ -6060,14 +6081,28 @@ getCoinBagLive = function()
                             return cNum, mNum, (cNum >= mNum and cNum >= 40)
                         end
                     end
+
+                    -- Format B: Single integer inside CoinBag (e.g. "25")
+                    local single = txt:match("^%s*(%d+)%s*$")
+                    if single then
+                        local sNum = tonumber(single)
+                        if sNum and sNum >= 0 and sNum <= 60 then
+                            return sNum, defaultMax, (sNum >= defaultMax)
+                        end
+                    end
+
+                    -- Format C: Exact word "FULL" (ONLY when truly visible)
+                    if txt:match("^%s*[Ff][Uu][Ll][Ll]!*%s*$") then
+                        return defaultMax, defaultMax, true
+                    end
                 end
             end
         end
     end
 
-    -- 2. General search in MainGUI for any visible TextLabel matching "xx / 40"
+    -- 2. General search in MainGUI for any visible TextLabel matching "xx / 40" or "xx / 50"
     for _, desc in ipairs(mg:GetDescendants()) do
-        if desc:IsA("TextLabel") and desc.Visible then
+        if desc:IsA("TextLabel") and isGuiActuallyVisible(desc) then
             local txt = desc.Text
             if txt and txt ~= "" then
                 local cur, mx = txt:match("(%d+)%s*/%s*(%d+)")
@@ -6082,7 +6117,7 @@ getCoinBagLive = function()
     end
 
     local tracked = _G.RanaxCoinsCollected or 0
-    return tracked, 40, (tracked >= 40)
+    return tracked, defaultMax, (tracked >= defaultMax)
 end
 
 local _detectedMurderer = nil
@@ -6227,28 +6262,30 @@ end
 IsCoinBagFull = function()
     local cur, mx, isFullDirect = getCoinBagLive()
 
-    -- 1) Exact "FULL" text on screen -> 100% full
+    -- Dynamic Target: 50 if Elite, 40 if Normal
+    local targetMax = 40
+    if (mx and type(mx) == "number" and mx >= 50) or checkEliteGamepass() then
+        targetMax = 50
+    end
+
+    -- CRITICAL RULE 1: If numeric coin count is parsed, STRICTLY check against targetMax (40 or 50)!
+    -- If current coins is less than capacity (e.g. 25 < 40), it is 100% GUARANTEED NOT FULL!
+    if cur and type(cur) == "number" then
+        if cur < targetMax then
+            return false
+        else
+            return true
+        end
+    end
+
+    -- CRITICAL RULE 2: Only if no numeric count exists, check if "FULL" text is confirmed:
     if isFullDirect == true then
         return true
     end
 
-    -- 2) Dynamic Max Check: 50 if Elite Gamepass, 40 if Normal
-    local targetMax = 40
-    if mx and mx >= 50 then
-        targetMax = 50
-    end
-
-    -- 3) Numeric check against targetMax (40 or 50):
-    if cur and type(cur) == "number" then
-        if cur >= targetMax then
-            return true
-        else
-            return false -- Below capacity: Farm continues smoothly!
-        end
-    end
-
-    -- 4) Internal counter fallback
-    if (_G.RanaxCoinsCollected or 0) >= targetMax then
+    -- CRITICAL RULE 3: Fallback internal counter: MUST reach targetMax (40 or 50):
+    local tracked = _G.RanaxCoinsCollected or 0
+    if tracked >= targetMax then
         return true
     end
 
@@ -7188,6 +7225,7 @@ task.spawn(function()
                                 _G.CoinTween = TweenService:Create(hrp, tweenInfo, {CFrame = targetCFrame})
                                 _G.CoinTween:Play()
 
+                                local coinWasCollected = false
                                 local startWait = tick()
                                 local lastPos = hrp.Position
                                 local stuckDuration = 0
@@ -7291,6 +7329,7 @@ task.spawn(function()
                                             end
                                             task.wait(0.03)
                                         end
+                                        coinWasCollected = true
                                         break
                                     end
 
@@ -7317,8 +7356,10 @@ task.spawn(function()
 
                                 blacklistedCoins[closestCoin] = tick() + 15
                                 _G.BlacklistedCoins = blacklistedCoins
-                                _G.RanaxCoinsCollected = (_G.RanaxCoinsCollected or 0) + 1
-                                _G.FarmTotalCollected  = (_G.FarmTotalCollected or 0) + 1
+                                if coinWasCollected then
+                                    _G.RanaxCoinsCollected = (_G.RanaxCoinsCollected or 0) + 1
+                                    _G.FarmTotalCollected  = (_G.FarmTotalCollected or 0) + 1
+                                end
                             end
                         else
                             task.wait(0.3)
