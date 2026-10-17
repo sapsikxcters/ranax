@@ -6175,17 +6175,17 @@ IsCoinBagFull = function()
         return true
     end
 
-    -- 2) Numeric check from UI (e.g. 40/40 or 50/50)
-    if cur and mx and mx >= 40 then
-        if cur >= mx and cur >= 40 then
+    -- 2) Strict 40 Coin Check: EXACTLY 40 coins (or more)!
+    -- If below 40 (0 to 39), NEVER FULL! Keeps farming!
+    if cur and type(cur) == "number" then
+        if cur >= 40 then
             return true
         else
-            -- If UI clearly says e.g. 0/40, 15/40, 36/40, NEVER FULL!
-            return false
+            return false -- 0..39: Farm continues uninterrupted!
         end
     end
 
-    -- 3) Internal counter fallback (ONLY when actually collected 40+ coins)
+    -- 3) Internal counter fallback: Exactly 40+ coins
     if (_G.RanaxCoinsCollected or 0) >= 40 then
         return true
     end
