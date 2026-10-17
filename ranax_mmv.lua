@@ -918,6 +918,8 @@ if RoundEndEvent then
             _G.RanaxRoundInProgress = false
             _G.CoinFarmHandlingBagFull = false
             _G.DiedThisRound = false
+            _G.MurdererDiedThisRound = false
+            _currentTrackedMurderer = nil
             _G.HasReportedCoins = false
             _G.RanaxCoinsCollected = 0
             _G.BlacklistedCoins = {}
@@ -938,6 +940,9 @@ if RoundStartEvent then
             _G.RanaxRoundStartTime = os.time()
             _G.CoinFarmHandlingBagFull = false
             _G.DiedThisRound = false
+            _G.MurdererDiedThisRound = false
+            _currentTrackedMurderer = nil
+            _G.HasTeleportedAboveFirst = false
             _G.HasReportedCoins = false
             _G.RanaxCoinsCollected = 0
             _G.BlacklistedCoins = {}
@@ -5931,6 +5936,51 @@ end
 
 local _detectedMurderer = nil
 local _murdererDiedConn = nil
+local _currentTrackedMurderer = nil
+_G.MurdererDiedThisRound = false
+
+local function onMurdererDied(m)
+    if _G.MurdererDiedThisRound then return end
+    _G.MurdererDiedThisRound = true
+    _G.RanaxRoundInProgress = false
+
+    -- Stop farm INSTANTLY upon Murderer death!
+    if _G.CoinTween then
+        _G.CoinTween:Cancel()
+        _G.CoinTween = nil
+    end
+    pcall(removeCoinFarmPlatform)
+    local char = LocalPlayer.Character
+    pcall(function() removeFarmFloat(char) end)
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    if hrp then
+        hrp.AssemblyLinearVelocity = Vector3.zero
+        hrp.AssemblyAngularVelocity = Vector3.zero
+    end
+
+    local mName = (m and m.DisplayName) or (m and m.Name) or "Murderer"
+    notify("Coin Farm", "Murderer (" .. mName .. ") died! Farm stopped until next round...", 3.0, "skull")
+end
+
+local function hookMurdererDeath(m)
+    if not m then return end
+    _currentTrackedMurderer = m
+    local function setupChar(c)
+        if not c then return end
+        local hum = c:WaitForChild("Humanoid", 3) or c:FindFirstChildOfClass("Humanoid")
+        if hum and not hum:GetAttribute("RanaxMurdDeathHooked") then
+            hum:SetAttribute("RanaxMurdDeathHooked", true)
+            hum.Died:Connect(function()
+                onMurdererDied(m)
+            end)
+        end
+    end
+    if m.Character then setupChar(m.Character) end
+    m.CharacterAdded:Connect(function(c)
+        task.wait(0.2)
+        setupChar(c)
+    end)
+end
 
 local function getMurdererLive()
     -- 1. Check verified MM2 roles table
@@ -5945,12 +5995,12 @@ local function getMurdererLive()
         end
     end
 
-    -- 2. Check tool holding or in backpack
+    -- 2. Check tool holding or in backpack (detect knife/blade/dagger/scythe/KnifeServer)
     for _, plr in ipairs(Players:GetPlayers()) do
         local c = plr.Character
         if c then
             for _, item in ipairs(c:GetChildren()) do
-                if item:IsA("Tool") and item.Name:lower():find("knife") then
+                if item:IsA("Tool") and (item.Name:lower():find("knife") or item.Name:lower():find("blade") or item.Name:lower():find("dagger") or item.Name:lower():find("scythe") or item:FindFirstChild("KnifeServer")) then
                     return plr
                 end
             end
@@ -5958,34 +6008,24 @@ local function getMurdererLive()
         local bp = plr:FindFirstChild("Backpack")
         if bp then
             for _, item in ipairs(bp:GetChildren()) do
-                if item:IsA("Tool") and item.Name:lower():find("knife") then
+                if item:IsA("Tool") and (item.Name:lower():find("knife") or item.Name:lower():find("blade") or item.Name:lower():find("dagger") or item.Name:lower():find("scythe") or item:FindFirstChild("KnifeServer")) then
                     return plr
                 end
             end
         end
     end
 
-    return nil
-end
-
-local function hookMurdererDeath(m)
-    if not m or not m.Character then return end
-    local hum = m.Character:FindFirstChildOfClass("Humanoid")
-    if hum and not hum:GetAttribute("RanaxDeathHooked") then
-        hum:SetAttribute("RanaxDeathHooked", true)
-        hum.Died:Connect(function()
-            _G.RanaxRoundInProgress = false
-            if _G.CoinTween then _G.CoinTween:Cancel(); _G.CoinTween = nil end
-            pcall(removeCoinFarmPlatform)
-            pcall(function() removeFarmFloat(LocalPlayer.Character) end)
-            local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-            if hrp then
-                hrp.AssemblyLinearVelocity = Vector3.zero
-                hrp.AssemblyAngularVelocity = Vector3.zero
-            end
-            notify("Coin Farm", "Sheriff shot the Murderer! Farm stopped instantly.", 2, "check")
-        end)
+    -- 3. Fallback functions
+    if typeof(getMurderer) == "function" then
+        local m = getMurderer()
+        if m then return m end
     end
+    if typeof(getMurdererTarget) == "function" then
+        local m = getMurdererTarget()
+        if m then return m end
+    end
+
+    return nil
 end
 
 local function isRoundOngoing()
@@ -6565,6 +6605,8 @@ task.spawn(function()
 
                     -- Clear round locks while waiting for map to spawn coins (NEW ROUND STARTS HERE!)
                     _G.DiedThisRound = false
+                    _G.MurdererDiedThisRound = false
+                    _currentTrackedMurderer = nil
                     _G.CoinFarmHandlingBagFull = false
                     _G.HasReportedCoins = false
                     _G.RanaxCoinsCollected = 0
@@ -6579,6 +6621,17 @@ task.spawn(function()
 
                 -- USER DIED DURING THIS MATCH: Stay completely parked in lobby until match ends & new round starts!
                 elseif _G.DiedThisRound then
+                    if _G.CoinTween then _G.CoinTween:Cancel(); _G.CoinTween = nil end
+                    pcall(removeCoinFarmPlatform)
+                    pcall(function() removeFarmFloat(char) end)
+                    if hrp then
+                        hrp.AssemblyLinearVelocity = Vector3.zero
+                        hrp.AssemblyAngularVelocity = Vector3.zero
+                    end
+                    task.wait(0.5)
+
+                -- MURDERER DIED DURING THIS MATCH: Stop instantly and wait until match ends & new round starts!
+                elseif _G.MurdererDiedThisRound then
                     if _G.CoinTween then _G.CoinTween:Cancel(); _G.CoinTween = nil end
                     pcall(removeCoinFarmPlatform)
                     pcall(function() removeFarmFloat(char) end)
@@ -6606,6 +6659,31 @@ task.spawn(function()
                     end
 
                 else
+                    -- 0) ACTIVE MURDERER STATUS CHECK: Stop instantly if Murderer died!
+                    local activeMurd = getMurdererLive()
+                    if activeMurd then
+                        if _currentTrackedMurderer ~= activeMurd then
+                            hookMurdererDeath(activeMurd)
+                        end
+                        local mHum = activeMurd.Character and activeMurd.Character:FindFirstChildOfClass("Humanoid")
+                        if mHum and mHum.Health <= 0 then
+                            onMurdererDied(activeMurd)
+                        end
+                    end
+                    if _currentTrackedMurderer and not _G.MurdererDiedThisRound then
+                        local mChar = _currentTrackedMurderer.Character
+                        if not mChar or not mChar.Parent then
+                            if #mapCoins > 0 and isRoundOngoing() then
+                                onMurdererDied(_currentTrackedMurderer)
+                            end
+                        else
+                            local mHum = mChar:FindFirstChildOfClass("Humanoid")
+                            if mHum and mHum.Health <= 0 then
+                                onMurdererDied(_currentTrackedMurderer)
+                            end
+                        end
+                    end
+
                     -- 1) FIRST TELEPORT ABOVE MAP (SAFE ROOF) WITH ENGLISH NOTIFICATION:
                     if not _G.HasTeleportedAboveFirst then
                         _G.HasTeleportedAboveFirst = true
@@ -6926,9 +7004,19 @@ task.spawn(function()
                                 local timeoutLimit = tonumber(_G.CoinFarmAntiStuckTimeout) or 2.0
 
                                 while _G.CoinTween and closestCoin and closestCoin.Parent and (tick() - startWait < tweenTime + 0.1) do
-                                    if _G.DiedThisRound or not (_G.SafeAutoFarm or _G.AutoCoins) or _G.CoinFarmHandlingBagFull then
+                                    if _G.DiedThisRound or _G.MurdererDiedThisRound or not (_G.SafeAutoFarm or _G.AutoCoins) or _G.CoinFarmHandlingBagFull then
                                         if _G.CoinTween then _G.CoinTween:Cancel(); _G.CoinTween = nil end
                                         break
+                                    end
+
+                                    -- Check if Murderer died mid-flight to coin
+                                    if _currentTrackedMurderer then
+                                        local mHum = _currentTrackedMurderer.Character and _currentTrackedMurderer.Character:FindFirstChildOfClass("Humanoid")
+                                        if mHum and mHum.Health <= 0 then
+                                            onMurdererDied(_currentTrackedMurderer)
+                                            if _G.CoinTween then _G.CoinTween:Cancel(); _G.CoinTween = nil end
+                                            break
+                                        end
                                     end
 
                                     if _RanaxFarmPlatform and _RanaxFarmPlatform.Parent then
