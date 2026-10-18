@@ -1,0 +1,2203 @@
+--[[
+    ================================================================
+      Zick Hub V2 — Edited Build (Ranax MMV Menu Edition)
+    ================================================================
+      - Shoot V2: FOV icindeki en yakin oyuncuya otomatik ates (Auto-Equip YOK, sadece eldeki silahla ates eder)
+      - Flick Shoot: KARAKTER hedefe doner, ates eder ve geri doner (gorunmezlik YOK, tam donus animasyonu) (R ile ac/kapa)
+      - Kill Aura: MMV KillEvent ile etrafindakileri oldurur
+      - ESP: Chams / Isim / Kutu / Tracer / Health Bar / Mesafe
+      - Ranax MMV tarzi menu: sekmeler, toggle, slider, buton
+      - Phantom Scope Destegi + Otomatik Silah Alma (GunDrop Pickup)
+      - Q = Shoot ac/kapa | R = Flick ac/kapa | LeftControl = Menu ac/kapa
+    ================================================================
+]]
+
+local genv = (type(getgenv) == "function") and getgenv() or _G
+if genv.ZickHubV2Loaded then
+	warn("[Zick Hub V2] zaten yuklu!")
+	return
+end
+genv.ZickHubV2Loaded = true
+
+-- // Servisler
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TeleportService = game:GetService("TeleportService")
+local Lighting = game:GetService("Lighting")
+local StarterGui = game:GetService("StarterGui")
+local Workspace = game:GetService("Workspace")
+local CoreGui = game:GetService("CoreGui")
+
+local LocalPlayer = Players.LocalPlayer
+local Camera = Workspace.CurrentCamera
+
+Workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
+	Camera = Workspace.CurrentCamera or Camera
+end)
+
+-- ============================ AYARLAR ============================
+local SETTINGS = {
+	TARGET_MODE     = "FOV",          -- "FOV" veya "Range (Mesafe)"
+	MAX_RANGE       = 250,            -- Studs (0 = sinirsiz)
+	FOV_RADIUS      = 180,
+	FOV_SHOW        = false,          -- FOV Cemberi cizimi
+	FOV_COLOR       = Color3.fromRGB(160, 32, 240),
+	AUTO_FIRE       = true,
+	AUTO_EQUIP      = true,           -- True: cantadan/yerden silahi otomatik kusanir | False: sadece elde tutulan silahla ates eder
+	SHOOT_METHOD    = "New (Blatant)",-- "New (Blatant)" veya "Normal"
+	KEYBIND         = Enum.KeyCode.Q,
+	SHOOT_DELAY     = 0.1,
+	PREDICT_OFFSET  = 2.8,
+	WALL_CHECK      = true,
+	AUTO_RELOAD     = true,
+	BURST_SIZE      = 0,
+	BURST_PAUSE     = 0.5,
+	HIT_SOUND       = true,           -- Crisp AAA vurus sesi
+	DEBUG           = true,
+
+	-- Flick Shoot (Ranax MMV Motoru)
+	FLICK_ENABLED   = false,
+	FLICK_KEY       = Enum.KeyCode.R, -- R = Flick ac/kapa
+	FLICK_TURN_TIME = 0.08,           -- flick donme suresi (sn)
+	FLICK_RESTORE   = true,           -- atis sonrasi eski rotasyona don
+	FLICK_CAMERA    = false,          -- flick sirasinda kamerayi hedefe cevir
+
+	-- Menu Keybind
+	MENU_KEY        = Enum.KeyCode.LeftControl,
+
+	-- Tema (Ranax MMV)
+	THEME        = Color3.fromRGB(150, 100, 255),
+	THEME_BG     = Color3.fromRGB(20, 15, 30),
+	THEME_TOP    = Color3.fromRGB(30, 20, 45),
+	THEME_ROW    = Color3.fromRGB(35, 25, 50),
+	THEME_TEXT   = Color3.fromRGB(220, 210, 240),
+	DISCORD      = "https://discord.gg",
+}
+
+local ESP_SETTINGS = {
+	Enabled     = true,
+	Chams       = true,
+	Names       = true,
+	Boxes       = true,
+	Tracers     = false,
+	HealthBars  = true,
+	Distance    = true,
+	TeamCheck   = false,
+	MaxDistance = 0,           -- 0 = sinirsiz
+	TextSize    = 13,
+	BoxColor    = Color3.fromRGB(160, 32, 240),
+	NameColor   = Color3.fromRGB(255, 255, 255),
+}
+
+local PLAYER_SETTINGS = {
+	SpeedEnabled  = false,
+	SpeedValue    = 16,
+	JumpEnabled   = false,
+	JumpValue     = 50,
+	AntiAFK       = false,
+	FPSBoost      = false,
+}
+
+-- ============================ YARDIMCI ============================
+local function create(class, props, parent)
+	local inst = Instance.new(class)
+	for k, v in pairs(props) do
+		inst[k] = v
+	end
+	inst.Parent = parent
+	return inst
+end
+
+local function guiParent(gui)
+	local ok = pcall(function()
+		gui.Parent = (type(gethui) == "function" and gethui()) or CoreGui
+	end)
+	if not ok then
+		gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+	end
+end
+
+-- eski Draggable property modern Roblox'ta guvenilmez; manuel surukleme bagla
+local function makeDraggable(frame, handle)
+	handle = handle or frame
+	local dragging = false
+	local dragStart, startPos
+	handle.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = true
+			dragStart = input.Position
+			startPos = frame.Position
+			input.Changed:Connect(function()
+				if input.UserInputState == Enum.UserInputState.End then
+					dragging = false
+				end
+			end)
+		end
+	end)
+	UserInputService.InputChanged:Connect(function(input)
+		if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+			local delta = input.Position - dragStart
+			frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+		end
+	end)
+end
+
+-- Kendi bildirim sistemi (StarterGui'ye bagli degil, her zaman gider)
+local notifyGui = create("ScreenGui", {
+	Name = "ZickHubNotifs",
+	ResetOnSpawn = false,
+	DisplayOrder = 1001,
+})
+guiParent(notifyGui)
+
+local activeNotifs = {}
+
+local function repositionNotifs()
+	for i, n in ipairs(activeNotifs) do
+		n.frame.Position = UDim2.new(1, -270, 0, 10 + (i - 1) * 64)
+	end
+end
+
+local function notify(title, text, dur)
+	local n = {}
+	n.frame = create("Frame", {
+		Size = UDim2.new(0, 255, 0, 56),
+		Position = UDim2.new(1, 280, 0, 10),
+		BackgroundColor3 = SETTINGS.THEME_BG,
+		BackgroundTransparency = 0.1,
+		BorderSizePixel = 0,
+		ZIndex = 50,
+	}, notifyGui)
+	create("UICorner", { CornerRadius = UDim.new(0, 8) }, n.frame)
+	create("UIStroke", { Color = SETTINGS.THEME, Thickness = 1.2, Transparency = 0.3 }, n.frame)
+
+	create("TextLabel", {
+		Size = UDim2.new(1, -16, 0, 18),
+		Position = UDim2.new(0, 10, 0, 6),
+		BackgroundTransparency = 1,
+		Font = Enum.Font.GothamBold,
+		Text = title,
+		TextColor3 = SETTINGS.THEME,
+		TextSize = 13,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		ZIndex = 51,
+	}, n.frame)
+
+	create("TextLabel", {
+		Size = UDim2.new(1, -16, 0, 30),
+		Position = UDim2.new(0, 10, 0, 24),
+		BackgroundTransparency = 1,
+		Font = Enum.Font.GothamMedium,
+		Text = text,
+		TextColor3 = SETTINGS.THEME_TEXT,
+		TextSize = 12,
+		TextWrapped = true,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		ZIndex = 51,
+	}, n.frame)
+
+	table.insert(activeNotifs, n)
+	repositionNotifs()
+
+	TweenService:Create(n.frame, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		Position = UDim2.new(1, -270, n.frame.Position.Y.Scale, n.frame.Position.Y.Offset)
+	}):Play()
+
+	task.delay(dur or 4, function()
+		local idx = table.find(activeNotifs, n)
+		if idx then
+			table.remove(activeNotifs, idx)
+		end
+		TweenService:Create(n.frame, TweenInfo.new(0.2), { Position = UDim2.new(1, 280, n.frame.Position.Y.Scale, n.frame.Position.Y.Offset) }):Play()
+		task.delay(0.25, function()
+			n.frame:Destroy()
+			repositionNotifs()
+		end)
+	end)
+end
+
+local lastLogKey, lastLogTime = nil, 0
+local function dlog(key, msg)
+	if not SETTINGS.DEBUG then
+		return
+	end
+	local now = os.clock()
+	if key ~= lastLogKey or now - lastLogTime > 3 then
+		lastLogKey = key
+		lastLogTime = now
+		print("[ZickHub V2] " .. msg)
+	end
+end
+
+-- ============================ FRIEND SYSTEM ============================
+local FRIENDS_FILE = "zickhub_friends.txt"
+local Friends = {}
+local FriendOrder = {}
+
+local function saveFriends()
+	if type(writefile) == "function" then
+		pcall(function()
+			writefile(FRIENDS_FILE, table.concat(FriendOrder, "\n"))
+		end)
+	end
+end
+
+local function loadFriends()
+	if type(readfile) == "function" and type(isfile) == "function" and isfile(FRIENDS_FILE) then
+		pcall(function()
+			local data = readfile(FRIENDS_FILE)
+			for name in string.gmatch(data, "[^\r\n]+") do
+				name = (name:gsub("^%s+", ""):gsub("%s+$", ""))
+				if name ~= "" and not Friends[name] then
+					Friends[name] = true
+					table.insert(FriendOrder, name)
+				end
+			end
+		end)
+	end
+end
+
+local function isFriend(name)
+	return Friends[name] == true
+end
+
+local function addFriend(name)
+	name = (name:gsub("^%s+", ""):gsub("%s+$", ""))
+	if name == "" or Friends[name] then
+		return false
+	end
+	Friends[name] = true
+	table.insert(FriendOrder, name)
+	saveFriends()
+	return true
+end
+
+local function removeFriend(name)
+	if not Friends[name] then
+		return false
+	end
+	Friends[name] = nil
+	local idx = table.find(FriendOrder, name)
+	if idx then
+		table.remove(FriendOrder, idx)
+	end
+	saveFriends()
+	return true
+end
+
+local function clearFriends()
+	table.clear(Friends)
+	table.clear(FriendOrder)
+end
+
+loadFriends()
+
+-- ============================ FOV CEMBERI + TARGET INFO ============================
+local fovCircle = Drawing.new("Circle")
+fovCircle.Thickness = 1.5
+fovCircle.Color = SETTINGS.FOV_COLOR
+fovCircle.Filled = false
+fovCircle.Transparency = 0.8
+fovCircle.NumSides = 64
+fovCircle.Radius = SETTINGS.FOV_RADIUS
+fovCircle.Visible = SETTINGS.FOV_SHOW
+
+local targetInfo = Drawing.new("Text")
+targetInfo.Size = 13
+targetInfo.Center = true
+targetInfo.Outline = true
+targetInfo.OutlineColor = Color3.new(0, 0, 0)
+targetInfo.Color = Color3.fromRGB(160, 32, 240)
+targetInfo.Visible = false
+
+-- ============================ GUN / REMOTE / RELOAD ============================
+local GUN_HINTS = {
+	"phantom scope", "phantom", "scope", "gun", "revolver", "rifle", "ak", "deagle", "pistol", "smg", "awp", "scar",
+	"m4", "usp", "glock", "mp5", "shotgun", "sniper", "famas", "aug", "p90", "uzi", "vector", "m1911", "lmg",
+}
+
+local function looksLikeGun(name)
+	local l = name:lower()
+	for _, h in ipairs(GUN_HINTS) do
+		if l:find(h, 1, true) then
+			return true
+		end
+	end
+	return false
+end
+
+-- silah OLMAYAN esyalar (prank bomba vb.) asla silah sayilmaz
+local NOT_GUN_HINTS = {
+	"bomb", "prank", "flash", "smoke", "medkit", "bandage", "heal",
+	"pizza", "cola", "soda", "candy", "trap", "radio", "boombox", "boom",
+	-- yakin dovus silahlari asla "silah" sayilmaz (murderer iken bicak kusanilip Stab'a CFrame yollanmasin)
+	"knife", "sword", "machete", "katana", "dagger", "crowbar", "shovel",
+}
+local function isNotGun(name)
+	local l = name:lower()
+	for _, h in ipairs(NOT_GUN_HINTS) do
+		if l:find(h, 1, true) then
+			return true
+		end
+	end
+	return false
+end
+
+local function hasShootRemote(container)
+	if not container then return false end
+	local ks = container:FindFirstChild("KnifeServer")
+	if ks and ks:FindFirstChild("ShootGun") then return true end
+	for _, n in ipairs({ "ShootGun", "Shoot", "Fire", "ShootRemote", "FireEvent", "Shot", "Shooting", "CreateBeam" }) do
+		local r = container:FindFirstChild(n, true)
+		if r and (r:IsA("RemoteEvent") or r:IsA("RemoteFunction")) then
+			return true
+		end
+	end
+	for _, d in ipairs(container:GetDescendants()) do
+		if (d:IsA("RemoteEvent") or d:IsA("RemoteFunction")) and not d.Name:lower():find("reload") then
+			return true
+		end
+	end
+	return false
+end
+
+local function pickShootRemote(container)
+	if not container then return nil end
+	local ks = container:FindFirstChild("KnifeServer")
+	if ks then
+		local sg = ks:FindFirstChild("ShootGun")
+		if sg then return sg end
+	end
+	for _, n in ipairs({ "ShootGun", "Shoot", "Fire", "ShootRemote", "FireEvent", "Shot", "Shooting", "CreateBeam" }) do
+		local r = container:FindFirstChild(n, true)
+		if r and (r:IsA("RemoteEvent") or r:IsA("RemoteFunction")) then
+			return r
+		end
+	end
+	for _, d in ipairs(container:GetDescendants()) do
+		if (d:IsA("RemoteEvent") or d:IsA("RemoteFunction")) and not d.Name:lower():find("reload") then
+			return d
+		end
+	end
+	return nil
+end
+
+local function findGunInContainer(container)
+	if not container then return nil end
+	local priorityNames = { "Phantom Scope", "phantom scope", "Phantom", "phantom", "Scope", "scope", "Gun", "gun", "Revolver", "revolver" }
+	for _, name in ipairs(priorityNames) do
+		local t = container:FindFirstChild(name)
+		if t and t:IsA("Tool") and not isNotGun(t.Name) then
+			return t
+		end
+	end
+	for _, t in ipairs(container:GetChildren()) do
+		if t:IsA("Tool") and not isNotGun(t.Name) then
+			if looksLikeGun(t.Name) or hasShootRemote(t) then
+				return t
+			end
+		end
+	end
+	return nil
+end
+
+local function grabDroppedGun()
+	local char = LocalPlayer.Character
+	local hrp = char and char:FindFirstChild("HumanoidRootPart")
+	if not hrp then return false end
+
+	local dropNames = { "GunDrop", "Gun", "PhantomScopeDrop", "PhantomDrop", "ScopeDrop" }
+	local foundDrop = nil
+	for _, name in ipairs(dropNames) do
+		local drop = Workspace:FindFirstChild(name, true)
+		if drop and (drop:IsA("BasePart") or drop:IsA("Model")) then
+			foundDrop = drop
+			break
+		end
+	end
+
+	if not foundDrop then
+		for _, desc in ipairs(Workspace:GetDescendants()) do
+			if desc.Name == "GunDrop" or (desc:IsA("BasePart") and desc.Name:lower():find("gundrop")) then
+				foundDrop = desc
+				break
+			end
+		end
+	end
+
+	if foundDrop then
+		pcall(function()
+			local handle = foundDrop:IsA("BasePart") and foundDrop or foundDrop:FindFirstChildWhichIsA("BasePart") or foundDrop:FindFirstChild("Handle")
+			if handle then
+				firetouchinterest(hrp, handle, 0)
+				firetouchinterest(hrp, handle, 1)
+			end
+			if foundDrop:IsA("Model") or foundDrop:IsA("BasePart") then
+				foundDrop:PivotTo(hrp.CFrame)
+			end
+		end)
+		task.wait(0.08)
+		return true
+	end
+	return false
+end
+
+local function getGun()
+	local char = LocalPlayer.Character
+	if not char then
+		return nil
+	end
+
+	-- 1. Elde tutulan silah
+	local held = char:FindFirstChildOfClass("Tool")
+	if held and not isNotGun(held.Name) and (looksLikeGun(held.Name) or hasShootRemote(held)) then
+		return held
+	end
+
+	-- 2. Karakter icindeki silah
+	local inChar = findGunInContainer(char)
+	if inChar then
+		return inChar
+	end
+
+	-- 3. AUTO EQUIP (Aciksa cantadan / yerden silahi kusanir)
+	if SETTINGS.AUTO_EQUIP then
+		local bp = LocalPlayer:FindFirstChildOfClass("Backpack")
+		if bp then
+			local bpGun = findGunInContainer(bp)
+			if bpGun then
+				local hum = char:FindFirstChildOfClass("Humanoid")
+				if hum then
+					hum:EquipTool(bpGun)
+				else
+					bpGun.Parent = char
+				end
+				task.wait(0.04)
+				return bpGun
+			end
+		end
+
+		-- 4. Yerdeki silahi otomatik alma
+		if grabDroppedGun() then
+			local newGun = findGunInContainer(char) or (bp and findGunInContainer(bp))
+			if newGun then
+				if newGun.Parent ~= char then
+					newGun.Parent = char
+					task.wait(0.04)
+				end
+				return newGun
+			end
+		end
+	end
+
+	return nil
+end
+
+local function playHitSound()
+	if not SETTINGS.HIT_SOUND then return end
+	pcall(function()
+		local s = Instance.new("Sound")
+		s.SoundId = "rbxassetid://8526543415" -- Crisp AAA kill/hitmarker ding
+		s.Volume = 2.0
+		s.Parent = Workspace
+		s:Play()
+		task.delay(2, function() pcall(function() s:Destroy() end) end)
+	end)
+end
+
+local function moveMouseToWorld(worldPos)
+	local cam = Workspace.CurrentCamera
+	if not cam then return false end
+	local screenPos, onScreen = cam:WorldToViewportPoint(worldPos)
+	local x = onScreen and math.floor(screenPos.X) or math.floor(cam.ViewportSize.X / 2)
+	local y = onScreen and math.floor(screenPos.Y) or math.floor(cam.ViewportSize.Y / 2)
+	if typeof(mousemoveabs) == "function" then
+		pcall(function() mousemoveabs(x, y) end)
+		return true
+	end
+	pcall(function()
+		if UserInputService and VirtualInputManager then
+			VirtualInputManager:SendMouseMoveEvent(x, y, game)
+		end
+	end)
+	return true
+end
+
+local remoteCache = { gun = nil, remote = nil }
+
+local function getShootRemote()
+	local gun = getGun()
+	if not gun then
+		remoteCache.gun, remoteCache.remote = nil, nil
+		return nil
+	end
+	if remoteCache.gun == gun and remoteCache.remote and remoteCache.remote.Parent then
+		return remoteCache.remote
+	end
+	local r = pickShootRemote(gun)
+	if r then
+		remoteCache.gun = gun
+		remoteCache.remote = r
+		return r
+	end
+	remoteCache.gun, remoteCache.remote = nil, nil
+	return nil
+end
+
+local function getAmmo(gun)
+	if not gun then
+		return nil
+	end
+	for _, name in ipairs({ "Ammo", "ammo", "AmmoValue", "Clip", "Magazine", "Bullets" }) do
+		local v = gun:FindFirstChild(name)
+		if v and (v:IsA("NumberValue") or v:IsA("IntValue")) then
+			return tonumber(v.Value)
+		end
+	end
+	local a = gun:GetAttribute("Ammo") or gun:GetAttribute("ammo") or gun:GetAttribute("AmmoInMag")
+	if a ~= nil then
+		return tonumber(a)
+	end
+	return nil
+end
+
+local function triggerReload(gun)
+	if not gun then
+		return
+	end
+	for _, d in ipairs(gun:GetDescendants()) do
+		if d:IsA("RemoteEvent") and d.Name:lower():find("reload") then
+			d:FireServer()
+			return
+		end
+	end
+	-- R tusu artik flick keybindi; script R basalmiyor, reload remote'u yoksa atlanir
+end
+
+-- ============================ FLICK SHOOT MOTORU ============================
+local flickActive = false
+
+local function visibleToCamera(hrp)
+	if not SETTINGS.WALL_CHECK then
+		return true
+	end
+	local origin = Camera and Camera.CFrame.Position
+	if not origin then return true end
+	local dir = hrp.Position - origin
+	if dir.Magnitude < 0.5 then
+		return true
+	end
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	local exclude = {}
+	if LocalPlayer.Character then
+		table.insert(exclude, LocalPlayer.Character)
+	end
+	for _, p in ipairs(Players:GetPlayers()) do
+		if isFriend(p.Name) and p.Character then
+			table.insert(exclude, p.Character)
+		end
+	end
+	params.FilterDescendantsInstances = exclude
+	local result = Workspace:Raycast(origin, dir, params)
+	if not result then
+		return true
+	end
+	local targetChar = hrp.Parent
+	return result.Instance and targetChar and (result.Instance:IsDescendantOf(targetChar) or result.Instance.Transparency > 0.65 or result.Instance.CanCollide == false)
+end
+
+-- 5V5 / AIM TRAINER / FFA / MM2 UYUMLU CLOSEST HEDEFLEME:
+-- Role (Murderer/Sheriff) bakmaz, arkadas olmayan en yakin CANLI oyuncuyu secer!
+local function getClosestTarget()
+	local myChar = LocalPlayer.Character
+	local myHRP = myChar and myChar:FindFirstChild("HumanoidRootPart")
+	if not myHRP then return nil end
+
+	local bestTarget = nil
+	local bestMetric = math.huge
+	local center = Camera and (Camera.ViewportSize / 2)
+	local isFOVMode = (SETTINGS.TARGET_MODE ~= "Range (Mesafe)" and SETTINGS.TARGET_MODE ~= "Range")
+
+	for _, plr in ipairs(Players:GetPlayers()) do
+		if plr ~= LocalPlayer and not isFriend(plr.Name) then
+			local char = plr.Character
+			if char then
+				local hrp = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso")
+				local hum = char:FindFirstChildOfClass("Humanoid")
+				if hrp and hum and hum.Health > 0 then
+					local passWall = true
+					if SETTINGS.WALL_CHECK then
+						passWall = visibleToCamera(hrp)
+						if not passWall then
+							local head = char:FindFirstChild("Head")
+							if head and visibleToCamera(head) then
+								passWall = true
+							end
+						end
+					end
+
+					if passWall then
+						if isFOVMode then
+							-- FOV Check: Ekranda crosshair'e en yakin hedef
+							if Camera then
+								local pos, onScreen = Camera:WorldToViewportPoint(hrp.Position)
+								if onScreen then
+									local d = (Vector2.new(pos.X, pos.Y) - center).Magnitude
+									if d <= SETTINGS.FOV_RADIUS and d < bestMetric then
+										bestMetric = d
+										bestTarget = plr
+									end
+								end
+							end
+						else
+							-- Range Mode: 3D Dunya mesafesinde en yakin hedef
+							local dist = (myHRP.Position - hrp.Position).Magnitude
+							if (SETTINGS.MAX_RANGE <= 0 or dist <= SETTINGS.MAX_RANGE) and dist < bestMetric then
+								bestMetric = dist
+								bestTarget = plr
+							end
+						end
+					end
+				end
+			end
+		end
+	end
+	return bestTarget
+end
+
+-- Ranax MMV Gelişmiş Lead & Mesafe Tahmin Motoru
+local function getPredictedPosition(hrp, hum, offset, origin)
+	local velocity = Vector3.zero
+	pcall(function() velocity = hrp.AssemblyLinearVelocity end)
+	if not velocity or velocity.Magnitude == 0 then pcall(function() velocity = hrp.Velocity end) end
+	velocity = Vector3.new(velocity.X, 0, velocity.Z)
+
+	local moveDir = (hum and hum.MoveDirection) or Vector3.zero
+	moveDir = Vector3.new(moveDir.X, 0, moveDir.Z)
+
+	local dist = 1
+	if origin and hrp then
+		dist = math.clamp((hrp.Position - origin).Magnitude / 50, 0.4, 2.5)
+	end
+
+	local leadMult = (offset or 2.8) * dist
+	local predPos = hrp.Position + (velocity * 0.65) * (leadMult / 14) + (moveDir * leadMult)
+
+	if SETTINGS.SHOOT_METHOD == "Normal" and origin then
+		local d = (origin - hrp.Position).Magnitude
+		predPos = predPos + Vector3.new(0, (d / 140), 0)
+	end
+
+	return predPos
+end
+
+local function getOriginPosition()
+	local char = LocalPlayer.Character
+	if not char then return nil end
+	local part = char:FindFirstChild("RightHand")
+		or char:FindFirstChild("Right Arm")
+		or char:FindFirstChild("Head")
+		or char:FindFirstChild("HumanoidRootPart")
+	return part and part.Position or nil
+end
+
+local remoteCooldown = 0
+local shotsInBurst = 0
+local currentAimTarget = nil
+
+-- Tum MM2, Aim Trainer ve Modded remote tiplerini destekleyen universal tetikleyici
+local function fireRemote(rem, origin, hitPos, gun)
+	if not rem then return end
+	pcall(function()
+		local aimCF = CFrame.lookAt(origin, hitPos)
+		-- 1. Standart MM2 CFrame + CFrame
+		rem:FireServer(aimCF, CFrame.new(hitPos))
+		-- 2. CFrame + Vector3
+		rem:FireServer(aimCF, hitPos)
+		-- 3. Vector3 + Vector3
+		rem:FireServer(origin, hitPos)
+		-- 4. HitPos tekil
+		rem:FireServer(hitPos)
+		-- 5. Aim CFrame tekil
+		rem:FireServer(aimCF)
+		-- 6. RemoteFunction invoke
+		if rem:IsA("RemoteFunction") then
+			rem:InvokeServer(1, hitPos, "AH2")
+		end
+	end)
+	if gun and gun:IsA("Tool") then
+		pcall(function() gun:Activate() end)
+	end
+	if SETTINGS.HIT_SOUND then
+		playHitSound()
+	end
+end
+
+-- ==================== RANAX MMV FLICK SHOOT MOTORU ====================
+local function executeFlickShoot(target, hitPos, remote, gun, origin)
+	if flickActive then return end
+	local myChar = LocalPlayer.Character
+	local myHRP = myChar and myChar:FindFirstChild("HumanoidRootPart")
+	local myHum = myChar and myChar:FindFirstChildOfClass("Humanoid")
+	if not (myHRP and myHum) then return end
+
+	flickActive = true
+	local savedCF = myHRP.CFrame
+	local savedAutoRotate = myHum.AutoRotate
+	local savedCamCF = (Camera and Camera.CFrame)
+	myHum.AutoRotate = false
+
+	local turnTime = math.clamp(SETTINGS.FLICK_TURN_TIME or 0.08, 0.03, 0.25)
+	local steps = math.max(4, math.floor(turnTime / 0.016))
+	local flatTarget = Vector3.new(hitPos.X, myHRP.Position.Y, hitPos.Z)
+	local targetRotCF = CFrame.lookAt(myHRP.Position, flatTarget)
+	local targetCamCF = (Camera and savedCamCF and CFrame.lookAt(savedCamCF.Position, hitPos))
+
+	-- 1. Smooth Cubic Lerp Snap to Target (Ease-In)
+	for i = 1, steps do
+		if not (myHRP and myHRP.Parent) then break end
+		local alpha = (i / steps) ^ 0.6 -- Ranax flick ivmesi
+		local curRot = savedCF:Lerp(targetRotCF, alpha)
+		myHRP.CFrame = CFrame.new(myHRP.Position) * curRot.Rotation
+		myChar:PivotTo(CFrame.new(myHRP.Position) * curRot.Rotation)
+
+		if SETTINGS.FLICK_CAMERA and Camera and savedCamCF and targetCamCF then
+			Camera.CFrame = savedCamCF:Lerp(targetCamCF, alpha)
+		end
+		RunService.RenderStepped:Wait()
+	end
+
+	-- 2. Mouse Snap at peak
+	pcall(function() moveMouseToWorld(hitPos) end)
+
+	-- 3. Namlu konumunu guncelle ve zirvede ates et
+	local newOrigin = getOriginPosition()
+	if newOrigin then origin = newOrigin end
+	fireRemote(remote, origin, hitPos, gun)
+
+	-- 4. Kisa dogal atis beklemesi
+	task.wait(0.03)
+
+	-- 5. Ease-Out return to original orientation (Smooth Geri Donus)
+	if SETTINGS.FLICK_RESTORE then
+		local peakCF = myHRP.CFrame
+		local peakCamCF = (Camera and Camera.CFrame)
+		local returnSteps = math.max(3, math.floor(steps * 0.7))
+		for i = 1, returnSteps do
+			if not (myHRP and myHRP.Parent) then break end
+			local alpha = (i / returnSteps) ^ 1.4 -- Decelerating ease-out
+			local curRot = peakCF:Lerp(savedCF, alpha)
+			myHRP.CFrame = CFrame.new(myHRP.Position) * curRot.Rotation
+			myChar:PivotTo(CFrame.new(myHRP.Position) * curRot.Rotation)
+
+			if SETTINGS.FLICK_CAMERA and Camera and peakCamCF and savedCamCF then
+				Camera.CFrame = peakCamCF:Lerp(savedCamCF, alpha)
+			end
+			RunService.RenderStepped:Wait()
+		end
+
+		if SETTINGS.FLICK_CAMERA and Camera and savedCamCF then
+			Camera.CFrame = savedCamCF
+		end
+	end
+
+	pcall(function() myHum.AutoRotate = savedAutoRotate end)
+	flickActive = false
+end
+
+local function shootV2()
+	if os.clock() < remoteCooldown then
+		return
+	end
+	local gun = getGun()
+	if not gun then
+		remoteCooldown = os.clock() + 0.5
+		dlog("noremote", "Silah yok - Auto Equip veya elinde silah tutulmasi gerekiyor")
+		return
+	end
+
+	local remote = getShootRemote()
+	if not remote then
+		remoteCooldown = os.clock() + 0.5
+		dlog("noremote", "Shoot remote bulunamadi")
+		return
+	end
+
+	if SETTINGS.AUTO_RELOAD then
+		local ammo = getAmmo(gun)
+		if ammo ~= nil and ammo <= 0 then
+			remoteCooldown = os.clock() + 1.2
+			dlog("reload", "sarjor bos - reload tetiklendi")
+			triggerReload(gun)
+			return
+		end
+	end
+
+	local target = getClosestTarget()
+	currentAimTarget = target
+	if not target then
+		dlog("notarget", "Gecerli hedef bulunamadi")
+		return
+	end
+
+	local tchar = target.Character
+	if not tchar then return end
+	local hrp = tchar:FindFirstChild("HumanoidRootPart") or tchar:FindFirstChild("Torso") or tchar:FindFirstChild("UpperTorso")
+	local hum = tchar:FindFirstChildOfClass("Humanoid")
+	if not hrp or not hum or hum.Health <= 0 then return end
+
+	local origin = getOriginPosition()
+	if not origin then return end
+	local hitPos = getPredictedPosition(hrp, hum, SETTINGS.PREDICT_OFFSET, origin)
+
+	if SETTINGS.FLICK_ENABLED then
+		executeFlickShoot(target, hitPos, remote, gun, origin)
+	else
+		fireRemote(remote, origin, hitPos, gun)
+	end
+
+	shotsInBurst = shotsInBurst + 1
+	if SETTINGS.BURST_SIZE > 0 and shotsInBurst >= SETTINGS.BURST_SIZE then
+		shotsInBurst = 0
+		remoteCooldown = os.clock() + SETTINGS.BURST_PAUSE
+		dlog("burst", "burst tamam - kisa bekleme")
+	end
+end
+
+-- Auto fire dongusu
+task.spawn(function()
+	while true do
+		if SETTINGS.AUTO_FIRE then
+			local ok, err = pcall(shootV2)
+			if not ok and SETTINGS.DEBUG then
+				warn("[ZickHub V2] shootV2 hata: " .. tostring(err))
+			end
+		else
+			currentAimTarget = nil
+		end
+		task.wait(SETTINGS.SHOOT_DELAY)
+	end
+end)
+
+-- Target info cizimi
+RunService.RenderStepped:Connect(function()
+	fovCircle.Radius = SETTINGS.FOV_RADIUS
+	fovCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2) -- cemberi ekranin TAM ortasina ciz
+	fovCircle.Visible = SETTINGS.FOV_SHOW and not flickActive
+	if currentAimTarget and currentAimTarget.Character and SETTINGS.FOV_SHOW then
+		local thrp = currentAimTarget.Character:FindFirstChild("HumanoidRootPart")
+		local thum = currentAimTarget.Character:FindFirstChildOfClass("Humanoid")
+		if thrp then
+			local pos, onScreen = Camera:WorldToViewportPoint(thrp.Position)
+			if onScreen then
+				targetInfo.Text = currentAimTarget.Name .. (thum and (" [" .. math.floor(thum.Health) .. "hp]") or "")
+				targetInfo.Position = Vector2.new(pos.X, pos.Y - 30)
+				targetInfo.Visible = true
+				return
+			end
+		end
+	end
+	targetInfo.Visible = false
+end)
+
+-- Q = Shoot ac/kapa (bildirim YOK, watermark gosterir) | R = Flick ac/kapa
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+	-- yazı kutusuna yazarken tuslari toggle etme (yoksa menu/kapatma karisir)
+	if gameProcessed or UserInputService:GetFocusedTextBox() then
+		return
+	end
+	if input.KeyCode == SETTINGS.KEYBIND then
+		SETTINGS.AUTO_FIRE = not SETTINGS.AUTO_FIRE
+	elseif input.KeyCode == SETTINGS.FLICK_KEY then
+		SETTINGS.FLICK_ENABLED = not SETTINGS.FLICK_ENABLED
+		notify("Flick Shoot", SETTINGS.FLICK_ENABLED and "Acik (R)" or "Kapali (R)", 2)
+	end
+end)
+
+-- ============================ 5V5 / AIM TRAINER / MM2 KILL AURA ============================
+local KILL_AURA = {
+	Enabled = false,
+	AttackDelay = 0.25,
+	Range = 25,               -- 0 = tum harita
+	AutoEquipKnife = true,    -- cantadan bicak kusan
+	TeleportTarget = false,   -- hedefleri onune isinla (5v5 icin opsiyonel)
+}
+
+local function getHRP()
+	local char = LocalPlayer.Character
+	return char and char:FindFirstChild("HumanoidRootPart") or nil
+end
+
+local function getKnifeTool()
+	local char = LocalPlayer.Character
+	if not char then return nil end
+
+	-- 1. Elde tutulan bicak
+	for _, t in ipairs(char:GetChildren()) do
+		if t:IsA("Tool") and (t.Name:lower():find("knife") or t.Name:lower():find("blade") or t.Name:lower():find("dagger") or t.Name:lower():find("scythe") or t.Name:lower():find("sword") or t:FindFirstChild("Stab") or t:FindFirstChild("Slash") or t:FindFirstChild("KnifeServer")) then
+			return t
+		end
+	end
+
+	-- 2. Cantadaki bicak (AutoEquip aktifse)
+	if KILL_AURA.AutoEquipKnife then
+		local bp = LocalPlayer:FindFirstChildOfClass("Backpack")
+		if bp then
+			for _, t in ipairs(bp:GetChildren()) do
+				if t:IsA("Tool") and (t.Name:lower():find("knife") or t.Name:lower():find("blade") or t.Name:lower():find("dagger") or t.Name:lower():find("scythe") or t.Name:lower():find("sword") or t:FindFirstChild("Stab") or t:FindFirstChild("Slash") or t:FindFirstChild("KnifeServer")) then
+					local hum = char:FindFirstChildOfClass("Humanoid")
+					if hum then hum:EquipTool(t) else t.Parent = char end
+					task.wait(0.04)
+					return t
+				end
+			end
+		end
+	end
+	return nil
+end
+
+local function getKillEvent()
+	local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+	local gameplay = remotes and remotes:FindFirstChild("Gameplay")
+	return gameplay and gameplay:FindFirstChild("KillEvent") or nil
+end
+
+task.spawn(function()
+	while true do
+		if KILL_AURA.Enabled then
+			local myRoot = getHRP()
+			if myRoot then
+				local knife = getKnifeTool()
+				local killEvent = getKillEvent()
+				local targets = {}
+
+				for _, plr in ipairs(Players:GetPlayers()) do
+					if plr ~= LocalPlayer and not isFriend(plr.Name) and plr.Character then
+						local hum = plr.Character:FindFirstChildOfClass("Humanoid")
+						local root = plr.Character:FindFirstChild("HumanoidRootPart") or plr.Character:FindFirstChild("Torso")
+						if hum and hum.Health > 0 and root then
+							local dist = (myRoot.Position - root.Position).Magnitude
+							if (KILL_AURA.Range <= 0) or (dist <= KILL_AURA.Range) then
+								table.insert(targets, { plr = plr, root = root, hum = hum, dist = dist })
+							end
+						end
+					end
+				end
+
+				-- En yakindan uzaga sirala
+				table.sort(targets, function(a, b) return a.dist < b.dist end)
+
+				if #targets > 0 then
+					for _, t in ipairs(targets) do
+						if not KILL_AURA.Enabled then break end
+						if t.hum and t.hum.Health > 0 and t.root and t.root.Parent then
+							if KILL_AURA.TeleportTarget then
+								pcall(function()
+									t.root.CFrame = myRoot.CFrame * CFrame.new(0, 0, -2.5)
+								end)
+							end
+
+							-- 1. MM2 / Aim Trainer Knife Remote Stabs
+							if knife then
+								local stab = knife:FindFirstChild("Stab") or (knife:FindFirstChild("KnifeServer") and knife.KnifeServer:FindFirstChild("Stab"))
+								local slash = knife:FindFirstChild("Slash")
+								pcall(function()
+									if stab then
+										stab:FireServer("Down")
+										stab:FireServer("Slash")
+									end
+									if slash then
+										slash:FireServer()
+									end
+								end)
+
+								-- 2. Knife Handle Touch Interest (Direct Instant Contact Damage)
+								pcall(function()
+									local handle = knife:FindFirstChild("Handle") or knife:FindFirstChildWhichIsA("BasePart")
+									if handle and typeof(firetouchinterest) == "function" then
+										firetouchinterest(handle, t.root, 0)
+										firetouchinterest(handle, t.root, 1)
+									end
+								end)
+
+								pcall(function() knife:Activate() end)
+							end
+
+							-- 3. KillEvent (MM2 Standard Server)
+							if killEvent then
+								pcall(function()
+									killEvent:FireServer(t.plr.Name, Color3.new(1, 0, 0))
+								end)
+							end
+
+							task.wait(KILL_AURA.AttackDelay)
+						end
+					end
+				else
+					task.wait(0.15)
+				end
+			else
+				task.wait(0.4)
+			end
+		else
+			task.wait(0.3)
+		end
+	end
+end)
+
+-- ============================ ESP SISTEMI ============================
+local espObjects = {}
+
+local function newEspDrawing(kind, props)
+	local d = Drawing.new(kind)
+	for k, v in pairs(props) do
+		d[k] = v
+	end
+	d.Visible = false
+	return d
+end
+
+local function ensureEsp(plr)
+	if espObjects[plr] then
+		return
+	end
+	espObjects[plr] = {
+		name = newEspDrawing("Text", {
+			Size = ESP_SETTINGS.TextSize,
+			Center = true,
+			Outline = true,
+			OutlineColor = Color3.new(0, 0, 0),
+			Color = ESP_SETTINGS.NameColor,
+		}),
+		box = newEspDrawing("Square", {
+			Thickness = 1,
+			Color = ESP_SETTINGS.BoxColor,
+			Filled = false,
+		}),
+		tracer = newEspDrawing("Line", {
+			Thickness = 1,
+			Color = ESP_SETTINGS.BoxColor,
+		}),
+		healthBg = newEspDrawing("Square", {
+			Thickness = 1,
+			Color = Color3.fromRGB(30, 30, 30),
+			Filled = true,
+		}),
+		health = newEspDrawing("Square", {
+			Thickness = 1,
+			Color = Color3.fromRGB(80, 220, 80),
+			Filled = true,
+		}),
+		highlight = nil,
+	}
+end
+
+local function removeEsp(plr)
+	local obj = espObjects[plr]
+	if obj then
+		for _, key in ipairs({ "name", "box", "tracer", "healthBg", "health" }) do
+			pcall(function()
+				obj[key]:Remove()
+			end)
+		end
+		if obj.highlight then
+			pcall(function()
+				obj.highlight:Destroy()
+			end)
+		end
+		espObjects[plr] = nil
+	end
+end
+
+local function clearAllEsp()
+	for plr in pairs(espObjects) do
+		removeEsp(plr)
+	end
+end
+
+local function hideEsp(obj)
+	obj.name.Visible = false
+	obj.box.Visible = false
+	obj.tracer.Visible = false
+	obj.healthBg.Visible = false
+	obj.health.Visible = false
+	if obj.highlight then
+		obj.highlight.Enabled = false
+	end
+end
+
+local function teamColorOf(plr)
+	if plr.Team then
+		return plr.Team.TeamColor.Color
+	end
+	return nil
+end
+
+Players.PlayerAdded:Connect(ensureEsp)
+Players.PlayerRemoving:Connect(removeEsp)
+for _, plr in ipairs(Players:GetPlayers()) do
+	if plr ~= LocalPlayer then
+		ensureEsp(plr)
+	end
+end
+
+RunService.RenderStepped:Connect(function()
+	if not ESP_SETTINGS.Enabled then
+		for _, plr in pairs(espObjects) do
+			hideEsp(espObjects[plr])
+		end
+		return
+	end
+	local myRoot = getHRP()
+	local viewport = Camera.ViewportSize
+	for plr, obj in pairs(espObjects) do
+		local char = plr.Character
+		local hrp = char and (char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso"))
+		local hum = char and char:FindFirstChildOfClass("Humanoid")
+		local show = plr ~= LocalPlayer
+			and not isFriend(plr.Name)
+			and hrp and hum and hum.Health > 0
+		if show and ESP_SETTINGS.TeamCheck and teamColorOf(plr) and LocalPlayer.Team and plr.Team == LocalPlayer.Team then
+			show = false
+		end
+		if show and ESP_SETTINGS.MaxDistance > 0 and myRoot then
+			if (myRoot.Position - hrp.Position).Magnitude > ESP_SETTINGS.MaxDistance then
+				show = false
+			end
+		end
+		if not show then
+			hideEsp(obj)
+		else
+			local pos, onScreen = Camera:WorldToViewportPoint(hrp.Position)
+			if not onScreen then
+				hideEsp(obj)
+			else
+				local screenPos = Vector2.new(pos.X, pos.Y)
+				-- Chams
+				if ESP_SETTINGS.Chams then
+					if not obj.highlight or obj.highlight.Parent ~= char then
+						if obj.highlight then
+							obj.highlight:Destroy()
+						end
+						obj.highlight = create("Highlight", {
+							Name = "ZickChams",
+							DepthMode = Enum.HighlightDepthMode.AlwaysOnTop,
+							FillColor = ESP_SETTINGS.BoxColor,
+							OutlineColor = Color3.new(1, 1, 1),
+							FillTransparency = 0.65,
+							OutlineTransparency = 0,
+						})
+						obj.highlight.Parent = char
+					end
+					obj.highlight.Enabled = true
+				elseif obj.highlight then
+					obj.highlight.Enabled = false
+				end
+				-- Kutu boyutu (mesafeye gore kaba olcek)
+				local dist = myRoot and (myRoot.Position - hrp.Position).Magnitude or 50
+				local scale = math.clamp(2000 / math.max(dist, 1), 8, 200)
+				local boxW = scale * 1.1
+				local boxH = scale * 2.2
+				local boxPos = Vector2.new(screenPos.X - boxW / 2, screenPos.Y - boxH / 2)
+				-- Kutu
+				if ESP_SETTINGS.Boxes then
+					obj.box.Size = Vector2.new(boxW, boxH)
+					obj.box.Position = boxPos
+					obj.box.Color = ESP_SETTINGS.BoxColor
+					obj.box.Visible = true
+				else
+					obj.box.Visible = false
+				end
+				-- Isim + Mesafe (birlesik: mesafe tek basina da calisir)
+				local labelText = ESP_SETTINGS.Names and plr.Name or ""
+				if ESP_SETTINGS.Distance then
+					labelText = labelText .. (labelText ~= "" and " " or "") .. "[" .. math.floor(dist) .. "m]"
+				end
+				if labelText ~= "" then
+					obj.name.Text = labelText
+					obj.name.Size = ESP_SETTINGS.TextSize
+					obj.name.Position = Vector2.new(screenPos.X, boxPos.Y - 14)
+					obj.name.Color = ESP_SETTINGS.NameColor
+					obj.name.Visible = true
+				else
+					obj.name.Visible = false
+				end
+				-- Health bar
+				if ESP_SETTINGS.HealthBars then
+					local pct = math.clamp(hum.Health / math.max(hum.MaxHealth, 1), 0, 1)
+					local barH = boxH * pct
+					obj.healthBg.Size = Vector2.new(3, boxH)
+					obj.healthBg.Position = Vector2.new(boxPos.X - 6, boxPos.Y)
+					obj.healthBg.Visible = true
+					obj.health.Size = Vector2.new(3, barH)
+					obj.health.Position = Vector2.new(boxPos.X - 6, boxPos.Y + (boxH - barH))
+					obj.health.Color = Color3.fromRGB(220, math.floor(80 + 140 * pct), 80)
+					obj.health.Visible = true
+				else
+					obj.healthBg.Visible = false
+					obj.health.Visible = false
+				end
+				-- Tracer
+				if ESP_SETTINGS.Tracers then
+					obj.tracer.From = Vector2.new(viewport.X / 2, viewport.Y)
+					obj.tracer.To = screenPos
+					obj.tracer.Color = ESP_SETTINGS.BoxColor
+					obj.tracer.Visible = true
+				else
+					obj.tracer.Visible = false
+				end
+			end
+		end
+	end
+end)
+
+-- ============================ RANAX MMV TARZI MENU ============================
+local menuGui = create("ScreenGui", {
+	Name = "ZickHubMenu",
+	ResetOnSpawn = false,
+	DisplayOrder = 1000,
+})
+guiParent(menuGui)
+
+local mainFrame = create("Frame", {
+	Name = "MainFrame",
+	Size = UDim2.new(0, 520, 0, 360),
+	Position = UDim2.new(0.5, -260, 0.5, -180),
+	BackgroundColor3 = SETTINGS.THEME_BG,
+	BorderSizePixel = 0,
+	Active = true,
+	ZIndex = 1,
+}, menuGui)
+create("UICorner", { CornerRadius = UDim.new(0, 8) }, mainFrame)
+create("UIStroke", { Color = SETTINGS.THEME, Thickness = 1.4, Transparency = 0.25 }, mainFrame)
+
+local topBar = create("Frame", {
+	Name = "TopBar",
+	Size = UDim2.new(1, 0, 0, 36),
+	BackgroundColor3 = SETTINGS.THEME_TOP,
+	BorderSizePixel = 0,
+	ZIndex = 2,
+}, mainFrame)
+create("UICorner", { CornerRadius = UDim.new(0, 8) }, topBar)
+
+create("TextLabel", {
+	Size = UDim2.new(1, -80, 1, 0),
+	Position = UDim2.new(0, 12, 0, 0),
+	BackgroundTransparency = 1,
+	Font = Enum.Font.GothamBold,
+	Text = "Zick Hub V2",
+	TextColor3 = SETTINGS.THEME,
+	TextSize = 16,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	ZIndex = 3,
+}, topBar)
+
+local closeBtn = create("TextButton", {
+	Size = UDim2.new(0, 24, 0, 24),
+	Position = UDim2.new(1, -30, 0, 6),
+	BackgroundColor3 = Color3.fromRGB(160, 40, 40),
+	Font = Enum.Font.GothamBold,
+	Text = "X",
+	TextColor3 = Color3.fromRGB(255, 255, 255),
+	TextSize = 12,
+	ZIndex = 3,
+}, topBar)
+create("UICorner", { CornerRadius = UDim.new(0, 6) }, closeBtn)
+
+local minBtn = create("TextButton", {
+	Size = UDim2.new(0, 24, 0, 24),
+	Position = UDim2.new(1, -58, 0, 6),
+	BackgroundColor3 = SETTINGS.THEME,
+	Font = Enum.Font.GothamBold,
+	Text = "-",
+	TextColor3 = Color3.fromRGB(255, 255, 255),
+	TextSize = 14,
+	ZIndex = 3,
+}, topBar)
+create("UICorner", { CornerRadius = UDim.new(0, 6) }, minBtn)
+
+-- Surukleme
+do
+	local dragging, dragStart, startPos = false, nil, nil
+	topBar.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = true
+			dragStart = input.Position
+			startPos = mainFrame.Position
+		end
+	end)
+	UserInputService.InputChanged:Connect(function(input)
+		if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+			local delta = input.Position - dragStart
+			mainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+		end
+	end)
+	UserInputService.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = false
+		end
+	end)
+end
+
+-- Sol sekme bar
+local tabBar = create("Frame", {
+	Name = "TabBar",
+	Size = UDim2.new(0, 120, 1, -36),
+	Position = UDim2.new(0, 0, 0, 36),
+	BackgroundColor3 = SETTINGS.THEME_TOP,
+	BorderSizePixel = 0,
+	ZIndex = 2,
+}, mainFrame)
+create("UIListLayout", { Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder }, tabBar)
+
+local tabContents = {}
+local tabButtons = {}
+local currentTab = nil
+
+local function switchTab(name)
+	currentTab = name
+	for tabName, content in pairs(tabContents) do
+		content.Visible = (tabName == name)
+	end
+	for tabName, btn in pairs(tabButtons) do
+		btn.BackgroundColor3 = (tabName == name) and SETTINGS.THEME or SETTINGS.THEME_ROW
+	end
+end
+
+local function createTab(name)
+	local btn = create("TextButton", {
+		Size = UDim2.new(1, -8, 0, 32),
+		BackgroundColor3 = SETTINGS.THEME_ROW,
+		BorderSizePixel = 0,
+		Font = Enum.Font.GothamBold,
+		Text = name,
+		TextColor3 = SETTINGS.THEME_TEXT,
+		TextSize = 13,
+		ZIndex = 3,
+		LayoutOrder = #tabButtons + 1,
+	}, tabBar)
+	create("UICorner", { CornerRadius = UDim.new(0, 6) }, btn)
+
+	local content = create("ScrollingFrame", {
+		Size = UDim2.new(1, -128, 1, -44),
+		Position = UDim2.new(0, 124, 0, 40),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		ScrollBarThickness = 3,
+		ScrollBarImageColor3 = SETTINGS.THEME,
+		CanvasSize = UDim2.new(0, 0, 0, 0),
+		Visible = false,
+		ZIndex = 2,
+	}, mainFrame)
+	local layout = create("UIListLayout", { Padding = UDim.new(0, 5), SortOrder = Enum.SortOrder.LayoutOrder }, content)
+	layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+		content.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y + 10)
+	end)
+
+	btn.MouseButton1Click:Connect(function()
+		switchTab(name)
+	end)
+
+	tabContents[name] = content
+	tabButtons[name] = btn
+	return content
+end
+
+local rowOrder = {}
+local toggleRefreshers = {}
+local function nextOrder(content)
+	rowOrder[content] = (rowOrder[content] or 0) + 1
+	return rowOrder[content]
+end
+
+local function createDropdownRow(content, text, options, get, set)
+	local order = nextOrder(content)
+	local row = create("TextButton", {
+		Size = UDim2.new(1, -6, 0, 32),
+		BackgroundColor3 = SETTINGS.THEME_ROW,
+		BorderSizePixel = 0,
+		Text = "",
+		ZIndex = 2,
+		LayoutOrder = order,
+	}, content)
+	create("UICorner", { CornerRadius = UDim.new(0, 6) }, row)
+
+	create("TextLabel", {
+		Size = UDim2.new(1, -120, 1, 0),
+		Position = UDim2.new(0, 10, 0, 0),
+		BackgroundTransparency = 1,
+		Font = Enum.Font.GothamMedium,
+		Text = text,
+		TextColor3 = SETTINGS.THEME_TEXT,
+		TextSize = 12,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		ZIndex = 3,
+	}, row)
+
+	local optPill = create("TextLabel", {
+		Size = UDim2.new(0, 105, 0, 22),
+		Position = UDim2.new(1, -112, 0.5, -11),
+		BackgroundColor3 = SETTINGS.THEME,
+		Font = Enum.Font.GothamBold,
+		Text = tostring(get()),
+		TextColor3 = Color3.fromRGB(255, 255, 255),
+		TextSize = 11,
+		ZIndex = 3,
+	}, row)
+	create("UICorner", { CornerRadius = UDim.new(0, 6) }, optPill)
+
+	local function refresh()
+		optPill.Text = tostring(get())
+	end
+
+	row.MouseButton1Click:Connect(function()
+		local cur = get()
+		local idx = 1
+		for i, o in ipairs(options) do
+			if o == cur then idx = i break end
+		end
+		idx = (idx % #options) + 1
+		set(options[idx])
+		refresh()
+	end)
+
+	refresh()
+	table.insert(toggleRefreshers, refresh)
+	return row
+end
+
+local function createToggleRow(content, text, get, set)
+	local order = nextOrder(content)
+	local row = create("TextButton", {
+		Size = UDim2.new(1, -6, 0, 30),
+		BackgroundColor3 = SETTINGS.THEME_ROW,
+		BorderSizePixel = 0,
+		Text = "",
+		ZIndex = 2,
+		LayoutOrder = order,
+	}, content)
+	create("UICorner", { CornerRadius = UDim.new(0, 6) }, row)
+
+	create("TextLabel", {
+		Size = UDim2.new(1, -70, 1, 0),
+		Position = UDim2.new(0, 10, 0, 0),
+		BackgroundTransparency = 1,
+		Font = Enum.Font.GothamMedium,
+		Text = text,
+		TextColor3 = SETTINGS.THEME_TEXT,
+		TextSize = 12,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		ZIndex = 3,
+	}, row)
+
+	local pill = create("TextLabel", {
+		Size = UDim2.new(0, 44, 0, 20),
+		Position = UDim2.new(1, -52, 0.5, -10),
+		BackgroundColor3 = Color3.fromRGB(60, 60, 60),
+		Font = Enum.Font.GothamBold,
+		Text = "OFF",
+		TextColor3 = Color3.fromRGB(255, 255, 255),
+		TextSize = 11,
+		ZIndex = 3,
+	}, row)
+	create("UICorner", { CornerRadius = UDim.new(0, 10) }, pill)
+
+	local function refresh()
+		local v = get()
+		pill.Text = v and "ON" or "OFF"
+		pill.BackgroundColor3 = v and Color3.fromRGB(60, 160, 60) or Color3.fromRGB(60, 60, 60)
+	end
+	row.MouseButton1Click:Connect(function()
+		set(not get())
+		refresh()
+	end)
+	refresh()
+	table.insert(toggleRefreshers, refresh)
+	return row, refresh
+end
+
+
+local function createSliderRow(content, text, min, max, default, onChange, fmt)
+	local order = nextOrder(content)
+	local row = create("Frame", {
+		Size = UDim2.new(1, -6, 0, 40),
+		BackgroundColor3 = SETTINGS.THEME_ROW,
+		BorderSizePixel = 0,
+		ZIndex = 2,
+		LayoutOrder = order,
+	}, content)
+	create("UICorner", { CornerRadius = UDim.new(0, 6) }, row)
+
+	create("TextLabel", {
+		Size = UDim2.new(1, -70, 0, 16),
+		Position = UDim2.new(0, 10, 0, 4),
+		BackgroundTransparency = 1,
+		Font = Enum.Font.GothamMedium,
+		Text = text,
+		TextColor3 = SETTINGS.THEME_TEXT,
+		TextSize = 12,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		ZIndex = 3,
+	}, row)
+
+	local valueLabel = create("TextLabel", {
+		Size = UDim2.new(0, 60, 0, 16),
+		Position = UDim2.new(1, -66, 0, 4),
+		BackgroundTransparency = 1,
+		Font = Enum.Font.GothamBold,
+		Text = fmt and fmt(default) or tostring(default),
+		TextColor3 = SETTINGS.THEME,
+		TextSize = 12,
+		TextXAlignment = Enum.TextXAlignment.Right,
+		ZIndex = 3,
+	}, row)
+
+	local bar = create("Frame", {
+		Size = UDim2.new(1, -20, 0, 6),
+		Position = UDim2.new(0, 10, 1, -12),
+		BackgroundColor3 = Color3.fromRGB(25, 18, 38),
+		BorderSizePixel = 0,
+		ZIndex = 3,
+	}, row)
+	create("UICorner", { CornerRadius = UDim.new(0, 3) }, bar)
+
+	local fill = create("Frame", {
+		Size = UDim2.new((default - min) / (max - min), 0, 1, 0),
+		BackgroundColor3 = SETTINGS.THEME,
+		BorderSizePixel = 0,
+		ZIndex = 4,
+	}, bar)
+	create("UICorner", { CornerRadius = UDim.new(0, 3) }, fill)
+
+	local value = default
+	local draggingSlider = false
+	local function setValueFromX(x)
+		local rel = math.clamp((x - bar.AbsolutePosition.X) / math.max(bar.AbsoluteSize.X, 1), 0, 1)
+		value = math.floor(min + rel * (max - min) * 100 + 0.5) / 100
+		fill.Size = UDim2.new(rel, 0, 1, 0)
+		valueLabel.Text = fmt and fmt(value) or tostring(value)
+		onChange(value)
+	end
+	bar.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			draggingSlider = true
+			setValueFromX(input.Position.X)
+		end
+	end)
+	UserInputService.InputChanged:Connect(function(input)
+		if draggingSlider and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+			setValueFromX(input.Position.X)
+		end
+	end)
+	UserInputService.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			draggingSlider = false
+		end
+	end)
+	return row
+end
+
+local function createButtonRow(content, text, action)
+	local order = nextOrder(content)
+	local row = create("TextButton", {
+		Size = UDim2.new(1, -6, 0, 30),
+		BackgroundColor3 = SETTINGS.THEME,
+		BorderSizePixel = 0,
+		Font = Enum.Font.GothamBold,
+		Text = text,
+		TextColor3 = Color3.fromRGB(255, 255, 255),
+		TextSize = 12,
+		ZIndex = 2,
+		LayoutOrder = order,
+	}, content)
+	create("UICorner", { CornerRadius = UDim.new(0, 6) }, row)
+	row.MouseButton1Click:Connect(action)
+	return row
+end
+
+-- Sekmeler
+local combatTab = createTab("Combat")
+local visualsTab = createTab("Visuals")
+local playerTab = createTab("Player")
+local miscTab = createTab("Misc")
+
+-- COMBAT (5v5 / AIM TRAINER / FFA / MM2 CLOSEST MOTORU)
+createToggleRow(combatTab, "Shoot V2 (Q)", function() return SETTINGS.AUTO_FIRE end, function(v) SETTINGS.AUTO_FIRE = v end)
+createToggleRow(combatTab, "Flick Shoot (R)", function() return SETTINGS.FLICK_ENABLED end, function(v) SETTINGS.FLICK_ENABLED = v end)
+createDropdownRow(combatTab, "Hedefleme Modu", {"FOV", "Range (Mesafe)"}, function() return SETTINGS.TARGET_MODE end, function(v) SETTINGS.TARGET_MODE = v end)
+createToggleRow(combatTab, "Auto Equip (Silah Al/Kusan)", function() return SETTINGS.AUTO_EQUIP end, function(v) SETTINGS.AUTO_EQUIP = v end)
+createDropdownRow(combatTab, "Atis Metodu", {"New (Blatant)", "Normal"}, function() return SETTINGS.SHOOT_METHOD end, function(v) SETTINGS.SHOOT_METHOD = v end)
+createToggleRow(combatTab, "Flick Kamera Snap", function() return SETTINGS.FLICK_CAMERA end, function(v) SETTINGS.FLICK_CAMERA = v end)
+createToggleRow(combatTab, "Flick Geri Don", function() return SETTINGS.FLICK_RESTORE end, function(v) SETTINGS.FLICK_RESTORE = v end)
+createSliderRow(combatTab, "Flick Suresi (sn)", 0.02, 0.3, SETTINGS.FLICK_TURN_TIME, function(v) SETTINGS.FLICK_TURN_TIME = v end, function(v) return string.format("%.2f", v) end)
+createToggleRow(combatTab, "Wall Check", function() return SETTINGS.WALL_CHECK end, function(v) SETTINGS.WALL_CHECK = v end)
+createToggleRow(combatTab, "Vurus Sesi (Hit Sound)", function() return SETTINGS.HIT_SOUND end, function(v) SETTINGS.HIT_SOUND = v end)
+createToggleRow(combatTab, "Auto Reload", function() return SETTINGS.AUTO_RELOAD end, function(v) SETTINGS.AUTO_RELOAD = v end)
+createSliderRow(combatTab, "Shoot Delay (sn)", 0.05, 1, SETTINGS.SHOOT_DELAY, function(v) SETTINGS.SHOOT_DELAY = v end, function(v) return string.format("%.2f", v) end)
+createSliderRow(combatTab, "Prediction Lead", 0, 10, SETTINGS.PREDICT_OFFSET, function(v) SETTINGS.PREDICT_OFFSET = v end, function(v) return string.format("%.1f", v) end)
+createSliderRow(combatTab, "FOV Radius (px)", 20, 500, SETTINGS.FOV_RADIUS, function(v) SETTINGS.FOV_RADIUS = v end, function(v) return tostring(math.floor(v)) end)
+createSliderRow(combatTab, "Max Range (stud)", 0, 1000, SETTINGS.MAX_RANGE, function(v) SETTINGS.MAX_RANGE = v end, function(v) return v == 0 and "Sinirsiz" or tostring(math.floor(v)) end)
+createToggleRow(combatTab, "Kill Aura (5v5/FFA/MM2)", function() return KILL_AURA.Enabled end, function(v) KILL_AURA.Enabled = v end)
+createToggleRow(combatTab, "Kill Aura: Auto Equip Knife", function() return KILL_AURA.AutoEquipKnife end, function(v) KILL_AURA.AutoEquipKnife = v end)
+createToggleRow(combatTab, "Kill Aura: Teleport Target", function() return KILL_AURA.TeleportTarget end, function(v) KILL_AURA.TeleportTarget = v end)
+createSliderRow(combatTab, "Kill Aura Delay (sn)", 0.05, 1, KILL_AURA.AttackDelay, function(v) KILL_AURA.AttackDelay = v end, function(v) return string.format("%.2f", v) end)
+createSliderRow(combatTab, "Kill Aura Range (stud)", 0, 100, KILL_AURA.Range, function(v) KILL_AURA.Range = v end, function(v) return v == 0 and "TUMU" or tostring(math.floor(v)) end)
+
+-- VISUALS
+createToggleRow(visualsTab, "ESP", function() return ESP_SETTINGS.Enabled end, function(v) ESP_SETTINGS.Enabled = v end)
+createToggleRow(visualsTab, "ESP Chams", function() return ESP_SETTINGS.Chams end, function(v) ESP_SETTINGS.Chams = v end)
+createToggleRow(visualsTab, "ESP Isim", function() return ESP_SETTINGS.Names end, function(v) ESP_SETTINGS.Names = v end)
+createToggleRow(visualsTab, "ESP Kutu", function() return ESP_SETTINGS.Boxes end, function(v) ESP_SETTINGS.Boxes = v end)
+createToggleRow(visualsTab, "ESP Tracer", function() return ESP_SETTINGS.Tracers end, function(v) ESP_SETTINGS.Tracers = v end)
+createToggleRow(visualsTab, "ESP Health Bar", function() return ESP_SETTINGS.HealthBars end, function(v) ESP_SETTINGS.HealthBars = v end)
+createToggleRow(visualsTab, "ESP Mesafe", function() return ESP_SETTINGS.Distance end, function(v) ESP_SETTINGS.Distance = v end)
+createToggleRow(visualsTab, "ESP Team Check", function() return ESP_SETTINGS.TeamCheck end, function(v) ESP_SETTINGS.TeamCheck = v end)
+createSliderRow(visualsTab, "ESP Max Mesafe (stud)", 0, 2000, ESP_SETTINGS.MaxDistance, function(v) ESP_SETTINGS.MaxDistance = math.floor(v) end, function(v) return v == 0 and "Sinirsiz" or tostring(math.floor(v)) end)
+createSliderRow(visualsTab, "ESP Yazı Boyutu", 10, 22, ESP_SETTINGS.TextSize, function(v) ESP_SETTINGS.TextSize = math.floor(v) end)
+createToggleRow(visualsTab, "FOV Cemberi", function() return SETTINGS.FOV_SHOW end, function(v) SETTINGS.FOV_SHOW = v end)
+
+-- PLAYER
+createToggleRow(playerTab, "Walk Speed", function() return PLAYER_SETTINGS.SpeedEnabled end, function(v) PLAYER_SETTINGS.SpeedEnabled = v end)
+createSliderRow(playerTab, "Walk Speed Değer", 16, 120, PLAYER_SETTINGS.SpeedValue, function(v) PLAYER_SETTINGS.SpeedValue = v end, function(v) return tostring(math.floor(v)) end)
+createToggleRow(playerTab, "Jump Power", function() return PLAYER_SETTINGS.JumpEnabled end, function(v) PLAYER_SETTINGS.JumpEnabled = v end)
+createSliderRow(playerTab, "Jump Power Değer", 50, 250, PLAYER_SETTINGS.JumpValue, function(v) PLAYER_SETTINGS.JumpValue = v end, function(v) return tostring(math.floor(v)) end)
+createButtonRow(playerTab, "Hareketi Sifirla", function()
+	PLAYER_SETTINGS.SpeedEnabled = false
+	PLAYER_SETTINGS.JumpEnabled = false
+	local char = LocalPlayer.Character
+	local hum = char and char:FindFirstChildOfClass("Humanoid")
+	if hum then
+		hum.WalkSpeed = 16
+		hum.JumpPower = 50
+		hum.UseJumpPower = true
+	end
+end)
+
+-- MISC
+createToggleRow(miscTab, "Anti AFK", function() return PLAYER_SETTINGS.AntiAFK end, function(v) PLAYER_SETTINGS.AntiAFK = v end)
+createToggleRow(miscTab, "FPS Boost", function() return PLAYER_SETTINGS.FPSBoost end, function(v)
+	PLAYER_SETTINGS.FPSBoost = v
+	pcall(function()
+		Lighting.GlobalShadows = not v
+		Lighting.FogEnd = v and 1e6 or 1000
+		Lighting.Brightness = v and 1 or 2
+		settings().Rendering.QualityLevel = v and 1 or 10
+	end)
+end)
+createToggleRow(miscTab, "Debug Log", function() return SETTINGS.DEBUG end, function(v) SETTINGS.DEBUG = v end)
+createButtonRow(miscTab, "Discord Kopyle", function()
+	if type(setclipboard) == "function" then
+		pcall(setclipboard, SETTINGS.DISCORD)
+	end
+	notify("Zick Hub V2", "Discord linki kopyalandi!", 3)
+end)
+createButtonRow(miscTab, "Sunucuya Tekrar Baglan", function()
+	pcall(function()
+		TeleportService:Teleport(game.PlaceId, LocalPlayer)
+	end)
+end)
+
+-- Menyu ac/kapa (LeftControl) + Alt/Ust Kapatma Butonlari
+local menuVisible = true
+local function setMenuVisible(v)
+	menuVisible = v
+	mainFrame.Visible = v
+end
+
+minBtn.MouseButton1Click:Connect(function()
+	setMenuVisible(false)
+	notify("Zick Hub V2", "Menu gizlendi (Acmak icin: LeftControl)", 2)
+end)
+
+closeBtn.MouseButton1Click:Connect(function()
+	setMenuVisible(false)
+	notify("Zick Hub V2", "Menu gizlendi (Acmak icin: LeftControl)", 2)
+end)
+
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+	if input.KeyCode == SETTINGS.MENU_KEY or input.KeyCode == Enum.KeyCode.LeftControl then
+		-- Yazi kutusuna (Friend box vs.) yaziyorsa menuyu kapatip acma!
+		if UserInputService:GetFocusedTextBox() then
+			return
+		end
+		setMenuVisible(not menuVisible)
+	end
+end)
+
+switchTab("Combat")
+
+-- Q/R kisayollari menu pill'lerini guncellesin: tum toggle pill'leri 0.25 sn'de bir yenilenir
+task.spawn(function()
+	while true do
+		task.wait(0.25)
+		for _, refresh in ipairs(toggleRefreshers) do
+			pcall(refresh)
+		end
+	end
+end)
+
+-- Hareket mods uygulayici
+task.spawn(function()
+	while true do
+		local char = LocalPlayer.Character
+		local hum = char and char:FindFirstChildOfClass("Humanoid")
+		if hum then
+			if PLAYER_SETTINGS.SpeedEnabled then
+				hum.WalkSpeed = PLAYER_SETTINGS.SpeedValue
+			end
+			if PLAYER_SETTINGS.JumpEnabled then
+				hum.UseJumpPower = true
+				hum.JumpPower = PLAYER_SETTINGS.JumpValue
+			end
+		end
+		task.wait(0.5)
+	end
+end)
+
+-- Anti AFK
+task.spawn(function()
+	while true do
+		if PLAYER_SETTINGS.AntiAFK then
+			pcall(function()
+				local vu = game:GetService("VirtualUser")
+				vu:CaptureController()
+				vu:ClickButton2(Vector2.new())
+			end)
+		end
+		task.wait(55)
+	end
+end)
+
+-- ============================ WATERMARK ============================
+local wmGui = create("ScreenGui", {
+	Name = "ZickHubWatermark",
+	ResetOnSpawn = false,
+	DisplayOrder = 999,
+})
+guiParent(wmGui)
+
+local wmFrame = create("Frame", {
+	Name = "ZickFrame",
+	Size = UDim2.new(0, 260, 0, 72),
+	AnchorPoint = Vector2.new(1, 1),
+	Position = UDim2.new(0.98, 0, 0.95, 0),
+	BackgroundColor3 = SETTINGS.THEME_BG,
+	BackgroundTransparency = 0.15,
+	ClipsDescendants = true,
+	BorderSizePixel = 0,
+}, wmGui)
+create("UICorner", { CornerRadius = UDim.new(0, 27) }, wmFrame)
+create("UIStroke", { Color = Color3.fromRGB(130, 50, 200), Thickness = 1.5, Transparency = 0.4 }, wmFrame)
+
+local avatarImage = create("ImageLabel", {
+	Size = UDim2.new(0, 36, 0, 36),
+	Position = UDim2.new(0, 10, 0, 9),
+	BackgroundTransparency = 1,
+	Image = "",
+}, wmFrame)
+create("UICorner", { CornerRadius = UDim.new(1, 0) }, avatarImage)
+
+create("TextLabel", {
+	Size = UDim2.new(1, -65, 0, 16),
+	Position = UDim2.new(0, 56, 0, 11),
+	BackgroundTransparency = 1,
+	Font = Enum.Font.GothamBold,
+	TextColor3 = Color3.fromRGB(255, 255, 255),
+	TextSize = 12,
+	Text = "Version Beta V2",
+	TextXAlignment = Enum.TextXAlignment.Left,
+}, wmFrame)
+
+create("TextLabel", {
+	Size = UDim2.new(1, -65, 0, 16),
+	Position = UDim2.new(0, 56, 0, 27),
+	BackgroundTransparency = 1,
+	Font = Enum.Font.GothamMedium,
+	TextColor3 = Color3.fromRGB(180, 160, 200),
+	TextSize = 11,
+	Text = "V2.0 Phantom Scope Edition",
+	TextXAlignment = Enum.TextXAlignment.Left,
+}, wmFrame)
+
+create("Frame", {
+	Size = UDim2.new(1, -40, 0, 2),
+	Position = UDim2.new(0, 20, 1, -4),
+	BackgroundColor3 = Color3.fromRGB(160, 32, 240),
+	BackgroundTransparency = 0.2,
+	BorderSizePixel = 0,
+}, wmFrame)
+
+local shootStatusLabel = create("TextLabel", {
+	Size = UDim2.new(1, -65, 0, 14),
+	Position = UDim2.new(0, 56, 0, 42),
+	BackgroundTransparency = 1,
+	Font = Enum.Font.GothamBold,
+	TextColor3 = Color3.fromRGB(120, 220, 120),
+	TextSize = 11,
+	Text = "Shoot V2: ON (Q)",
+	TextXAlignment = Enum.TextXAlignment.Left,
+}, wmFrame)
+
+task.spawn(function()
+	while shootStatusLabel.Parent do
+		shootStatusLabel.Text = "Shoot V2: " .. (SETTINGS.AUTO_FIRE and "ON (Q)" or "OFF (Q)")
+		shootStatusLabel.TextColor3 = SETTINGS.AUTO_FIRE and Color3.fromRGB(120, 220, 120) or Color3.fromRGB(230, 90, 90)
+		task.wait(0.25)
+	end
+end)
+
+task.spawn(function()
+	pcall(function()
+		local uid = Players:GetUserIdFromNameAsync("Clockzoos")
+		local url = Players:GetUserThumbnailAsync(uid, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size150x150)
+		avatarImage.Image = url
+	end)
+end)
+
+-- ============================ FRIEND GUI ============================
+local friendsGui = create("ScreenGui", {
+	Name = "ZickHubFriends",
+	ResetOnSpawn = false,
+	DisplayOrder = 998,
+})
+guiParent(friendsGui)
+
+local friendsMain = create("Frame", {
+	Name = "FriendsFrame",
+	Size = UDim2.new(0, 260, 0, 310),
+	Position = UDim2.new(0, 20, 0.25, 0),
+	BackgroundColor3 = SETTINGS.THEME_BG,
+	BorderSizePixel = 0,
+	Active = true,
+}, friendsGui)
+create("UICorner", { CornerRadius = UDim.new(0, 10) }, friendsMain)
+create("UIStroke", { Color = SETTINGS.THEME, Thickness = 1.4 }, friendsMain)
+
+local friendsTop = create("Frame", {
+	Size = UDim2.new(1, 0, 0, 30),
+	BackgroundColor3 = SETTINGS.THEME_TOP,
+	BorderSizePixel = 0,
+	ZIndex = 2,
+}, friendsMain)
+create("UICorner", { CornerRadius = UDim.new(0, 10) }, friendsTop)
+makeDraggable(friendsMain, friendsTop)
+
+create("TextLabel", {
+	Size = UDim2.new(1, -40, 1, 0),
+	Position = UDim2.new(0, 10, 0, 0),
+	BackgroundTransparency = 1,
+	Font = Enum.Font.GothamBold,
+	Text = "Friend System",
+	TextColor3 = SETTINGS.THEME,
+	TextSize = 13,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	ZIndex = 3,
+}, friendsTop)
+
+local friendsMin = create("TextButton", {
+	Size = UDim2.new(0, 22, 0, 22),
+	Position = UDim2.new(1, -28, 0, 4),
+	BackgroundColor3 = SETTINGS.THEME,
+	Font = Enum.Font.GothamBold,
+	Text = "-",
+	TextColor3 = Color3.fromRGB(255, 255, 255),
+	TextSize = 14,
+	ZIndex = 3,
+}, friendsTop)
+create("UICorner", { CornerRadius = UDim.new(0, 6) }, friendsMin)
+
+local friendsContent = create("Frame", {
+	Size = UDim2.new(1, 0, 1, -35),
+	Position = UDim2.new(0, 0, 0, 35),
+	BackgroundTransparency = 1,
+	ZIndex = 2,
+}, friendsMain)
+
+local nameBox = create("TextBox", {
+	Size = UDim2.new(1, -90, 0, 26),
+	Position = UDim2.new(0, 8, 0, 4),
+	BackgroundColor3 = SETTINGS.THEME_ROW,
+	BorderSizePixel = 0,
+	Font = Enum.Font.GothamMedium,
+	PlaceholderText = "Oyuncu adi...",
+	Text = "",
+	TextColor3 = SETTINGS.THEME_TEXT,
+	TextSize = 12,
+	ClearTextOnFocus = false,
+	ZIndex = 3,
+}, friendsContent)
+create("UICorner", { CornerRadius = UDim.new(0, 6) }, nameBox)
+
+local addBtn = create("TextButton", {
+	Size = UDim2.new(0, 38, 0, 26),
+	Position = UDim2.new(1, -76, 0, 4),
+	BackgroundColor3 = Color3.fromRGB(50, 130, 60),
+	Font = Enum.Font.GothamBold,
+	Text = "Add",
+	TextColor3 = Color3.fromRGB(255, 255, 255),
+	TextSize = 11,
+	ZIndex = 3,
+}, friendsContent)
+create("UICorner", { CornerRadius = UDim.new(0, 6) }, addBtn)
+
+local refreshBtn = create("TextButton", {
+	Size = UDim2.new(0, 32, 0, 26),
+	Position = UDim2.new(1, -38, 0, 4),
+	BackgroundColor3 = SETTINGS.THEME,
+	Font = Enum.Font.GothamBold,
+	Text = "RF",
+	TextColor3 = Color3.fromRGB(255, 255, 255),
+	TextSize = 11,
+	ZIndex = 3,
+}, friendsContent)
+create("UICorner", { CornerRadius = UDim.new(0, 6) }, refreshBtn)
+
+local friendsScroll = create("ScrollingFrame", {
+	Size = UDim2.new(1, -12, 1, -72),
+	Position = UDim2.new(0, 8, 0, 38),
+	BackgroundTransparency = 1,
+	BorderSizePixel = 0,
+	ScrollBarThickness = 3,
+	ScrollBarImageColor3 = SETTINGS.THEME,
+	CanvasSize = UDim2.new(0, 0, 0, 0),
+	ZIndex = 2,
+}, friendsContent)
+
+local friendsLayout = create("UIListLayout", {
+	SortOrder = Enum.SortOrder.LayoutOrder,
+	Padding = UDim.new(0, 6),
+}, friendsScroll)
+
+friendsLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+	friendsScroll.CanvasSize = UDim2.new(0, 0, 0, friendsLayout.AbsoluteContentSize.Y + 10)
+end)
+
+local function renderFriendList()
+	for _, child in ipairs(friendsScroll:GetChildren()) do
+		if child:IsA("Frame") then
+			child:Destroy()
+		end
+	end
+	for i, name in ipairs(FriendOrder) do
+		local row = create("Frame", {
+			Size = UDim2.new(1, -6, 0, 28),
+			BackgroundColor3 = SETTINGS.THEME_ROW,
+			BorderSizePixel = 0,
+			LayoutOrder = i,
+		}, friendsScroll)
+		create("UICorner", { CornerRadius = UDim.new(0, 6) }, row)
+		create("TextLabel", {
+			Size = UDim2.new(1, -64, 1, 0),
+			Position = UDim2.new(0, 8, 0, 0),
+			BackgroundTransparency = 1,
+			Font = Enum.Font.GothamMedium,
+			Text = name,
+			TextColor3 = SETTINGS.THEME_TEXT,
+			TextScaled = true,
+			TextXAlignment = Enum.TextXAlignment.Left,
+		}, row)
+		local del = create("TextButton", {
+			Size = UDim2.new(0, 52, 0, 20),
+			Position = UDim2.new(1, -58, 0.5, -10),
+			BackgroundColor3 = Color3.fromRGB(120, 30, 30),
+			Font = Enum.Font.GothamBold,
+			Text = "Delete",
+			TextColor3 = Color3.fromRGB(255, 255, 255),
+			TextSize = 12,
+		}, row)
+		create("UICorner", { CornerRadius = UDim.new(0, 4) }, del)
+		del.MouseButton1Click:Connect(function()
+			if removeFriend(name) then
+				renderFriendList()
+			end
+		end)
+	end
+end
+
+addBtn.MouseButton1Click:Connect(function()
+	local n = nameBox.Text
+	if addFriend(n) then
+		nameBox.Text = ""
+		renderFriendList()
+	end
+end)
+
+refreshBtn.MouseButton1Click:Connect(function()
+	clearFriends()
+	loadFriends()
+	renderFriendList()
+end)
+
+friendsMin.MouseButton1Click:Connect(function()
+	friendsContent.Visible = not friendsContent.Visible
+	friendsMin.Text = friendsContent.Visible and "-" or "+"
+	friendsMain.Size = friendsContent.Visible and UDim2.new(0, 260, 0, 310) or UDim2.new(0, 260, 0, 35)
+end)
+
+renderFriendList()
+
+-- ============================ OUTFIT FOR YOU GUI ============================
+local OUTFITS = {
+	"koolkid_2722", "Alexander041914", "f3arSN1x", "15kElixs",
+	"IzJulienTheOne", "coolmanluke81", "D9utchy", "Ishraq198415",
+	"OTFROB1234", "Vex_971", "zTwiisted", "IceblueNinjax",
+	"knocries", "OneElite", "chicymunk", "jqckfr",
+}
+
+local outfitGui = create("ScreenGui", {
+	Name = "OutfitForYouGui",
+	ResetOnSpawn = false,
+	DisplayOrder = 997,
+})
+guiParent(outfitGui)
+
+local outfitFrame = create("Frame", {
+	Name = "MainFrame",
+	Size = UDim2.new(0.28, 0, 0.45, 0),
+	Position = UDim2.new(0.02, 0, 0.25, 0),
+	BackgroundTransparency = 1,
+	Active = true,
+}, outfitGui)
+
+create("UISizeConstraint", {
+	MinSize = Vector2.new(240, 220),
+	MaxSize = Vector2.new(320, 300),
+}, outfitFrame)
+
+local outfitContent = create("Frame", {
+	Name = "ContentFrame",
+	Size = UDim2.new(1, 0, 1, 0),
+	BackgroundColor3 = SETTINGS.THEME_BG,
+	BorderSizePixel = 0,
+	ClipsDescendants = true,
+}, outfitFrame)
+create("UICorner", { CornerRadius = UDim.new(0, 10) }, outfitContent)
+create("UIStroke", { Color = SETTINGS.THEME, Thickness = 1.5 }, outfitContent)
+
+local outfitTop = create("Frame", {
+	Name = "TopBar",
+	Size = UDim2.new(1, 0, 0, 35),
+	BackgroundColor3 = SETTINGS.THEME_TOP,
+	BorderSizePixel = 0,
+	ZIndex = 2,
+}, outfitFrame)
+create("UICorner", { CornerRadius = UDim.new(0, 10) }, outfitTop)
+makeDraggable(outfitFrame, outfitTop)
+
+create("TextLabel", {
+	Size = UDim2.new(0.75, 0, 1, 0),
+	Position = UDim2.new(0.04, 0, 0, 0),
+	BackgroundTransparency = 1,
+	Font = Enum.Font.GothamBold,
+	Text = "Outfit For You",
+	TextColor3 = Color3.fromRGB(255, 255, 255),
+	TextScaled = true,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	ZIndex = 3,
+}, outfitTop)
+
+local outfitMin = create("TextButton", {
+	Size = UDim2.new(0, 25, 0, 25),
+	Position = UDim2.new(1, -30, 0.5, -12.5),
+	BackgroundColor3 = SETTINGS.THEME,
+	Font = Enum.Font.GothamBold,
+	Text = "-",
+	TextColor3 = Color3.fromRGB(255, 255, 255),
+	TextSize = 16,
+	ZIndex = 3,
+}, outfitTop)
+create("UICorner", { CornerRadius = UDim.new(0, 6) }, outfitMin)
+
+outfitMin.MouseButton1Click:Connect(function()
+	outfitContent.Visible = not outfitContent.Visible
+	outfitMin.Text = outfitContent.Visible and "-" or "+"
+end)
+
+local outfitScroll = create("ScrollingFrame", {
+	Size = UDim2.new(1, -16, 1, -45),
+	Position = UDim2.new(0, 8, 0, 40),
+	BackgroundTransparency = 1,
+	BorderSizePixel = 0,
+	ScrollBarThickness = 3,
+	ScrollBarImageColor3 = SETTINGS.THEME,
+	CanvasSize = UDim2.new(0, 0, 0, 0),
+}, outfitContent)
+
+local outfitLayout = create("UIListLayout", {
+	SortOrder = Enum.SortOrder.LayoutOrder,
+	Padding = UDim.new(0, 6),
+}, outfitScroll)
+
+outfitLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+	outfitScroll.CanvasSize = UDim2.new(0, 0, 0, outfitLayout.AbsoluteContentSize.Y + 10)
+end)
+
+for i, outfitName in ipairs(OUTFITS) do
+	local row = create("Frame", {
+		Size = UDim2.new(1, -6, 0, 30),
+		BackgroundColor3 = SETTINGS.THEME_ROW,
+		BorderSizePixel = 0,
+		LayoutOrder = i,
+	}, outfitScroll)
+	create("UICorner", { CornerRadius = UDim.new(0, 6) }, row)
+
+	create("TextLabel", {
+		Size = UDim2.new(0.72, 0, 1, 0),
+		Position = UDim2.new(0, 8, 0, 0),
+		BackgroundTransparency = 1,
+		Font = Enum.Font.GothamMedium,
+		Text = "@" .. outfitName,
+		TextColor3 = SETTINGS.THEME_TEXT,
+		TextScaled = true,
+		TextXAlignment = Enum.TextXAlignment.Left,
+	}, row)
+
+	local useBtn = create("TextButton", {
+		Size = UDim2.new(0.22, 0, 0.7, 0),
+		Position = UDim2.new(0.96, 0, 0.5, 0),
+		AnchorPoint = Vector2.new(1, 0.5),
+		BackgroundColor3 = SETTINGS.THEME,
+		Font = Enum.Font.GothamBold,
+		Text = "Use",
+		TextColor3 = Color3.fromRGB(255, 255, 255),
+		TextScaled = true,
+	}, row)
+	create("UICorner", { CornerRadius = UDim.new(0, 4) }, useBtn)
+
+	local useBusy = false
+	useBtn.MouseButton1Click:Connect(function()
+		if useBusy then return end
+		useBusy = true
+		local oldText = useBtn.Text
+		useBtn.Text = "..."
+		task.spawn(function()
+			local ok, err = pcall(function()
+				local userId = Players:GetUserIdFromNameAsync(outfitName)
+				local remotes = ReplicatedStorage:WaitForChild("Remotes", 10)
+				assert(remotes, "Remotes bulunamadi (10 sn)")
+				local characterFolder = remotes:WaitForChild("Character", 10)
+				assert(characterFolder, "Character klasoru bulunamadi (10 sn)")
+				local applyCharacter = characterFolder:WaitForChild("ApplyCharacter", 10)
+				assert(applyCharacter, "ApplyCharacter remote bulunamadi (10 sn)")
+				applyCharacter:FireServer(userId)
+			end)
+			if ok then
+				useBtn.Text = "OK!"
+				notify("Outfit For You", outfitName .. " uygulandi!", 3)
+			else
+				useBtn.Text = "Hata"
+				notify("Outfit For You", "Hata: " .. tostring(err), 4)
+			end
+			task.wait(1.5)
+			useBtn.Text = oldText
+			useBusy = false
+		end)
+	end)
+end
+
+-- ============================ BITIS ============================
+print("[Zick Hub V2] Yuklendi | Phantom Scope + Shoot V2 + Flick (R) + Kill Aura + ESP + Menu (LeftControl)")
