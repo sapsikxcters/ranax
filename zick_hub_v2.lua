@@ -101,6 +101,17 @@ local SETTINGS = {
 	AUTO_CHAT_MURD_MSG = "ez",
 	AUTO_CHAT_KILL = false,
 	AUTO_CHAT_KILL_MSG = "ez",
+
+	-- Knife Throw Master (5v5 / Aim Trainer / FFA / MM2)
+	KNIFE_THROW_ENABLED = false,
+	KNIFE_THROW_KEY     = Enum.KeyCode.E,
+	KNIFE_AUTO_THROW    = false,
+	KNIFE_THROW_DELAY   = 0.35,
+	KNIFE_PREDICTION    = 1.25,
+	KNIFE_MAX_RANGE     = 250,
+	KNIFE_WALL_CHECK    = true,
+	KNIFE_AUTO_EQUIP    = true,
+	KNIFE_CAMERA_SNAP   = false,
 }
 
 local ESP_SETTINGS = {
@@ -1057,6 +1068,144 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	elseif SETTINGS.FLY_KEY and input.KeyCode == SETTINGS.FLY_KEY then
 		SETTINGS.FLY_ENABLED = not SETTINGS.FLY_ENABLED
 		notify("Fly Hack", SETTINGS.FLY_ENABLED and "ENABLED [ON]" or "DISABLED [OFF]", 1.6, SETTINGS.FLY_ENABLED)
+	elseif KNIFE_THROW and KNIFE_THROW.Enabled and input.KeyCode == KNIFE_THROW.Keybind then
+		if typeof(executeKnifeThrow) == "function" then
+			executeKnifeThrow()
+		end
+	end
+end)
+
+-- ============================ 5V5 / AIM TRAINER / MM2 KNIFE THROW ENGINE ============================
+local KNIFE_THROW = {
+	Enabled     = SETTINGS.KNIFE_THROW_ENABLED,
+	Keybind     = SETTINGS.KNIFE_THROW_KEY,
+	AutoThrow   = SETTINGS.KNIFE_AUTO_THROW,
+	ThrowDelay  = SETTINGS.KNIFE_THROW_DELAY,
+	Prediction  = SETTINGS.KNIFE_PREDICTION,
+	MaxRange    = SETTINGS.KNIFE_MAX_RANGE,
+	WallCheck   = SETTINGS.KNIFE_WALL_CHECK,
+	AutoEquip   = SETTINGS.KNIFE_AUTO_EQUIP,
+	CameraSnap  = SETTINGS.KNIFE_CAMERA_SNAP,
+}
+
+local function executeKnifeThrow(customTarget)
+	local myChar = LocalPlayer.Character
+	local myHRP = myChar and myChar:FindFirstChild("HumanoidRootPart")
+	local hum = myChar and myChar:FindFirstChildOfClass("Humanoid")
+	if not (myChar and myHRP and hum and hum.Health > 0) then return false, "Character not ready" end
+
+	-- Find or equip knife
+	local knife = nil
+	for _, t in ipairs(myChar:GetChildren()) do
+		if t:IsA("Tool") and (t.Name:lower():find("knife") or t.Name:lower():find("blade") or t.Name:lower():find("dagger") or t:FindFirstChild("KnifeThrown") or t:FindFirstChild("Events") or t:FindFirstChild("KnifeServer")) then
+			knife = t
+			break
+		end
+	end
+	if not knife and KNIFE_THROW.AutoEquip then
+		local bp = LocalPlayer:FindFirstChildOfClass("Backpack")
+		if bp then
+			for _, t in ipairs(bp:GetChildren()) do
+				if t:IsA("Tool") and (t.Name:lower():find("knife") or t.Name:lower():find("blade") or t.Name:lower():find("dagger") or t:FindFirstChild("KnifeThrown") or t:FindFirstChild("Events") or t:FindFirstChild("KnifeServer")) then
+					hum:EquipTool(t)
+					task.wait(0.04)
+					knife = t
+					break
+				end
+			end
+		end
+	end
+	if not knife then return false, "No knife equipped or in backpack" end
+
+	local targetPlr = customTarget or (typeof(getClosestTarget) == "function" and getClosestTarget())
+	if not targetPlr or not targetPlr.Character then return false, "No valid target" end
+	local tRoot = targetPlr.Character:FindFirstChild("HumanoidRootPart") or targetPlr.Character:FindFirstChild("Torso") or targetPlr.Character:FindFirstChild("UpperTorso")
+	local tHum = targetPlr.Character:FindFirstChildOfClass("Humanoid")
+	if not (tRoot and tHum and tHum.Health > 0) then return false, "Target dead" end
+
+	local myPos = myHRP.Position
+	local dist = (tRoot.Position - myPos).Magnitude
+	if dist > (KNIFE_THROW.MaxRange or 250) then return false, "Target out of range" end
+
+	if KNIFE_THROW.WallCheck and typeof(visibleToCamera) == "function" and not visibleToCamera(tRoot) then
+		local head = targetPlr.Character:FindFirstChild("Head")
+		if not head or not visibleToCamera(head) then
+			return false, "Target behind wall"
+		end
+	end
+
+	-- Prediction calculation
+	local vel = Vector3.zero
+	pcall(function()
+		vel = tRoot.AssemblyLinearVelocity or tRoot.Velocity or Vector3.zero
+	end)
+	local flightTime = math.clamp(dist / 145, 0.02, 0.5) * (KNIFE_THROW.Prediction or 1.25)
+	local targetPos = tRoot.Position + Vector3.new(0, 0.8, 0) + (Vector3.new(vel.X, 0, vel.Z) * flightTime)
+	
+	-- Arc gravity drop compensation
+	local gravity = workspace.Gravity or 196.2
+	local arcDrop = 0.5 * gravity * (flightTime ^ 2) * 0.08
+	local finalAimPos = targetPos + Vector3.new(0, arcDrop, 0)
+
+	-- Optional camera snap to target
+	if KNIFE_THROW.CameraSnap and Camera then
+		pcall(function()
+			Camera.CFrame = CFrame.lookAt(Camera.CFrame.Position, finalAimPos)
+		end)
+	end
+
+	-- MM2 / Aim Trainer Knife Remote
+	local origin = myHRP.Position
+	local args = {
+		[1] = CFrame.new(origin, finalAimPos) * CFrame.Angles(1.4531978368759155, 0.04432811588048935, 1.6501713991165161),
+		[2] = CFrame.new(finalAimPos) * CFrame.Angles(0, 0, 0)
+	}
+
+	local events = knife:FindFirstChild("Events")
+	local remote = (events and events:FindFirstChild("KnifeThrown")) or knife:FindFirstChild("KnifeThrown", true)
+	if not remote then
+		pcall(function()
+			local rems = ReplicatedStorage:FindFirstChild("Remotes")
+			local gameplay = rems and rems:FindFirstChild("Gameplay")
+			if gameplay then remote = gameplay:FindFirstChild("KnifeThrown", true) end
+		end)
+	end
+
+	if remote and remote:IsA("RemoteEvent") then
+		remote:FireServer(unpack(args))
+		notify("Knife Throw", "Thrown at: " .. targetPlr.Name, 1.5, "sword")
+		return true, targetPlr.Name
+	end
+
+	-- Fallback: Right-click / Tool Activate
+	pcall(function()
+		if typeof(mouse2click) == "function" then
+			mouse2click()
+		else
+			knife:Activate()
+		end
+	end)
+	notify("Knife Throw", "Direct throw at: " .. targetPlr.Name, 1.5, "sword")
+	return true, targetPlr.Name
+end
+
+-- Auto Knife Throw Loop
+task.spawn(function()
+	local lastAutoThrow = 0
+	while true do
+		task.wait(0.04)
+		if KNIFE_THROW.Enabled and KNIFE_THROW.AutoThrow then
+			local now = tick()
+			if now - lastAutoThrow >= (KNIFE_THROW.ThrowDelay or 0.35) then
+				local target = typeof(getClosestTarget) == "function" and getClosestTarget()
+				if target then
+					local ok = executeKnifeThrow(target)
+					if ok then lastAutoThrow = now end
+				end
+			end
+		else
+			task.wait(0.3)
+		end
 	end
 end)
 
@@ -2671,6 +2820,45 @@ createToggleRow(combatTab, "Bot Kill Farm (Aim Trainer)", function() return BOT_
 	notify("Bot Farm", v and "Auto Bot Farm ACTIVE" or "Auto Bot Farm OFF", 2.5, v and "sword" or "x")
 end)
 createToggleRow(combatTab, "Bot Farm: Auto-Spawn Bots", function() return BOT_FARM.AutoSpawn end, function(v) BOT_FARM.AutoSpawn = v end)
+
+-- KNIFE THROW (5V5 / AIM TRAINER / DUEL)
+createToggleRow(combatTab, "Knife Throw Master", function() return KNIFE_THROW.Enabled end, function(v)
+	KNIFE_THROW.Enabled = v
+	SETTINGS.KNIFE_THROW_ENABLED = v
+	notify("Knife Throw", v and "Knife Throw ACTIVE (Press [" .. KNIFE_THROW.Keybind.Name .. "])" or "Knife Throw OFF", 2, v and "sword" or "x")
+end)
+createKeybindRow(combatTab, "Knife Throw Keybind", function() return KNIFE_THROW.Keybind end, function(k)
+	KNIFE_THROW.Keybind = k
+	SETTINGS.KNIFE_THROW_KEY = k
+end)
+createToggleRow(combatTab, "Knife Auto-Throw (Loop)", function() return KNIFE_THROW.AutoThrow end, function(v)
+	KNIFE_THROW.AutoThrow = v
+	SETTINGS.KNIFE_AUTO_THROW = v
+end)
+createToggleRow(combatTab, "Knife Auto-Equip", function() return KNIFE_THROW.AutoEquip end, function(v)
+	KNIFE_THROW.AutoEquip = v
+	SETTINGS.KNIFE_AUTO_EQUIP = v
+end)
+createToggleRow(combatTab, "Knife Wall Check", function() return KNIFE_THROW.WallCheck end, function(v)
+	KNIFE_THROW.WallCheck = v
+	SETTINGS.KNIFE_WALL_CHECK = v
+end)
+createToggleRow(combatTab, "Knife Camera Snap", function() return KNIFE_THROW.CameraSnap end, function(v)
+	KNIFE_THROW.CameraSnap = v
+	SETTINGS.KNIFE_CAMERA_SNAP = v
+end)
+createSliderRow(combatTab, "Knife Prediction Lead", 0, 3, KNIFE_THROW.Prediction, function(v)
+	KNIFE_THROW.Prediction = v
+	SETTINGS.KNIFE_PREDICTION = v
+end, function(v) return string.format("%.2f", v) end)
+createSliderRow(combatTab, "Knife Max Range (studs)", 30, 400, KNIFE_THROW.MaxRange, function(v)
+	KNIFE_THROW.MaxRange = math.floor(v)
+	SETTINGS.KNIFE_MAX_RANGE = math.floor(v)
+end, function(v) return tostring(math.floor(v)) end)
+createButtonRow(combatTab, "Throw Knife Now", function()
+	local ok, res = executeKnifeThrow()
+	if not ok then notify("Knife Throw", tostring(res), 1.5, "x") end
+end)
 
 -- VISUALS
 createToggleRow(visualsTab, "ESP", function() return ESP_SETTINGS.Enabled end, function(v) ESP_SETTINGS.Enabled = v end)
