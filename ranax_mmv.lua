@@ -6053,48 +6053,13 @@ cachedCoinLabel = nil
 getCoinBagLive = function()
     local pgui = LocalPlayer:FindFirstChild("PlayerGui")
     local defaultMax = checkEliteGamepass() and 50 or 40
-    if not pgui then return (_G.RanaxCoinsCollected or 0), defaultMax, false end
+    local tracked = _G.RanaxCoinsCollected or 0
+    if not pgui then return tracked, defaultMax, (tracked >= defaultMax) end
 
     local mg = pgui:FindFirstChild("MainGUI") or pgui:FindFirstChild("MainGui") or pgui:FindFirstChild("Gui")
-    if not mg then return (_G.RanaxCoinsCollected or 0), defaultMax, false end
+    if not mg then return tracked, defaultMax, (tracked >= defaultMax) end
 
-    -- 1. MM2 CoinBag frame search: Check actually visible labels inside Game -> CoinBag
-    local gameFrame = mg:FindFirstChild("Game") or mg
-    local cbObj = gameFrame:FindFirstChild("CoinBag", true) or gameFrame:FindFirstChild("Coins", true)
-
-    if cbObj and isGuiActuallyVisible(cbObj) then
-        for _, tl in ipairs(cbObj:GetDescendants()) do
-            if tl:IsA("TextLabel") and isGuiActuallyVisible(tl) then
-                local txt = tl.Text
-                if txt and txt ~= "" then
-                    -- Format A: Standard "xx / xx" (e.g. "25 / 40", "40 / 40", "50 / 50")
-                    local cur, mx = txt:match("(%d+)%s*/%s*(%d+)")
-                    if cur and mx then
-                        local cNum, mNum = tonumber(cur), tonumber(mx)
-                        if cNum and mNum and (mNum >= 40 and mNum <= 60) then
-                            return cNum, mNum, (cNum >= mNum and cNum >= 40)
-                        end
-                    end
-
-                    -- Format B: Single integer inside CoinBag (e.g. "25")
-                    local single = txt:match("^%s*(%d+)%s*$")
-                    if single then
-                        local sNum = tonumber(single)
-                        if sNum and sNum >= 0 and sNum <= 60 then
-                            return sNum, defaultMax, (sNum >= defaultMax)
-                        end
-                    end
-
-                    -- Format C: Exact word "FULL" (ONLY when truly visible)
-                    if txt:match("^%s*[Ff][Uu][Ll][Ll]!*%s*$") then
-                        return defaultMax, defaultMax, true
-                    end
-                end
-            end
-        end
-    end
-
-    -- 2. General search in MainGUI for any visible TextLabel matching "xx / 40" or "xx / 50"
+    -- 1. Scan MainGUI for standard "xx / xx" (e.g. "0 / 40", "25 / 40", "40 / 40")
     for _, desc in ipairs(mg:GetDescendants()) do
         if desc:IsA("TextLabel") and isGuiActuallyVisible(desc) then
             local txt = desc.Text
@@ -6106,11 +6071,18 @@ getCoinBagLive = function()
                         return cNum, mNum, (cNum >= mNum and cNum >= 40)
                     end
                 end
+
+                -- Exact word "FULL" only if in a coin-related container
+                local pName = (desc.Parent and desc.Parent.Name:lower()) or ""
+                local dName = desc.Name:lower()
+                if (pName:find("coin") or dName:find("coin")) and txt:match("^%s*[Ff][Uu][Ll][Ll]!*%s*$") then
+                    return defaultMax, defaultMax, true
+                end
             end
         end
     end
 
-    local tracked = _G.RanaxCoinsCollected or 0
+    -- Fallback to verified internal coin counter:
     return tracked, defaultMax, (tracked >= defaultMax)
 end
 
@@ -6340,13 +6312,18 @@ end
 
 local function getCoinTargetPosition(coin)
     if not coin or not coin.Parent then return nil end
-    local visual = coin:FindFirstChild("CoinVisual")
+    local visual = coin:FindFirstChild("CoinVisual") or coin:FindFirstChild("Visual")
     if visual and visual.Parent then
         if visual:IsA("BasePart") then
             return visual.Position
         elseif visual:IsA("Model") then
             return visual:GetPivot().Position
         end
+    end
+    if coin:IsA("BasePart") then
+        return coin.Position
+    elseif coin:IsA("Model") then
+        return coin:GetPivot().Position
     end
     return nil
 end
@@ -6378,7 +6355,7 @@ local function getMapCoins()
     for _, cc in ipairs(containers) do
         for _, c in ipairs(cc:GetChildren()) do
             if not bl[c] or bl[c] <= tick() then
-                local visual = c:FindFirstChild("CoinVisual")
+                local visual = c:FindFirstChild("CoinVisual") or c:FindFirstChild("Visual")
                 if visual and visual.Parent then
                     local isVis = true
                     if visual:IsA("BasePart") and visual.Transparency >= 0.95 then
@@ -6387,21 +6364,24 @@ local function getMapCoins()
                     if isVis then
                         table.insert(coins, c)
                     end
-                elseif c:IsA("BasePart") and c.Transparency < 0.95 then
+                elseif c.Name == "Coin_Server" or c:FindFirstChild("TouchInterest") or (c:IsA("BasePart") and c.Name:lower():find("coin") and c.Transparency < 0.95) then
                     table.insert(coins, c)
                 end
             end
         end
     end
 
-    -- 2) Fallback search across all non-lobby map models for CoinVisual
+    -- 2) Fallback search across all non-lobby map models
     if #coins == 0 then
         for _, obj in ipairs(workspace:GetChildren()) do
             if obj:IsA("Model") and obj.Name ~= "Lobby" and obj.Name ~= "RegularLobby" and obj.Name ~= "Terrain" then
                 for _, d in ipairs(obj:GetDescendants()) do
-                    if d.Name == "CoinVisual" and d.Parent and (not bl[d.Parent] or bl[d.Parent] <= tick()) then
-                        if not (d:IsA("BasePart") and d.Transparency >= 0.95) then
-                            table.insert(coins, d.Parent)
+                    if (d.Name == "CoinVisual" or d.Name == "Coin_Server") and d.Parent and (not bl[d.Parent] or bl[d.Parent] <= tick()) then
+                        local p = (d.Name == "CoinVisual") and d.Parent or d
+                        if not table.find(coins, p) then
+                            if not (d:IsA("BasePart") and d.Transparency >= 0.95) then
+                                table.insert(coins, p)
+                            end
                         end
                     end
                 end
@@ -6722,7 +6702,7 @@ local function ensureFarmFloat(hrp)
         bv = Instance.new("BodyVelocity")
         bv.Name = "RanaxFarmFloat"
         bv.Velocity = Vector3.zero
-        bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+        bv.MaxForce = Vector3.new(0, math.huge, 0) -- Anti-gravity on Y only, zero horizontal resistance
         bv.Parent = hrp
     end
     pcall(function()
@@ -6840,6 +6820,11 @@ task.spawn(function()
                 local blacklistedCoins = _G.BlacklistedCoins or {}
                 _G.BlacklistedCoins = blacklistedCoins
 
+                -- Auto-clear dead locks if player is alive and in the match
+                if _G.DiedThisRound and hrp and hum and hum.Health > 0 and not IsPlayerInLobby(LocalPlayer) then
+                    _G.DiedThisRound = false
+                end
+
                 -- Find all available coins on map right now
                 local mapCoins = getMapCoins()
 
@@ -6864,34 +6849,30 @@ task.spawn(function()
                         hrp.AssemblyLinearVelocity = Vector3.zero
                         hrp.AssemblyAngularVelocity = Vector3.zero
                     end
-                    task.wait(0.4)
+                    task.wait(0.35)
 
-                -- USER DIED DURING THIS MATCH: Stay completely parked in lobby until match ends & new round starts!
+                -- USER DIED DURING THIS MATCH: Stay parked until new round or respawned into active map
                 elseif _G.DiedThisRound then
-                    if _G.CoinTween then _G.CoinTween:Cancel(); _G.CoinTween = nil end
-                    pcall(removeCoinFarmPlatform)
-                    pcall(function() removeFarmFloat(char) end)
-                    if hrp then
-                        hrp.AssemblyLinearVelocity = Vector3.zero
-                        hrp.AssemblyAngularVelocity = Vector3.zero
-                    end
-                    task.wait(0.5)
-
-                -- MURDERER DIED DURING THIS MATCH: Stop instantly and teleport to lobby until next round!
-                elseif _G.MurdererDiedThisRound then
-                    -- Auto-recover if new round started (live murderer detected or 8s victory screen passed)
-                    local activeM = (typeof(getMurdererLive) == "function") and getMurdererLive()
-                    local murdAlive = false
-                    if activeM and activeM.Character then
-                        local hum = activeM.Character:FindFirstChildOfClass("Humanoid")
-                        if hum and hum.Health > 0 and not IsPlayerInLobby(activeM) then
-                            murdAlive = true
+                    if not IsPlayerInLobby(LocalPlayer) and isRoundOngoing() then
+                        _G.DiedThisRound = false
+                    else
+                        if _G.CoinTween then _G.CoinTween:Cancel(); _G.CoinTween = nil end
+                        pcall(removeCoinFarmPlatform)
+                        pcall(function() removeFarmFloat(char) end)
+                        if hrp then
+                            hrp.AssemblyLinearVelocity = Vector3.zero
+                            hrp.AssemblyAngularVelocity = Vector3.zero
                         end
+                        task.wait(0.5)
                     end
-                    if murdAlive or (os.clock() - (_G.MurdererDiedTimestamp or 0) > 8) then
+
+                -- MURDERER DIED DURING THIS MATCH: Stop and teleport to lobby until next round
+                elseif _G.MurdererDiedThisRound then
+                    if (os.clock() - (_G.MurdererDiedTimestamp or 0) > 6) or not isRoundOngoing() then
                         _G.MurdererDiedThisRound = false
                         _G.HasTeleportedAboveFirst = false
                         _G.CoinFarmHandlingBagFull = false
+                        _currentTrackedMurderer = nil
                     else
                         if _G.CoinTween then _G.CoinTween:Cancel(); _G.CoinTween = nil end
                         pcall(removeCoinFarmPlatform)
@@ -6904,10 +6885,9 @@ task.spawn(function()
                         task.wait(0.5)
                     end
 
-                -- BAG FULL HANDLING: Parked until round ends
+                -- BAG FULL HANDLING: Parked until round ends or new round
                 elseif _G.CoinFarmHandlingBagFull then
-                    -- When coins on map disappear or bag is not full (new round started), clear flag!
-                    if #mapCoins == 0 or not IsCoinBagFull() then
+                    if #mapCoins == 0 or not IsCoinBagFull() or not isRoundOngoing() then
                         _G.HasTeleportedAboveFirst = false
                         _G.CoinFarmHandlingBagFull = false
                         _G.RanaxCoinsCollected = 0
@@ -6922,40 +6902,19 @@ task.spawn(function()
                     end
 
                 else
-                    -- 0) ACTIVE MURDERER STATUS CHECK: Stop instantly if Murderer died!
+                    -- 0) ACTIVE MURDERER CHECK: ONLY trigger if confirmed alive murderer actually died
                     local activeMurd = getMurdererLive()
-                    if activeMurd then
+                    if activeMurd and activeMurd.Character then
                         if _currentTrackedMurderer ~= activeMurd then
                             hookMurdererDeath(activeMurd)
                         end
-                        local mHum = activeMurd.Character and activeMurd.Character:FindFirstChildOfClass("Humanoid")
+                        local mHum = activeMurd.Character:FindFirstChildOfClass("Humanoid")
                         if mHum and mHum.Health <= 0 then
                             onMurdererDied(activeMurd)
                         end
                     end
-                    if _currentTrackedMurderer and not _G.MurdererDiedThisRound then
-                        local mChar = _currentTrackedMurderer.Character
-                        if not mChar or not mChar.Parent then
-                            if #mapCoins > 0 and isRoundOngoing() then
-                                onMurdererDied(_currentTrackedMurderer)
-                            end
-                        else
-                            local mHum = mChar:FindFirstChildOfClass("Humanoid")
-                            if mHum and mHum.Health <= 0 then
-                                onMurdererDied(_currentTrackedMurderer)
-                            end
-                        end
-                    end
 
-                    -- 1) FIRST TELEPORT ABOVE MAP (SAFE ROOF) WITH ENGLISH NOTIFICATION:
-                    if not _G.HasTeleportedAboveFirst then
-                        _G.HasTeleportedAboveFirst = true
-                        notify("Coin Farm", "Teleporting above map...", 2.5, "arrow-up")
-                        pcall(TeleportAboveMap)
-                        task.wait(0.45)
-                    end
-
-                    -- ACTIVE COINS EXIST ON MAP! Check if bag is full:
+                    -- ACTIVE COINS EXIST ON MAP! Check if bag is truly full:
                     local isBagFullNow = IsCoinBagFull()
 
                     if isBagFullNow then
@@ -6966,8 +6925,9 @@ task.spawn(function()
                         pcall(removeCoinFarmPlatform)
                         pcall(function() removeFarmFloat(char) end)
 
-                        -- 2) FIRST TELEPORT ABOVE MAP (SAFE ROOF) WHEN BAG REACHES 40!
-                        local _, _maxB = getCoinBagLive(); notify("Coin Farm", "Bag Full (" .. tostring((_maxB and _maxB >= 50) and 50 or 40) .. ")! Teleporting above map first...", 2.5, "arrow-up")
+                        -- 2) Teleport above map when bag reaches capacity
+                        local _, _maxB = getCoinBagLive()
+                        notify("Coin Farm", "Bag Full (" .. tostring((_maxB and _maxB >= 50) and 50 or 40) .. ")! Holding safe position...", 2.5, "arrow-up")
                         pcall(TeleportAboveMap)
                         task.wait(0.4)
 
@@ -6986,34 +6946,10 @@ task.spawn(function()
                         -- 4) DETERMINE ROLES & EQUIPPED TOOLS
                         local action = _G.BagFullAction or "Auto by Role (Kill/Fling/Reset)"
                         
-                        -- Find Murderer
                         local murderer = nil
                         if typeof(getMurdererLive) == "function" then murderer = getMurdererLive() end
                         if not murderer and typeof(getMurdererTarget) == "function" then murderer = getMurdererTarget() end
-                        if not murderer or not murderer.Character then
-                            for _, p in ipairs(Players:GetPlayers()) do
-                                if p ~= LocalPlayer and p.Character then
-                                    for _, t in ipairs(p.Character:GetChildren()) do
-                                        if t:IsA("Tool") and (t.Name:lower():find("knife") or t.Name:lower():find("blade") or t.Name:lower():find("dagger") or t.Name:lower():find("scythe") or t:FindFirstChild("KnifeServer")) then
-                                            murderer = p
-                                            break
-                                        end
-                                    end
-                                    local bp = p:FindFirstChild("Backpack")
-                                    if bp and not murderer then
-                                        for _, t in ipairs(bp:GetChildren()) do
-                                            if t:IsA("Tool") and (t.Name:lower():find("knife") or t.Name:lower():find("blade") or t.Name:lower():find("dagger") or t.Name:lower():find("scythe") or t:FindFirstChild("KnifeServer")) then
-                                                murderer = p
-                                                break
-                                            end
-                                        end
-                                    end
-                                end
-                                if murderer then break end
-                            end
-                        end
 
-                        -- Check if LocalPlayer has Gun or Knife
                         local hasGun = false
                         local hasKnife = false
                         for _, t in ipairs(char:GetChildren()) do
@@ -7040,7 +6976,6 @@ task.spawn(function()
                             end
                         end
 
-                        -- If Innocent and no Gun: Check if Sheriff died and Gun is dropped on map!
                         if not hasGun and not hasKnife then
                             local gunDrop = workspace:FindFirstChild("GunDrop", true)
                             if gunDrop then
@@ -7076,8 +7011,6 @@ task.spawn(function()
                         end
 
                         local killConfirmed = false
-
-                        -- Helper to verify if all players on map are dead
                         local function areAllEnemiesDead()
                             for _, p in ipairs(Players:GetPlayers()) do
                                 if p ~= LocalPlayer and p.Character then
@@ -7090,25 +7023,17 @@ task.spawn(function()
                             return true
                         end
 
-                        -- 5) EXECUTE MURDERER ELIMINATION / ROLE ACTION
+                        -- 5) EXECUTE ROLE ACTION
                         if hasKnife or action == "Kill Everyone (Murderer)" then
                             notify("Coin Farm", "Bag Full! (Murderer) Eliminating all enemies...", 2.5, "skull")
                             local killFn = (_G.ExecuteKillEveryone) or (typeof(ExecuteKillEveryone) == "function" and ExecuteKillEveryone or nil)
                             local startKill = os.clock()
-                            -- Keep killing until EVERYONE on map is dead or round ends!
                             while os.clock() - startKill < 25 do
-                                if not isRoundOngoing() or areAllEnemiesDead() then
-                                    break
-                                end
+                                if not isRoundOngoing() or areAllEnemiesDead() then break end
                                 if killFn then pcall(killFn, 500) end
                                 task.wait(0.2)
                             end
-
-                            if areAllEnemiesDead() or not isRoundOngoing() then
-                                killConfirmed = true
-                            else
-                                killConfirmed = false
-                            end
+                            killConfirmed = areAllEnemiesDead() or not isRoundOngoing()
 
                         elseif action == "Reset Character" or action == "Reset & Continue" then
                             notify("Coin Farm", "Bag Full! Resetting...", 2, "refresh-cw")
@@ -7125,7 +7050,6 @@ task.spawn(function()
                             local shootStart = os.clock()
                             local shotCount = 0
 
-                            -- Sheriff NEVER flings! Keep safe distance and shoot with proper gun cooldown until Murderer is dead!
                             while os.clock() - shootStart < 20 and isRoundOngoing() do
                                 if not murderer or not murderer.Character then
                                     killConfirmed = true
@@ -7147,8 +7071,6 @@ task.spawn(function()
                                         break
                                     end
                                 end
-
-                                -- Respect MM2 gun fire-rate cooldown between shots
                                 task.wait(0.75)
                             end
 
@@ -7162,17 +7084,17 @@ task.spawn(function()
                             end
 
                         else
-                            -- Pure Innocent: Direct FLING on Murderer!
+                            -- Pure Innocent: Direct FLING on Murderer
                             if murderer and murderer.Character and isRoundOngoing() then
                                 notify("Coin Farm", "Bag Full! (Innocent) Flinging Murderer...", 2.5, "zap")
                                 local mHum = murderer.Character:FindFirstChildOfClass("Humanoid")
                                 local flingFn = _G.VFling or (typeof(VFling) == "function" and VFling or nil)
                                 if flingFn and mHum and mHum.Health > 0 then
-                                    local wasAF = V.AntiFling
-                                    V.AntiFling = false
+                                    local wasAF = V and V.AntiFling
+                                    if V then V.AntiFling = false end
                                     pcall(flingFn, murderer)
                                     task.wait(0.5)
-                                    V.AntiFling = wasAF
+                                    if V then V.AntiFling = wasAF end
 
                                     local wDead = os.clock()
                                     while os.clock() - wDead < 2.5 do
@@ -7188,7 +7110,7 @@ task.spawn(function()
                             end
                         end
 
-                        -- 6) POST-ACTION DISPATCH: Teleport to Lobby ONLY if enemies are confirmed dead / victory!
+                        -- 6) POST-ACTION DISPATCH
                         if killConfirmed or not isRoundOngoing() then
                             notify("Coin Farm", "Victory! Enemies Eliminated, Teleporting to Lobby...", 2.5, "check")
                             task.wait(0.2)
@@ -7206,7 +7128,7 @@ task.spawn(function()
                         -- COLLECT COINS ON ACTIVE MAP
                         local closestCoin, minDist = nil, math.huge
                         for _, coin in ipairs(mapCoins) do
-                            local cPos = (typeof(getCoinTargetPosition) == "function") and getCoinTargetPosition(coin) or (coin:IsA("BasePart") and coin.Position)
+                            local cPos = getCoinTargetPosition(coin)
                             if cPos then
                                 local dist = (hrp.Position - cPos).Magnitude
                                 if dist < minDist then
@@ -7218,14 +7140,14 @@ task.spawn(function()
 
                         if closestCoin and closestCoin.Parent then
                             local speed = math.clamp(tonumber(_G.FarmSpeed) or 24, 10, 24)
-                            local coinPos = (typeof(getCoinTargetPosition) == "function") and getCoinTargetPosition(closestCoin) or closestCoin.Position
+                            local coinPos = getCoinTargetPosition(closestCoin)
 
                             local DESTROY_Y = -450
                             pcall(function() DESTROY_Y = workspace.FallenPartsDestroyHeight end)
                             local MIN_SAFE_Y = DESTROY_Y + 35
 
-                            if coinPos.Y <= MIN_SAFE_Y + 10 then
-                                blacklistedCoins[closestCoin] = tick() + 30
+                            if not coinPos or coinPos.Y <= MIN_SAFE_Y + 10 then
+                                blacklistedCoins[closestCoin] = tick() + 15
                                 _G.BlacklistedCoins = blacklistedCoins
                                 task.wait(0.01)
                             else
@@ -7233,7 +7155,6 @@ task.spawn(function()
                                 local targetCFrame
 
                                 if isUnderground then
-                                    -- EXACTLY 3 BLOCKS DIRECTLY UNDER COIN, ROCK-SOLID ANTI-GRAVITY FLOAT:
                                     local UNDERGROUND_DEPTH = 3.0
                                     local targetY = math.max(coinPos.Y - UNDERGROUND_DEPTH, MIN_SAFE_Y)
                                     targetCFrame = CFrame.new(coinPos.X, targetY, coinPos.Z) * CFrame.Angles(math.rad(-90), 0, 0)
@@ -7241,7 +7162,6 @@ task.spawn(function()
                                     ensureFarmFloat(hrp)
                                     hum.PlatformStand = true
                                     hum.Sit = false
-                                    -- Cancel sitting animations to keep character completely straight horizontal on back
                                     pcall(function()
                                         for _, track in ipairs(hum:GetPlayingAnimationTracks()) do
                                             if track.Name:lower():find("sit") then track:Stop() end
@@ -7258,7 +7178,7 @@ task.spawn(function()
 
                                 local dist = (hrp.Position - targetCFrame.Position).Magnitude
                                 local safeSpeed = math.clamp(speed, 10, 24)
-                                local tweenTime = math.clamp(dist / safeSpeed, 0.1, 4.0)
+                                local tweenTime = math.clamp(dist / safeSpeed, 0.08, 3.5)
 
                                 local tweenInfo = TweenInfo.new(tweenTime, Enum.EasingStyle.Linear)
                                 _G.CoinTween = TweenService:Create(hrp, tweenInfo, {CFrame = targetCFrame})
@@ -7271,8 +7191,9 @@ task.spawn(function()
                                 local timeoutLimit = tonumber(_G.CoinFarmAntiStuckTimeout) or 2.0
 
                                 while _G.CoinTween and closestCoin and closestCoin.Parent and (tick() - startWait < tweenTime + 0.1) do
-                                    -- Instant check: If coin was collected by another player while traveling, abort instantly!
-                                    if not closestCoin:FindFirstChild("CoinVisual") then
+                                    -- Only abort if coin visual exists and was made transparent (picked up by another player)
+                                    local cv = closestCoin:FindFirstChild("CoinVisual")
+                                    if cv and cv:IsA("BasePart") and cv.Transparency >= 0.95 then
                                         if _G.CoinTween then _G.CoinTween:Cancel(); _G.CoinTween = nil end
                                         break
                                     end
@@ -7283,17 +7204,9 @@ task.spawn(function()
 
                                     -- Check if Murderer died mid-flight to coin
                                     local activeM = _currentTrackedMurderer or (typeof(getMurdererLive) == "function" and getMurdererLive())
-                                    if activeM then
-                                        local isMDead = false
-                                        if not activeM.Parent then
-                                            isMDead = true
-                                        elseif activeM.Character and activeM.Character.Parent then
-                                            local mHum = activeM.Character:FindFirstChildOfClass("Humanoid")
-                                            if mHum and mHum.Health <= 0 then
-                                                isMDead = true
-                                            end
-                                        end
-                                        if isMDead then
+                                    if activeM and activeM.Character then
+                                        local mHum = activeM.Character:FindFirstChildOfClass("Humanoid")
+                                        if mHum and mHum.Health <= 0 then
                                             onMurdererDied(activeM)
                                             if _G.CoinTween then _G.CoinTween:Cancel(); _G.CoinTween = nil end
                                             break
@@ -7311,7 +7224,6 @@ task.spawn(function()
 
                                     local currentDist = (hrp.Position - targetCFrame.Position).Magnitude
                                     local horizDist = Vector2.new(hrp.Position.X - coinPos.X, hrp.Position.Z - coinPos.Z).Magnitude
-                                    local hasVisual = closestCoin:FindFirstChild("CoinVisual") ~= nil
 
                                     if horizDist <= 6.0 then
                                         pcall(function()
@@ -7320,7 +7232,6 @@ task.spawn(function()
                                                     firetouchinterest(hrp, closestCoin, 0)
                                                     firetouchinterest(hrp, closestCoin, 1)
                                                 end
-                                                local cv = closestCoin:FindFirstChild("CoinVisual")
                                                 if cv and cv:IsA("BasePart") then
                                                     firetouchinterest(hrp, cv, 0)
                                                     firetouchinterest(hrp, cv, 1)
@@ -7329,11 +7240,7 @@ task.spawn(function()
                                         end)
                                     end
 
-                                    if not hasVisual and closestCoin:IsA("Model") then
-                                        break
-                                    end
-
-                                    if currentDist <= 2.2 or horizDist <= 1.8 then
+                                    if currentDist <= 2.5 or horizDist <= 2.0 then
                                         pcall(function()
                                             if typeof(firetouchinterest) == "function" then
                                                 if closestCoin:IsA("BasePart") then
@@ -7350,22 +7257,13 @@ task.spawn(function()
                                         end)
 
                                         local pickupWait = tick()
-                                        while closestCoin and closestCoin.Parent and closestCoin:FindFirstChild("CoinVisual") and (tick() - pickupWait < 0.2) do
+                                        while closestCoin and closestCoin.Parent and (tick() - pickupWait < 0.15) do
                                             pcall(function()
-                                                if typeof(firetouchinterest) == "function" then
-                                                    if closestCoin:IsA("BasePart") then
-                                                        firetouchinterest(hrp, closestCoin, 0)
-                                                        firetouchinterest(hrp, closestCoin, 1)
-                                                    end
+                                                if typeof(firetouchinterest) == "function" and closestCoin:IsA("BasePart") then
+                                                    firetouchinterest(hrp, closestCoin, 0)
+                                                    firetouchinterest(hrp, closestCoin, 1)
                                                 end
                                             end)
-                                            if isUnderground then
-                                                -- STRICT 3 STUDS DEPTH AT ALL TIMES (NO HOPPING UP/DOWN!)
-                                                local targetY = math.max(coinPos.Y - 3.0, MIN_SAFE_Y)
-                                                hrp.CFrame = CFrame.new(coinPos.X, targetY, coinPos.Z) * CFrame.Angles(math.rad(-90), 0, 0)
-                                                hrp.AssemblyLinearVelocity = Vector3.zero
-                                                hrp.AssemblyAngularVelocity = Vector3.zero
-                                            end
                                             task.wait(0.03)
                                         end
                                         coinWasCollected = true
@@ -7393,7 +7291,7 @@ task.spawn(function()
 
                                 if _G.CoinTween then _G.CoinTween:Cancel(); _G.CoinTween = nil end
 
-                                blacklistedCoins[closestCoin] = tick() + 15
+                                blacklistedCoins[closestCoin] = tick() + 12
                                 _G.BlacklistedCoins = blacklistedCoins
                                 if coinWasCollected then
                                     _G.RanaxCoinsCollected = (_G.RanaxCoinsCollected or 0) + 1
@@ -7401,7 +7299,7 @@ task.spawn(function()
                                 end
                             end
                         else
-                            task.wait(0.3)
+                            task.wait(0.25)
                         end
                     end
                 end
@@ -7570,6 +7468,14 @@ UIElements.SafeAutoFarm = CoinFarmTab:Toggle({
         _G.SafeAutoFarm = val
         _G.AutoCoins = val
         if val then
+            _G.DiedThisRound = false
+            _G.MurdererDiedThisRound = false
+            _G.CoinFarmHandlingBagFull = false
+            _G.HasTeleportedAboveFirst = false
+            _G.BlacklistedCoins = {}
+            _currentTrackedMurderer = nil
+            _G.RanaxCoinsCollected = 0
+
             if not _G.FarmStartTime or _G.FarmStartTime == 0 then
                 _G.FarmStartTime = os.time()
             end
@@ -7584,7 +7490,7 @@ UIElements.SafeAutoFarm = CoinFarmTab:Toggle({
                 end
             end
             _G.CoinFarmNoclipActive = true
-            notify("Coin Farm", "Safe Coin Farm Enabled (Never Falls Down)", 2, "coins")
+            notify("Coin Farm", "Safe Coin Farm Enabled (Active)", 2, "coins")
         else
             _G.CoinFarmNoclipActive = false
             stopCoinFarmClean()
