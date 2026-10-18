@@ -1759,6 +1759,87 @@ local function createDropdownRow(content, text, options, get, set)
 	return row
 end
 
+-- ==================== INTERAKTIF TUS ATAMA (KEYBIND BUILDER) ====================
+local function createKeybindRow(content, text, getKey, setKey)
+	local order = nextOrder(content)
+	local row = create("TextButton", {
+		Size = UDim2.new(1, -6, 0, 32),
+		BackgroundColor3 = SETTINGS.THEME_ROW,
+		BorderSizePixel = 0,
+		Text = "",
+		ZIndex = 2,
+		LayoutOrder = order,
+	}, content)
+	create("UICorner", { CornerRadius = UDim.new(0, 6) }, row)
+
+	create("TextLabel", {
+		Size = UDim2.new(1, -110, 1, 0),
+		Position = UDim2.new(0, 10, 0, 0),
+		BackgroundTransparency = 1,
+		Font = Enum.Font.GothamMedium,
+		Text = text,
+		TextColor3 = SETTINGS.THEME_TEXT,
+		TextSize = 12,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		ZIndex = 3,
+	}, row)
+
+	local keyPill = create("TextLabel", {
+		Size = UDim2.new(0, 96, 0, 22),
+		Position = UDim2.new(1, -104, 0.5, -11),
+		BackgroundColor3 = Color3.fromRGB(40, 30, 60),
+		Font = Enum.Font.GothamBold,
+		Text = "[--]",
+		TextColor3 = Color3.fromRGB(240, 230, 255),
+		TextSize = 11,
+		ZIndex = 3,
+	}, row)
+	create("UICorner", { CornerRadius = UDim.new(0, 6) }, keyPill)
+	create("UIStroke", { Color = SETTINGS.THEME, Thickness = 1, Transparency = 0.4 }, keyPill)
+
+	local listening = false
+	local function refresh()
+		if listening then
+			keyPill.Text = "[Tusa Bas...]"
+			keyPill.BackgroundColor3 = SETTINGS.THEME
+			keyPill.TextColor3 = Color3.fromRGB(255, 255, 255)
+		else
+			local k = getKey()
+			local kname = (typeof(k) == "EnumItem" and k.Name) or tostring(k):gsub("Enum.KeyCode.", "")
+			keyPill.Text = "[" .. kname .. "]"
+			keyPill.BackgroundColor3 = Color3.fromRGB(40, 30, 60)
+			keyPill.TextColor3 = Color3.fromRGB(240, 230, 255)
+		end
+	end
+
+	row.MouseButton1Click:Connect(function()
+		if listening then return end
+		listening = true
+		refresh()
+
+		local conn
+		conn = UserInputService.InputBegan:Connect(function(input, gpe)
+			if input.UserInputType == Enum.UserInputType.Keyboard then
+				conn:Disconnect()
+				conn = nil
+				listening = false
+				setKey(input.KeyCode)
+				notify("Keybind", text .. " tusu ayarlandi: [" .. input.KeyCode.Name .. "]", 2)
+				refresh()
+			elseif input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.MouseButton2 then
+				conn:Disconnect()
+				conn = nil
+				listening = false
+				refresh()
+			end
+		end)
+	end)
+
+	refresh()
+	table.insert(toggleRefreshers, refresh)
+	return row
+end
+
 local function createToggleRow(content, text, get, set)
 	local order = nextOrder(content)
 	local row = create("TextButton", {
@@ -1915,8 +1996,10 @@ local playerTab = createTab("Player")
 local miscTab = createTab("Misc")
 
 -- COMBAT (5v5 / AIM TRAINER / FFA / MM2 CLOSEST MOTORU)
-createToggleRow(combatTab, "Shoot V2 (Q)", function() return SETTINGS.AUTO_FIRE end, function(v) SETTINGS.AUTO_FIRE = v end)
-createToggleRow(combatTab, "Flick Shoot (R)", function() return SETTINGS.FLICK_ENABLED end, function(v) SETTINGS.FLICK_ENABLED = v end)
+createToggleRow(combatTab, "Shoot V2 (Auto-Fire)", function() return SETTINGS.AUTO_FIRE end, function(v) SETTINGS.AUTO_FIRE = v end)
+createKeybindRow(combatTab, "Shoot Tusu", function() return SETTINGS.KEYBIND end, function(k) SETTINGS.KEYBIND = k end)
+createToggleRow(combatTab, "Flick Shoot", function() return SETTINGS.FLICK_ENABLED end, function(v) SETTINGS.FLICK_ENABLED = v end)
+createKeybindRow(combatTab, "Flick Tusu", function() return SETTINGS.FLICK_KEY end, function(k) SETTINGS.FLICK_KEY = k end)
 createToggleRow(combatTab, "Silent Triggerbot", function() return SETTINGS.TRIGGERBOT end, function(v) SETTINGS.TRIGGERBOT = v end)
 createDropdownRow(combatTab, "Hedefleme Modu", {"FOV", "Range (Mesafe)"}, function() return SETTINGS.TARGET_MODE end, function(v) SETTINGS.TARGET_MODE = v end)
 createToggleRow(combatTab, "Auto Equip (Silah Al/Kusan)", function() return SETTINGS.AUTO_EQUIP end, function(v) SETTINGS.AUTO_EQUIP = v end)
@@ -1980,6 +2063,7 @@ createButtonRow(playerTab, "Hareketi Sifirla", function()
 end)
 
 -- MISC & RAGE TECH
+createKeybindRow(miscTab, "Menu Ac/Kapa Tusu", function() return SETTINGS.MENU_KEY end, function(k) SETTINGS.MENU_KEY = k end)
 createToggleRow(miscTab, "Spinbot / Anti-Aim", function() return SETTINGS.SPINBOT_ENABLED end, function(v) SETTINGS.SPINBOT_ENABLED = v end)
 createSliderRow(miscTab, "Spinbot Hizi", 10, 100, SETTINGS.SPINBOT_SPEED, function(v) SETTINGS.SPINBOT_SPEED = v end, function(v) return tostring(math.floor(v)) end)
 createToggleRow(miscTab, "Anti AFK", function() return PLAYER_SETTINGS.AntiAFK end, function(v) PLAYER_SETTINGS.AntiAFK = v end)
@@ -2023,7 +2107,8 @@ closeBtn.MouseButton1Click:Connect(function()
 end)
 
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
-	if input.KeyCode == SETTINGS.MENU_KEY or input.KeyCode == Enum.KeyCode.LeftControl then
+	local targetKey = SETTINGS.MENU_KEY or Enum.KeyCode.LeftControl
+	if input.KeyCode == targetKey then
 		-- Yazi kutusuna (Friend box vs.) yaziyorsa menuyu kapatip acma!
 		if UserInputService:GetFocusedTextBox() then
 			return
@@ -2087,16 +2172,26 @@ guiParent(hudGui)
 -- 1. TOP-BAR SLEEK GLASSMORPHIC WATERMARK
 local topBarFrame = create("Frame", {
 	Name = "TopWatermark",
-	Size = UDim2.new(0, 440, 0, 36),
+	Size = UDim2.new(0, 460, 0, 34),
 	Position = UDim2.new(0, 20, 0, 14),
-	BackgroundColor3 = Color3.fromRGB(14, 10, 22),
-	BackgroundTransparency = 0.15,
+	BackgroundColor3 = Color3.fromRGB(16, 11, 24),
+	BackgroundTransparency = 0.12,
 	BorderSizePixel = 0,
 	Active = true,
 }, hudGui)
-create("UICorner", { CornerRadius = UDim.new(0, 8) }, topBarFrame)
-create("UIStroke", { Color = SETTINGS.THEME, Thickness = 1.4, Transparency = 0.35 }, topBarFrame)
+create("UICorner", { CornerRadius = UDim.new(0, 9) }, topBarFrame)
+create("UIStroke", { Color = SETTINGS.THEME, Thickness = 1.4, Transparency = 0.25 }, topBarFrame)
 makeDraggable(topBarFrame)
+
+-- Neon glow accent line at bottom of HUD
+local hudAccentLine = create("Frame", {
+	Size = UDim2.new(1, -16, 0, 1.5),
+	Position = UDim2.new(0, 8, 1, -2),
+	BackgroundColor3 = SETTINGS.THEME,
+	BackgroundTransparency = 0.3,
+	BorderSizePixel = 0,
+}, topBarFrame)
+create("UICorner", { CornerRadius = UDim.new(0, 1) }, hudAccentLine)
 
 -- User Headshot Avatar (Kullanicinin KENDİ karakteri!)
 local userAvatar = create("ImageLabel", {
@@ -2174,125 +2269,7 @@ task.spawn(function()
 	end
 end)
 
--- 2. GAMESENSE / NEVERLOSE STYLE ACTIVE KEYBINDS & MODULES HUD
-local keybindsFrame = create("Frame", {
-	Name = "KeybindsHUD",
-	Size = UDim2.new(0, 190, 0, 210),
-	Position = UDim2.new(0, 20, 0, 60),
-	BackgroundColor3 = Color3.fromRGB(15, 12, 22),
-	BackgroundTransparency = 0.18,
-	BorderSizePixel = 0,
-	Active = true,
-}, hudGui)
-create("UICorner", { CornerRadius = UDim.new(0, 8) }, keybindsFrame)
-create("UIStroke", { Color = SETTINGS.THEME, Thickness = 1.3, Transparency = 0.4 }, keybindsFrame)
-makeDraggable(keybindsFrame)
-
-local kbTop = create("Frame", {
-	Size = UDim2.new(1, 0, 0, 24),
-	BackgroundColor3 = Color3.fromRGB(22, 16, 34),
-	BorderSizePixel = 0,
-}, keybindsFrame)
-create("UICorner", { CornerRadius = UDim.new(0, 8) }, kbTop)
-
-create("TextLabel", {
-	Size = UDim2.new(1, -12, 1, 0),
-	Position = UDim2.new(0, 8, 0, 0),
-	BackgroundTransparency = 1,
-	Font = Enum.Font.GothamBold,
-	Text = "⚡ ACTIVE MODULES",
-	TextColor3 = SETTINGS.THEME,
-	TextSize = 11,
-	TextXAlignment = Enum.TextXAlignment.Left,
-}, kbTop)
-
-local kbList = create("ScrollingFrame", {
-	Size = UDim2.new(1, -8, 1, -28),
-	Position = UDim2.new(0, 4, 0, 26),
-	BackgroundTransparency = 1,
-	BorderSizePixel = 0,
-	ScrollBarThickness = 2,
-	ScrollBarImageColor3 = SETTINGS.THEME,
-	CanvasSize = UDim2.new(0, 0, 0, 0),
-}, keybindsFrame)
-local kbLayout = create("UIListLayout", { Padding = UDim.new(0, 3), SortOrder = Enum.SortOrder.LayoutOrder }, kbList)
-kbLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-	kbList.CanvasSize = UDim2.new(0, 0, 0, kbLayout.AbsoluteContentSize.Y + 6)
-	keybindsFrame.Size = UDim2.new(0, 190, 0, math.clamp(kbLayout.AbsoluteContentSize.Y + 34, 40, 260))
-end)
-
-local function makeModuleRow(name, getKey, getStatus)
-	local row = create("Frame", {
-		Size = UDim2.new(1, 0, 0, 18),
-		BackgroundTransparency = 1,
-	}, kbList)
-
-	local nLbl = create("TextLabel", {
-		Size = UDim2.new(0.65, 0, 1, 0),
-		Position = UDim2.new(0, 4, 0, 0),
-		BackgroundTransparency = 1,
-		Font = Enum.Font.GothamMedium,
-		Text = name,
-		TextColor3 = Color3.fromRGB(200, 195, 215),
-		TextSize = 10,
-		TextXAlignment = Enum.TextXAlignment.Left,
-	}, row)
-
-	local sLbl = create("TextLabel", {
-		Size = UDim2.new(0.35, -4, 1, 0),
-		Position = UDim2.new(0.65, 0, 0, 0),
-		BackgroundTransparency = 1,
-		Font = Enum.Font.GothamBold,
-		Text = "[--]",
-		TextColor3 = Color3.fromRGB(120, 220, 120),
-		TextSize = 10,
-		TextXAlignment = Enum.TextXAlignment.Right,
-	}, row)
-
-	task.spawn(function()
-		while row.Parent do
-			local active, text, col = getStatus()
-			row.Visible = (active == true)
-			if active then
-				sLbl.Text = text
-				sLbl.TextColor3 = col or Color3.fromRGB(120, 220, 120)
-			end
-			task.wait(0.2)
-		end
-	end)
-end
-
--- Keybinds HUD Rows:
-makeModuleRow("Shoot V2 [Q]", nil, function()
-	return SETTINGS.AUTO_FIRE, "[AUTO]", Color3.fromRGB(120, 220, 120)
-end)
-makeModuleRow("Flick Shoot [R]", nil, function()
-	return SETTINGS.FLICK_ENABLED, "[FLICK]", Color3.fromRGB(180, 100, 255)
-end)
-makeModuleRow("Triggerbot", nil, function()
-	return SETTINGS.TRIGGERBOT, "[TRIGGER]", Color3.fromRGB(255, 215, 60)
-end)
-makeModuleRow("Hitbox Extender", nil, function()
-	return SETTINGS.HITBOX_ENABLED, "[" .. tostring(math.floor(SETTINGS.HITBOX_SIZE)) .. "s]", Color3.fromRGB(255, 120, 120)
-end)
-makeModuleRow("Kill Aura", nil, function()
-	return KILL_AURA.Enabled, "[" .. tostring(KILL_AURA.Range) .. "s]", Color3.fromRGB(255, 70, 70)
-end)
-makeModuleRow("Spinbot", nil, function()
-	return SETTINGS.SPINBOT_ENABLED, "[SPIN]", Color3.fromRGB(80, 220, 255)
-end)
-makeModuleRow("Fly Hack", nil, function()
-	return SETTINGS.FLY_ENABLED, "[FLY]", Color3.fromRGB(80, 255, 180)
-end)
-makeModuleRow("Noclip", nil, function()
-	return SETTINGS.NOCLIP, "[NOCLIP]", Color3.fromRGB(220, 160, 255)
-end)
-makeModuleRow("Bunny Hop", nil, function()
-	return SETTINGS.BHOP_ENABLED, "[BHOP]", Color3.fromRGB(255, 200, 100)
-end)
-makeModuleRow("Auto Equip", nil, function()
-	return SETTINGS.AUTO_EQUIP, "[ON]", Color3.fromRGB(140, 240, 140)
-end)
+-- Sol bar kullanici istegiyle kaldirildi (temiz ve ferah ekran)
 
 -- 3. MODERN FLOATING TARGET CARD (Aim Trainer Crosshair Tracker)
 local targetCard = create("Frame", {
