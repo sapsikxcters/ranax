@@ -56,7 +56,28 @@ local SETTINGS = {
 	BURST_SIZE      = 0,
 	BURST_PAUSE     = 0.5,
 	HIT_SOUND       = true,           -- Crisp AAA vurus sesi
+	TRIGGERBOT      = false,          -- Crosshair hedefe gelince aninda otomatik ates
+	TRIGGERBOT_DELAY = 0.02,
+	BULLET_TRACERS  = true,           -- Neon lazer mermi izleri
+	KILL_BANNER     = true,           -- Zafer & Eleme gostergesi
+	GUN_MAGNET      = false,          -- Yerdeki silahlari aninda eline ceker
 	DEBUG           = true,
+
+	-- Hitbox Expander (Aim Trainer / 5v5 Tanrisi)
+	HITBOX_ENABLED   = false,
+	HITBOX_SIZE      = 14,             -- 5 - 30 studs
+	HITBOX_TRANS     = 0.65,
+
+	-- Spinbot / Anti-Aim (Hedef alinamaz olursun)
+	SPINBOT_ENABLED  = false,
+	SPINBOT_SPEED    = 45,
+
+	-- Hareket & Godmode Hileleri
+	BHOP_ENABLED     = false,          -- Otomatik Bunny Hop
+	INF_JUMP         = false,          -- Sinirsiz havada ziplama
+	NOCLIP           = false,          -- Duvarlardan gecme
+	FLY_ENABLED      = false,          -- Ucma hilesi
+	FLY_SPEED        = 45,
 
 	-- Flick Shoot (Ranax MMV Motoru)
 	FLICK_ENABLED   = false,
@@ -735,6 +756,7 @@ local function fireRemote(rem, origin, hitPos, gun)
 	if SETTINGS.HIT_SOUND then
 		playHitSound()
 	end
+	pcall(function() spawnBulletTracer(origin, hitPos) end)
 end
 
 -- ==================== RANAX MMV FLICK SHOOT MOTORU ====================
@@ -858,6 +880,20 @@ local function shootV2()
 		executeFlickShoot(target, hitPos, remote, gun, origin)
 	else
 		fireRemote(remote, origin, hitPos, gun)
+	end
+
+	-- Hook kill detection for banner
+	if SETTINGS.KILL_BANNER and target and target.Character then
+		local victimHum = target.Character:FindFirstChildOfClass("Humanoid")
+		if victimHum and victimHum.Health > 0 then
+			local tDist = math.floor((origin - hitPos).Magnitude)
+			local dConn
+			dConn = victimHum.Died:Connect(function()
+				if dConn then dConn:Disconnect(); dConn = nil end
+				showKillBanner(target.Name, tDist)
+			end)
+			task.delay(2.8, function() if dConn then dConn:Disconnect(); dConn = nil end end)
+		end
 	end
 
 	shotsInBurst = shotsInBurst + 1
@@ -1050,6 +1086,259 @@ task.spawn(function()
 end)
 
 -- ============================ ESP SISTEMI ============================
+-- ==================== NEON BULLET TRACERS & KILL BANNER ====================
+local function spawnBulletTracer(origin, hitPos)
+	if not SETTINGS.BULLET_TRACERS then return end
+	pcall(function()
+		local dist = (hitPos - origin).Magnitude
+		local beam = Instance.new("Part")
+		beam.Name = "ZickLaserBeam"
+		beam.Anchored = true
+		beam.CanCollide = false
+		beam.CanTouch = false
+		beam.CanQuery = false
+		beam.Material = Enum.Material.Neon
+		beam.Color = Color3.fromRGB(180, 50, 255)
+		beam.Size = Vector3.new(0.18, 0.18, dist)
+		beam.CFrame = CFrame.lookAt(origin, hitPos) * CFrame.new(0, 0, -dist / 2)
+		beam.Parent = Workspace:FindFirstChild("Terrain") or Workspace
+
+		TweenService:Create(beam, TweenInfo.new(0.45, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			Transparency = 1,
+			Size = Vector3.new(0.02, 0.02, dist)
+		}):Play()
+		task.delay(0.5, function() pcall(function() beam:Destroy() end) end)
+	end)
+end
+
+local function showKillBanner(victimName, dist)
+	if not SETTINGS.KILL_BANNER then return end
+	pcall(function()
+		local targetParent = (type(gethui) == "function" and gethui()) or CoreGui
+		local old = targetParent:FindFirstChild("ZickKillBannerGui")
+		if old then pcall(function() old:Destroy() end) end
+
+		local sg = Instance.new("ScreenGui")
+		sg.Name = "ZickKillBannerGui"
+		sg.ResetOnSpawn = false
+		sg.DisplayOrder = 9999
+		sg.Parent = targetParent
+
+		local banner = Instance.new("Frame")
+		banner.Size = UDim2.new(0, 340, 0, 68)
+		banner.Position = UDim2.new(0.5, -170, 0.08, -50)
+		banner.BackgroundColor3 = Color3.fromRGB(20, 15, 30)
+		banner.BackgroundTransparency = 0.2
+		banner.BorderSizePixel = 0
+		banner.Parent = sg
+
+		local uic = Instance.new("UICorner")
+		uic.CornerRadius = UDim.new(0, 8)
+		uic.Parent = banner
+
+		local uis = Instance.new("UIStroke")
+		uis.Color = SETTINGS.THEME
+		uis.Thickness = 1.8
+		uis.Parent = banner
+
+		local t1 = Instance.new("TextLabel")
+		t1.Size = UDim2.new(1, 0, 0, 32)
+		t1.Position = UDim2.new(0, 0, 0, 6)
+		t1.BackgroundTransparency = 1
+		t1.Font = Enum.Font.GothamBold
+		t1.Text = "★ TARGET ELIMINATED ★"
+		t1.TextColor3 = Color3.fromRGB(255, 225, 60)
+		t1.TextSize = 17
+		t1.Parent = banner
+
+		local t2 = Instance.new("TextLabel")
+		t2.Size = UDim2.new(1, 0, 0, 22)
+		t2.Position = UDim2.new(0, 0, 0, 36)
+		t2.BackgroundTransparency = 1
+		t2.Font = Enum.Font.GothamMedium
+		t2.Text = string.format("Victim: %s   •   Dist: %dm", tostring(victimName or "Player"), tonumber(dist) or 0)
+		t2.TextColor3 = Color3.fromRGB(220, 210, 240)
+		t2.TextSize = 12
+		t2.Parent = banner
+
+		TweenService:Create(banner, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+			Position = UDim2.new(0.5, -170, 0.12, 0)
+		}):Play()
+
+		task.delay(1.5, function()
+			if banner and banner.Parent then
+				TweenService:Create(banner, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+					Position = UDim2.new(0.5, -170, 0.08, -50),
+					BackgroundTransparency = 1
+				}):Play()
+				task.delay(0.35, function() pcall(function() sg:Destroy() end) end)
+			end
+		end)
+	end)
+end
+
+-- ==================== HITBOX EXPANDER (AIM TRAINER / 5V5 GODMODE) ====================
+local originalHitboxes = {}
+task.spawn(function()
+	while true do
+		if SETTINGS.HITBOX_ENABLED then
+			local sz = tonumber(SETTINGS.HITBOX_SIZE) or 14
+			local tr = tonumber(SETTINGS.HITBOX_TRANS) or 0.65
+			for _, p in ipairs(Players:GetPlayers()) do
+				if p ~= LocalPlayer and not isFriend(p.Name) and p.Character then
+					local hrp = p.Character:FindFirstChild("HumanoidRootPart")
+					local hum = p.Character:FindFirstChildOfClass("Humanoid")
+					if hrp and hum and hum.Health > 0 then
+						if not originalHitboxes[hrp] then
+							originalHitboxes[hrp] = { size = hrp.Size, trans = hrp.Transparency, cc = hrp.CanCollide }
+						end
+						hrp.Size = Vector3.new(sz, sz, sz)
+						hrp.Transparency = tr
+						hrp.CanCollide = false
+					end
+				end
+			end
+		else
+			if next(originalHitboxes) then
+				for hrp, data in pairs(originalHitboxes) do
+					if hrp and hrp.Parent then
+						pcall(function()
+							hrp.Size = data.size
+							hrp.Transparency = data.trans
+							hrp.CanCollide = data.cc
+						end)
+					end
+				end
+				originalHitboxes = {}
+			end
+		end
+		task.wait(0.3)
+	end
+end)
+
+-- ==================== SILENT TRIGGERBOT ====================
+local lastTriggerShot = 0
+RunService.RenderStepped:Connect(function()
+	if not SETTINGS.TRIGGERBOT then return end
+	if os.clock() - lastTriggerShot < (SETTINGS.TRIGGERBOT_DELAY or 0.05) then return end
+
+	local mouse = LocalPlayer:GetMouse()
+	local targetPart = mouse and mouse.Target
+	if targetPart and targetPart.Parent then
+		local char = targetPart.Parent:IsA("Model") and targetPart.Parent or targetPart.Parent.Parent
+		if char and char:IsA("Model") then
+			local p = Players:GetPlayerFromCharacter(char)
+			if p and p ~= LocalPlayer and not isFriend(p.Name) then
+				local hum = char:FindFirstChildOfClass("Humanoid")
+				if hum and hum.Health > 0 then
+					lastTriggerShot = os.clock()
+					pcall(shootV2)
+				end
+			end
+		end
+	end
+end)
+
+-- ==================== SPINBOT / ANTI-AIM ====================
+RunService.RenderStepped:Connect(function()
+	if not SETTINGS.SPINBOT_ENABLED then return end
+	local char = LocalPlayer.Character
+	local hrp = char and char:FindFirstChild("HumanoidRootPart")
+	local hum = char and char:FindFirstChildOfClass("Humanoid")
+	if hrp and hum and hum.Health > 0 then
+		local spd = tonumber(SETTINGS.SPINBOT_SPEED) or 45
+		hrp.CFrame = CFrame.new(hrp.Position) * CFrame.Angles(0, math.rad((os.clock() * spd * 12) % 360), 0)
+	end
+end)
+
+-- ==================== BUNNY HOP & INFINITE JUMP ====================
+RunService.RenderStepped:Connect(function()
+	if not SETTINGS.BHOP_ENABLED then return end
+	local char = LocalPlayer.Character
+	local hum = char and char:FindFirstChildOfClass("Humanoid")
+	if hum and hum.Health > 0 then
+		if hum.FloorMaterial ~= Enum.Material.Air and hum.MoveDirection.Magnitude > 0 then
+			hum:ChangeState(Enum.HumanoidStateType.Jumping)
+		end
+	end
+end)
+
+UserInputService.JumpRequest:Connect(function()
+	if SETTINGS.INF_JUMP then
+		local char = LocalPlayer.Character
+		local hum = char and char:FindFirstChildOfClass("Humanoid")
+		if hum and hum.Health > 0 then
+			hum:ChangeState(Enum.HumanoidStateType.Jumping)
+		end
+	end
+end)
+
+-- ==================== NOCLIP ENGINE ====================
+RunService.Stepped:Connect(function()
+	if not SETTINGS.NOCLIP then return end
+	local char = LocalPlayer.Character
+	if char then
+		for _, part in ipairs(char:GetDescendants()) do
+			if part:IsA("BasePart") and part.CanCollide then
+				part.CanCollide = false
+			end
+		end
+	end
+end)
+
+-- ==================== FLY HACK ENGINE ====================
+local flyBodyVel, flyBodyGyro = nil, nil
+task.spawn(function()
+	while true do
+		local char = LocalPlayer.Character
+		local hrp = char and char:FindFirstChild("HumanoidRootPart")
+		local hum = char and char:FindFirstChildOfClass("Humanoid")
+
+		if SETTINGS.FLY_ENABLED and hrp and hum and hum.Health > 0 then
+			if not flyBodyVel then
+				flyBodyVel = Instance.new("BodyVelocity")
+				flyBodyVel.Name = "ZickFlyVelocity"
+				flyBodyVel.MaxForce = Vector3.new(1e6, 1e6, 1e6)
+				flyBodyVel.Parent = hrp
+
+				flyBodyGyro = Instance.new("BodyGyro")
+				flyBodyGyro.Name = "ZickFlyGyro"
+				flyBodyGyro.MaxTorque = Vector3.new(1e6, 1e6, 1e6)
+				flyBodyGyro.CFrame = hrp.CFrame
+				flyBodyGyro.Parent = hrp
+			end
+
+			local cam = Camera or Workspace.CurrentCamera
+			local moveDir = Vector3.zero
+			if UserInputService:IsKeyDown(Enum.KeyCode.W) then moveDir = moveDir + cam.CFrame.LookVector end
+			if UserInputService:IsKeyDown(Enum.KeyCode.S) then moveDir = moveDir - cam.CFrame.LookVector end
+			if UserInputService:IsKeyDown(Enum.KeyCode.A) then moveDir = moveDir - cam.CFrame.RightVector end
+			if UserInputService:IsKeyDown(Enum.KeyCode.D) then moveDir = moveDir + cam.CFrame.RightVector end
+			if UserInputService:IsKeyDown(Enum.KeyCode.Space) then moveDir = moveDir + Vector3.new(0, 1, 0) end
+			if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then moveDir = moveDir - Vector3.new(0, 1, 0) end
+
+			local speed = tonumber(SETTINGS.FLY_SPEED) or 45
+			flyBodyVel.Velocity = moveDir.Unit * speed
+			if moveDir.Magnitude == 0 then flyBodyVel.Velocity = Vector3.zero end
+			flyBodyGyro.CFrame = cam.CFrame
+		else
+			if flyBodyVel then flyBodyVel:Destroy(); flyBodyVel = nil end
+			if flyBodyGyro then flyBodyGyro:Destroy(); flyBodyGyro = nil end
+		end
+		task.wait(0.03)
+	end
+end)
+
+-- ==================== GUN MAGNET (AUTO-PULL DROPPED GUN) ====================
+task.spawn(function()
+	while true do
+		if SETTINGS.GUN_MAGNET then
+			pcall(grabDroppedGun)
+		end
+		task.wait(0.4)
+	end
+end)
+
 local espObjects = {}
 
 local function newEspDrawing(kind, props)
@@ -1628,13 +1917,19 @@ local miscTab = createTab("Misc")
 -- COMBAT (5v5 / AIM TRAINER / FFA / MM2 CLOSEST MOTORU)
 createToggleRow(combatTab, "Shoot V2 (Q)", function() return SETTINGS.AUTO_FIRE end, function(v) SETTINGS.AUTO_FIRE = v end)
 createToggleRow(combatTab, "Flick Shoot (R)", function() return SETTINGS.FLICK_ENABLED end, function(v) SETTINGS.FLICK_ENABLED = v end)
+createToggleRow(combatTab, "Silent Triggerbot", function() return SETTINGS.TRIGGERBOT end, function(v) SETTINGS.TRIGGERBOT = v end)
 createDropdownRow(combatTab, "Hedefleme Modu", {"FOV", "Range (Mesafe)"}, function() return SETTINGS.TARGET_MODE end, function(v) SETTINGS.TARGET_MODE = v end)
 createToggleRow(combatTab, "Auto Equip (Silah Al/Kusan)", function() return SETTINGS.AUTO_EQUIP end, function(v) SETTINGS.AUTO_EQUIP = v end)
 createDropdownRow(combatTab, "Atis Metodu", {"New (Blatant)", "Normal"}, function() return SETTINGS.SHOOT_METHOD end, function(v) SETTINGS.SHOOT_METHOD = v end)
+createToggleRow(combatTab, "Hitbox Expander (Extender)", function() return SETTINGS.HITBOX_ENABLED end, function(v) SETTINGS.HITBOX_ENABLED = v end)
+createSliderRow(combatTab, "Hitbox Boyutu (stud)", 5, 30, SETTINGS.HITBOX_SIZE, function(v) SETTINGS.HITBOX_SIZE = v end, function(v) return tostring(math.floor(v)) end)
 createToggleRow(combatTab, "Flick Kamera Snap", function() return SETTINGS.FLICK_CAMERA end, function(v) SETTINGS.FLICK_CAMERA = v end)
 createToggleRow(combatTab, "Flick Geri Don", function() return SETTINGS.FLICK_RESTORE end, function(v) SETTINGS.FLICK_RESTORE = v end)
 createSliderRow(combatTab, "Flick Suresi (sn)", 0.02, 0.3, SETTINGS.FLICK_TURN_TIME, function(v) SETTINGS.FLICK_TURN_TIME = v end, function(v) return string.format("%.2f", v) end)
 createToggleRow(combatTab, "Wall Check", function() return SETTINGS.WALL_CHECK end, function(v) SETTINGS.WALL_CHECK = v end)
+createToggleRow(combatTab, "Lazer Mermi Izleri (Tracers)", function() return SETTINGS.BULLET_TRACERS end, function(v) SETTINGS.BULLET_TRACERS = v end)
+createToggleRow(combatTab, "Kill Banner UI", function() return SETTINGS.KILL_BANNER end, function(v) SETTINGS.KILL_BANNER = v end)
+createToggleRow(combatTab, "Gun Magnet (Silah Cekici)", function() return SETTINGS.GUN_MAGNET end, function(v) SETTINGS.GUN_MAGNET = v end)
 createToggleRow(combatTab, "Vurus Sesi (Hit Sound)", function() return SETTINGS.HIT_SOUND end, function(v) SETTINGS.HIT_SOUND = v end)
 createToggleRow(combatTab, "Auto Reload", function() return SETTINGS.AUTO_RELOAD end, function(v) SETTINGS.AUTO_RELOAD = v end)
 createSliderRow(combatTab, "Shoot Delay (sn)", 0.05, 1, SETTINGS.SHOOT_DELAY, function(v) SETTINGS.SHOOT_DELAY = v end, function(v) return string.format("%.2f", v) end)
@@ -1660,14 +1955,21 @@ createSliderRow(visualsTab, "ESP Max Mesafe (stud)", 0, 2000, ESP_SETTINGS.MaxDi
 createSliderRow(visualsTab, "ESP Yazı Boyutu", 10, 22, ESP_SETTINGS.TextSize, function(v) ESP_SETTINGS.TextSize = math.floor(v) end)
 createToggleRow(visualsTab, "FOV Cemberi", function() return SETTINGS.FOV_SHOW end, function(v) SETTINGS.FOV_SHOW = v end)
 
--- PLAYER
+-- PLAYER & MOVEMENT
+createToggleRow(playerTab, "Fly Hack (Ucma)", function() return SETTINGS.FLY_ENABLED end, function(v) SETTINGS.FLY_ENABLED = v end)
+createSliderRow(playerTab, "Fly Hizi", 15, 150, SETTINGS.FLY_SPEED, function(v) SETTINGS.FLY_SPEED = v end, function(v) return tostring(math.floor(v)) end)
+createToggleRow(playerTab, "Noclip (Duvarlardan Gec)", function() return SETTINGS.NOCLIP end, function(v) SETTINGS.NOCLIP = v end)
+createToggleRow(playerTab, "Auto Bunny Hop (B-Hop)", function() return SETTINGS.BHOP_ENABLED end, function(v) SETTINGS.BHOP_ENABLED = v end)
+createToggleRow(playerTab, "Infinite Jump (Sinirsiz Ziplama)", function() return SETTINGS.INF_JUMP end, function(v) SETTINGS.INF_JUMP = v end)
 createToggleRow(playerTab, "Walk Speed", function() return PLAYER_SETTINGS.SpeedEnabled end, function(v) PLAYER_SETTINGS.SpeedEnabled = v end)
-createSliderRow(playerTab, "Walk Speed Değer", 16, 120, PLAYER_SETTINGS.SpeedValue, function(v) PLAYER_SETTINGS.SpeedValue = v end, function(v) return tostring(math.floor(v)) end)
+createSliderRow(playerTab, "Walk Speed Değer", 16, 150, PLAYER_SETTINGS.SpeedValue, function(v) PLAYER_SETTINGS.SpeedValue = v end, function(v) return tostring(math.floor(v)) end)
 createToggleRow(playerTab, "Jump Power", function() return PLAYER_SETTINGS.JumpEnabled end, function(v) PLAYER_SETTINGS.JumpEnabled = v end)
 createSliderRow(playerTab, "Jump Power Değer", 50, 250, PLAYER_SETTINGS.JumpValue, function(v) PLAYER_SETTINGS.JumpValue = v end, function(v) return tostring(math.floor(v)) end)
 createButtonRow(playerTab, "Hareketi Sifirla", function()
 	PLAYER_SETTINGS.SpeedEnabled = false
 	PLAYER_SETTINGS.JumpEnabled = false
+	SETTINGS.FLY_ENABLED = false
+	SETTINGS.NOCLIP = false
 	local char = LocalPlayer.Character
 	local hum = char and char:FindFirstChildOfClass("Humanoid")
 	if hum then
@@ -1677,7 +1979,9 @@ createButtonRow(playerTab, "Hareketi Sifirla", function()
 	end
 end)
 
--- MISC
+-- MISC & RAGE TECH
+createToggleRow(miscTab, "Spinbot / Anti-Aim", function() return SETTINGS.SPINBOT_ENABLED end, function(v) SETTINGS.SPINBOT_ENABLED = v end)
+createSliderRow(miscTab, "Spinbot Hizi", 10, 100, SETTINGS.SPINBOT_SPEED, function(v) SETTINGS.SPINBOT_SPEED = v end, function(v) return tostring(math.floor(v)) end)
 createToggleRow(miscTab, "Anti AFK", function() return PLAYER_SETTINGS.AntiAFK end, function(v) PLAYER_SETTINGS.AntiAFK = v end)
 createToggleRow(miscTab, "FPS Boost", function() return PLAYER_SETTINGS.FPSBoost end, function(v)
 	PLAYER_SETTINGS.FPSBoost = v
