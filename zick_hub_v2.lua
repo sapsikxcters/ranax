@@ -809,14 +809,30 @@ local remoteCooldown = 0
 local shotsInBurst = 0
 local currentAimTarget = nil
 
--- Tum MM2, Aim Trainer ve Modded remote tiplerini destekleyen universal tetikleyici (TEK ATIS)
+-- Tum MM2, Aim Trainer ve Modded remote tiplerini destekleyen universal tetikleyici (2X DOUBLE SHOT BURST)
 local function fireRemote(rem, origin, hitPos, gun)
 	if not rem then return end
 	local aimCF = CFrame.lookAt(origin, hitPos)
 	local targetCF = CFrame.new(hitPos)
 	pcall(function()
+		-- 1. Standart MM2 CFrame + CFrame
 		rem:FireServer(aimCF, targetCF)
+		-- 2. CFrame + Vector3
+		rem:FireServer(aimCF, hitPos)
+		-- 3. Vector3 + Vector3
+		rem:FireServer(origin, hitPos)
+		-- 4. HitPos tekil
+		rem:FireServer(hitPos)
+		-- 5. Aim CFrame tekil
+		rem:FireServer(aimCF)
+		-- 6. RemoteFunction invoke
+		if rem:IsA("RemoteFunction") then
+			rem:InvokeServer(1, hitPos, "AH2")
+		end
 	end)
+	if gun and gun:IsA("Tool") then
+		pcall(function() gun:Activate() end)
+	end
 	if SETTINGS.HIT_SOUND then
 		playHitSound()
 	end
