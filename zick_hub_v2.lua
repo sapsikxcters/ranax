@@ -100,7 +100,7 @@ local SETTINGS = {
 
 local ESP_SETTINGS = {
 	Enabled     = true,
-	Chams       = true,
+	Chams       = false,
 	Names       = true,
 	Boxes       = true,
 	Tracers     = false,
@@ -995,20 +995,26 @@ task.spawn(function()
 		if SETTINGS.AUTO_FIRE then
 			local ok, err = pcall(shootV2)
 			if not ok and SETTINGS.DEBUG then
-				warn("[ZickHub V2] shootV2 hata: " .. tostring(err))
+				warn("[ZickHub V2] shootV2 error: " .. tostring(err))
 			end
+			task.wait(SETTINGS.SHOOT_DELAY)
 		else
 			currentAimTarget = nil
+			task.wait(0.35)
 		end
-		task.wait(SETTINGS.SHOOT_DELAY)
 	end
 end)
 
 -- Target info cizimi
 RunService.RenderStepped:Connect(function()
+	if not SETTINGS.FOV_SHOW then
+		if fovCircle.Visible then fovCircle.Visible = false end
+		if targetInfo.Visible then targetInfo.Visible = false end
+		return
+	end
 	fovCircle.Radius = SETTINGS.FOV_RADIUS
-	fovCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2) -- cemberi ekranin TAM ortasina ciz
-	fovCircle.Visible = SETTINGS.FOV_SHOW and not flickActive
+	fovCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+	fovCircle.Visible = not flickActive
 	if currentAimTarget and currentAimTarget.Character and SETTINGS.FOV_SHOW then
 		local thrp = currentAimTarget.Character:FindFirstChild("HumanoidRootPart")
 		local thum = currentAimTarget.Character:FindFirstChildOfClass("Humanoid")
@@ -1520,13 +1526,27 @@ for _, plr in ipairs(Players:GetPlayers()) do
 	end
 end
 
+local wasEspEnabled = true
+local lastEspTick = 0
+
 RunService.RenderStepped:Connect(function()
 	if not ESP_SETTINGS.Enabled then
-		for _, plr in pairs(espObjects) do
-			hideEsp(espObjects[plr])
+		if wasEspEnabled then
+			wasEspEnabled = false
+			for _, obj in pairs(espObjects) do
+				hideEsp(obj)
+			end
 		end
 		return
 	end
+	wasEspEnabled = true
+
+	local now = os.clock()
+	if now - lastEspTick < 0.025 then
+		return
+	end
+	lastEspTick = now
+
 	local myRoot = getHRP()
 	local viewport = Camera.ViewportSize
 	for plr, obj in pairs(espObjects) do
@@ -2160,9 +2180,16 @@ createToggleRow(miscTab, "FPS Boost", function() return PLAYER_SETTINGS.FPSBoost
 	PLAYER_SETTINGS.FPSBoost = v
 	pcall(function()
 		Lighting.GlobalShadows = not v
-		Lighting.FogEnd = v and 1e6 or 1000
+		Lighting.FogEnd = v and 9e9 or 1000
 		Lighting.Brightness = v and 1 or 2
 		settings().Rendering.QualityLevel = v and 1 or 10
+		for _, desc in ipairs(workspace:GetDescendants()) do
+			if desc:IsA("PostEffect") then
+				desc.Enabled = not v
+			elseif desc:IsA("ParticleEmitter") or desc:IsA("Trail") or desc:IsA("Smoke") or desc:IsA("Fire") then
+				desc.Enabled = not v
+			end
+		end
 	end)
 end)
 createToggleRow(miscTab, "Debug Log", function() return SETTINGS.DEBUG end, function(v) SETTINGS.DEBUG = v end)
@@ -2211,9 +2238,13 @@ switchTab("Combat")
 -- Q/R kisayollari menu pill'lerini guncellesin: tum toggle pill'leri 0.25 sn'de bir yenilenir
 task.spawn(function()
 	while true do
-		task.wait(0.25)
-		for _, refresh in ipairs(toggleRefreshers) do
-			pcall(refresh)
+		if menuVisible then
+			for _, refresh in ipairs(toggleRefreshers) do
+				pcall(refresh)
+			end
+			task.wait(0.35)
+		else
+			task.wait(1.0)
 		end
 	end
 end)
