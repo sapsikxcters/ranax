@@ -99,18 +99,23 @@ local SETTINGS = {
 }
 
 local ESP_SETTINGS = {
-	Enabled     = true,
-	Chams       = false,
-	Names       = true,
-	Boxes       = true,
-	Tracers     = false,
-	HealthBars  = true,
-	Distance    = true,
-	TeamCheck   = false,
-	MaxDistance = 0,           -- 0 = sinirsiz
-	TextSize    = 13,
-	BoxColor    = Color3.fromRGB(160, 32, 240),
-	NameColor   = Color3.fromRGB(255, 255, 255),
+	Enabled           = true,
+	Chams             = true,
+	PartChams         = true,
+	GlowChams         = true,
+	ChamsTransparency = 0.35,
+	RoleColors        = true,
+	Names             = true,
+	Weapon            = true,
+	Boxes             = true,
+	Tracers           = false,
+	HealthBars        = true,
+	Distance          = true,
+	TeamCheck         = false,
+	MaxDistance       = 0, -- 0 = sinirsiz
+	TextSize          = 13,
+	BoxColor          = Color3.fromRGB(160, 32, 240),
+	NameColor         = Color3.fromRGB(255, 255, 255),
 }
 
 local PLAYER_SETTINGS = {
@@ -1431,6 +1436,72 @@ task.spawn(function()
 	end
 end)
 
+local CHAMS_BODY_PARTS = {
+	["Head"] = true,
+	["Torso"] = true,
+	["UpperTorso"] = true,
+	["LowerTorso"] = true,
+	["Left Arm"] = true,
+	["Right Arm"] = true,
+	["Left Leg"] = true,
+	["Right Leg"] = true,
+	["LeftUpperArm"] = true,
+	["LeftLowerArm"] = true,
+	["LeftHand"] = true,
+	["RightUpperArm"] = true,
+	["RightLowerArm"] = true,
+	["RightHand"] = true,
+	["LeftUpperLeg"] = true,
+	["LeftLowerLeg"] = true,
+	["LeftFoot"] = true,
+	["RightUpperLeg"] = true,
+	["RightLowerLeg"] = true,
+	["RightFoot"] = true,
+}
+
+local function getPlayerRoleAndColor(plr)
+	if not plr then
+		return "Innocent", Color3.fromRGB(50, 255, 110), "Innocent"
+	end
+	local char = plr.Character
+	local bp = plr:FindFirstChild("Backpack")
+
+	local hasKnife = false
+	local hasGun = false
+	local weaponName = ""
+
+	local function checkTool(t)
+		if not t or not t:IsA("Tool") then return end
+		local nameLower = t.Name:lower()
+		if nameLower:find("knife") or nameLower:find("blade") or nameLower:find("dagger") or nameLower:find("scythe") or nameLower:find("sword") or t:FindFirstChild("KnifeServer") or t:FindFirstChild("Stab") then
+			hasKnife = true
+			if weaponName == "" then weaponName = t.Name end
+		elseif looksLikeGun(t.Name) or hasShootRemote(t) or nameLower:find("gun") or nameLower:find("revolver") or nameLower:find("phantom") then
+			hasGun = true
+			if weaponName == "" then weaponName = t.Name end
+		end
+	end
+
+	if char then
+		for _, item in ipairs(char:GetChildren()) do
+			checkTool(item)
+		end
+	end
+	if bp and not (hasKnife and hasGun) then
+		for _, item in ipairs(bp:GetChildren()) do
+			checkTool(item)
+		end
+	end
+
+	if hasKnife then
+		return "Murderer", Color3.fromRGB(255, 45, 65), weaponName ~= "" and weaponName or "Knife"
+	elseif hasGun then
+		return "Sheriff", Color3.fromRGB(45, 150, 255), weaponName ~= "" and weaponName or "Gun"
+	else
+		return "Innocent", Color3.fromRGB(50, 255, 110), weaponName ~= "" and weaponName or "Innocent"
+	end
+end
+
 local espObjects = {}
 
 local function newEspDrawing(kind, props)
@@ -1454,18 +1525,30 @@ local function ensureEsp(plr)
 			OutlineColor = Color3.new(0, 0, 0),
 			Color = ESP_SETTINGS.NameColor,
 		}),
+		extra = newEspDrawing("Text", {
+			Size = ESP_SETTINGS.TextSize - 1,
+			Center = true,
+			Outline = true,
+			OutlineColor = Color3.new(0, 0, 0),
+			Color = Color3.fromRGB(220, 220, 220),
+		}),
+		boxOutline = newEspDrawing("Square", {
+			Thickness = 3,
+			Color = Color3.new(0, 0, 0),
+			Filled = false,
+		}),
 		box = newEspDrawing("Square", {
 			Thickness = 1,
 			Color = ESP_SETTINGS.BoxColor,
 			Filled = false,
 		}),
 		tracer = newEspDrawing("Line", {
-			Thickness = 1,
+			Thickness = 1.2,
 			Color = ESP_SETTINGS.BoxColor,
 		}),
 		healthBg = newEspDrawing("Square", {
 			Thickness = 1,
-			Color = Color3.fromRGB(30, 30, 30),
+			Color = Color3.fromRGB(20, 20, 20),
 			Filled = true,
 		}),
 		health = newEspDrawing("Square", {
@@ -1474,13 +1557,23 @@ local function ensureEsp(plr)
 			Filled = true,
 		}),
 		highlight = nil,
+		partAdornments = {},
 	}
+end
+
+local function clearPartAdornments(obj)
+	if obj and obj.partAdornments then
+		for _, adorn in pairs(obj.partAdornments) do
+			pcall(function() adorn:Destroy() end)
+		end
+		obj.partAdornments = {}
+	end
 end
 
 local function removeEsp(plr)
 	local obj = espObjects[plr]
 	if obj then
-		for _, key in ipairs({ "name", "box", "tracer", "healthBg", "health" }) do
+		for _, key in ipairs({ "name", "extra", "boxOutline", "box", "tracer", "healthBg", "health" }) do
 			pcall(function()
 				obj[key]:Remove()
 			end)
@@ -1490,6 +1583,7 @@ local function removeEsp(plr)
 				obj.highlight:Destroy()
 			end)
 		end
+		clearPartAdornments(obj)
 		espObjects[plr] = nil
 	end
 end
@@ -1502,12 +1596,19 @@ end
 
 local function hideEsp(obj)
 	obj.name.Visible = false
+	if obj.extra then obj.extra.Visible = false end
+	if obj.boxOutline then obj.boxOutline.Visible = false end
 	obj.box.Visible = false
 	obj.tracer.Visible = false
 	obj.healthBg.Visible = false
 	obj.health.Visible = false
 	if obj.highlight then
 		obj.highlight.Enabled = false
+	end
+	if obj.partAdornments then
+		for _, adorn in pairs(obj.partAdornments) do
+			adorn.Visible = false
+		end
 	end
 end
 
@@ -1572,56 +1673,128 @@ RunService.RenderStepped:Connect(function()
 				hideEsp(obj)
 			else
 				local screenPos = Vector2.new(pos.X, pos.Y)
-				-- Chams
-				if ESP_SETTINGS.Chams then
-					if not obj.highlight or obj.highlight.Parent ~= char then
-						if obj.highlight then
-							obj.highlight:Destroy()
-						end
-						obj.highlight = create("Highlight", {
-							Name = "ZickChams",
-							DepthMode = Enum.HighlightDepthMode.AlwaysOnTop,
-							FillColor = ESP_SETTINGS.BoxColor,
-							OutlineColor = Color3.new(1, 1, 1),
-							FillTransparency = 0.65,
-							OutlineTransparency = 0,
-						})
-						obj.highlight.Parent = char
-					end
-					obj.highlight.Enabled = true
-				elseif obj.highlight then
-					obj.highlight.Enabled = false
+
+				-- 1. Determine Dynamic Role & Color
+				local roleName, roleColor, weaponName = getPlayerRoleAndColor(plr)
+				local finalColor = ESP_SETTINGS.BoxColor
+				if ESP_SETTINGS.RoleColors then
+					finalColor = roleColor
+				elseif ESP_SETTINGS.TeamCheck and teamColorOf(plr) then
+					finalColor = teamColorOf(plr)
 				end
-				-- Kutu boyutu (mesafeye gore kaba olcek)
+
+				-- 2. Chams Engine (Part Chams for limbs + Glow Highlight)
+				if ESP_SETTINGS.Chams then
+					-- Part Chams (3D BoxHandleAdornment on each limb: arms, legs, torso, head)
+					if ESP_SETTINGS.PartChams then
+						for _, child in ipairs(char:GetChildren()) do
+							if child:IsA("BasePart") and CHAMS_BODY_PARTS[child.Name] then
+								local adorn = obj.partAdornments[child]
+								if not adorn or adorn.Parent ~= child then
+									if adorn then pcall(function() adorn:Destroy() end) end
+									adorn = Instance.new("BoxHandleAdornment")
+									adorn.Name = "ZickPartCham"
+									adorn.Adornee = child
+									adorn.AlwaysOnTop = true
+									adorn.ZIndex = 5
+									adorn.Parent = child
+									obj.partAdornments[child] = adorn
+								end
+								adorn.Size = child.Size + Vector3.new(0.04, 0.04, 0.04)
+								adorn.Color3 = finalColor
+								adorn.Transparency = ESP_SETTINGS.ChamsTransparency or 0.35
+								adorn.Visible = true
+							end
+						end
+					else
+						for _, adorn in pairs(obj.partAdornments) do
+							adorn.Visible = false
+						end
+					end
+
+					-- Full Glow Highlight
+					if ESP_SETTINGS.GlowChams then
+						if not obj.highlight or obj.highlight.Parent ~= char then
+							if obj.highlight then pcall(function() obj.highlight:Destroy() end) end
+							obj.highlight = create("Highlight", {
+								Name = "ZickChams",
+								DepthMode = Enum.HighlightDepthMode.AlwaysOnTop,
+								FillColor = finalColor,
+								OutlineColor = Color3.new(1, 1, 1),
+								FillTransparency = 0.70,
+								OutlineTransparency = 0.2,
+							})
+							obj.highlight.Parent = char
+						else
+							obj.highlight.FillColor = finalColor
+							obj.highlight.Enabled = true
+						end
+					elseif obj.highlight then
+						obj.highlight.Enabled = false
+					end
+				else
+					if obj.highlight then obj.highlight.Enabled = false end
+					for _, adorn in pairs(obj.partAdornments) do
+						adorn.Visible = false
+					end
+				end
+
+				-- 3. Box Size & Position Calculation
 				local dist = myRoot and (myRoot.Position - hrp.Position).Magnitude or 50
 				local scale = math.clamp(2000 / math.max(dist, 1), 8, 200)
-				local boxW = scale * 1.1
-				local boxH = scale * 2.2
+				local boxW = scale * 1.15
+				local boxH = scale * 2.25
 				local boxPos = Vector2.new(screenPos.X - boxW / 2, screenPos.Y - boxH / 2)
-				-- Kutu
+
+				-- 4. Razor Sharp Box (with clean black outline)
 				if ESP_SETTINGS.Boxes then
+					obj.boxOutline.Size = Vector2.new(boxW, boxH)
+					obj.boxOutline.Position = boxPos
+					obj.boxOutline.Visible = true
+
 					obj.box.Size = Vector2.new(boxW, boxH)
 					obj.box.Position = boxPos
-					obj.box.Color = ESP_SETTINGS.BoxColor
+					obj.box.Color = finalColor
 					obj.box.Visible = true
 				else
+					obj.boxOutline.Visible = false
 					obj.box.Visible = false
 				end
-				-- Isim + Mesafe (birlesik: mesafe tek basina da calisir)
+
+				-- 5. Name + Role + Distance (Top of box)
 				local labelText = ESP_SETTINGS.Names and plr.Name or ""
+				if ESP_SETTINGS.RoleColors and roleName ~= "Innocent" then
+					labelText = labelText .. " [" .. roleName .. "]"
+				end
 				if ESP_SETTINGS.Distance then
 					labelText = labelText .. (labelText ~= "" and " " or "") .. "[" .. math.floor(dist) .. "m]"
 				end
 				if labelText ~= "" then
 					obj.name.Text = labelText
 					obj.name.Size = ESP_SETTINGS.TextSize
-					obj.name.Position = Vector2.new(screenPos.X, boxPos.Y - 14)
-					obj.name.Color = ESP_SETTINGS.NameColor
+					obj.name.Position = Vector2.new(screenPos.X, boxPos.Y - 15)
+					obj.name.Color = (ESP_SETTINGS.RoleColors and finalColor) or ESP_SETTINGS.NameColor
 					obj.name.Visible = true
 				else
 					obj.name.Visible = false
 				end
-				-- Health bar
+
+				-- 6. Weapon Label (Bottom of box)
+				local bottomText = ""
+				if ESP_SETTINGS.Weapon and weaponName and weaponName ~= "None" and weaponName ~= "Innocent" then
+					bottomText = "[" .. weaponName .. "]"
+				end
+				if bottomText ~= "" then
+					obj.extra.Text = bottomText
+					obj.extra.Size = ESP_SETTINGS.TextSize - 1
+					obj.extra.Position = Vector2.new(screenPos.X, boxPos.Y + boxH + 2)
+					obj.extra.Color = finalColor
+					obj.extra.Visible = true
+				else
+					obj.extra.Visible = false
+				end
+
+				-- 7. Smooth Gradient Health Bar
 				if ESP_SETTINGS.HealthBars then
 					local pct = math.clamp(hum.Health / math.max(hum.MaxHealth, 1), 0, 1)
 					local barH = boxH * pct
@@ -1630,17 +1803,18 @@ RunService.RenderStepped:Connect(function()
 					obj.healthBg.Visible = true
 					obj.health.Size = Vector2.new(3, barH)
 					obj.health.Position = Vector2.new(boxPos.X - 6, boxPos.Y + (boxH - barH))
-					obj.health.Color = Color3.fromRGB(220, math.floor(80 + 140 * pct), 80)
+					obj.health.Color = Color3.fromRGB(math.floor(255 * (1 - pct)), math.floor(255 * pct), 50)
 					obj.health.Visible = true
 				else
 					obj.healthBg.Visible = false
 					obj.health.Visible = false
 				end
-				-- Tracer
+
+				-- 8. Tracer (Colorized)
 				if ESP_SETTINGS.Tracers then
 					obj.tracer.From = Vector2.new(viewport.X / 2, viewport.Y)
 					obj.tracer.To = screenPos
-					obj.tracer.Color = ESP_SETTINGS.BoxColor
+					obj.tracer.Color = finalColor
 					obj.tracer.Visible = true
 				else
 					obj.tracer.Visible = false
@@ -2137,12 +2311,17 @@ createSliderRow(combatTab, "Kill Aura Range (studs)", 0, 100, KILL_AURA.Range, f
 -- VISUALS
 createToggleRow(visualsTab, "ESP", function() return ESP_SETTINGS.Enabled end, function(v) ESP_SETTINGS.Enabled = v end)
 createToggleRow(visualsTab, "ESP Chams", function() return ESP_SETTINGS.Chams end, function(v) ESP_SETTINGS.Chams = v end)
+createToggleRow(visualsTab, "ESP Part Chams (Limbs)", function() return ESP_SETTINGS.PartChams end, function(v) ESP_SETTINGS.PartChams = v end)
+createToggleRow(visualsTab, "ESP Glow Chams", function() return ESP_SETTINGS.GlowChams end, function(v) ESP_SETTINGS.GlowChams = v end)
+createToggleRow(visualsTab, "ESP Role Colors (MM2)", function() return ESP_SETTINGS.RoleColors end, function(v) ESP_SETTINGS.RoleColors = v end)
+createToggleRow(visualsTab, "ESP Weapon Tags", function() return ESP_SETTINGS.Weapon end, function(v) ESP_SETTINGS.Weapon = v end)
 createToggleRow(visualsTab, "ESP Names", function() return ESP_SETTINGS.Names end, function(v) ESP_SETTINGS.Names = v end)
 createToggleRow(visualsTab, "ESP Boxes", function() return ESP_SETTINGS.Boxes end, function(v) ESP_SETTINGS.Boxes = v end)
 createToggleRow(visualsTab, "ESP Tracers", function() return ESP_SETTINGS.Tracers end, function(v) ESP_SETTINGS.Tracers = v end)
 createToggleRow(visualsTab, "ESP Health Bars", function() return ESP_SETTINGS.HealthBars end, function(v) ESP_SETTINGS.HealthBars = v end)
 createToggleRow(visualsTab, "ESP Distance", function() return ESP_SETTINGS.Distance end, function(v) ESP_SETTINGS.Distance = v end)
 createToggleRow(visualsTab, "ESP Team Check", function() return ESP_SETTINGS.TeamCheck end, function(v) ESP_SETTINGS.TeamCheck = v end)
+createSliderRow(visualsTab, "Chams Transparency (%)", 0, 90, math.floor(ESP_SETTINGS.ChamsTransparency * 100), function(v) ESP_SETTINGS.ChamsTransparency = v / 100 end, function(v) return tostring(math.floor(v)) .. "%" end)
 createSliderRow(visualsTab, "ESP Max Distance (studs)", 0, 2000, ESP_SETTINGS.MaxDistance, function(v) ESP_SETTINGS.MaxDistance = math.floor(v) end, function(v) return v == 0 and "Infinite" or tostring(math.floor(v)) end)
 createSliderRow(visualsTab, "ESP Font Size", 10, 22, ESP_SETTINGS.TextSize, function(v) ESP_SETTINGS.TextSize = math.floor(v) end)
 createToggleRow(visualsTab, "FOV Circle", function() return SETTINGS.FOV_SHOW end, function(v) SETTINGS.FOV_SHOW = v end)
