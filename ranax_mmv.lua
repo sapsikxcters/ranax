@@ -6895,11 +6895,12 @@ task.spawn(function()
                                 _G.CoinTween = TweenService:Create(hrp, tweenInfo, { CFrame = targetCFrame })
                                 _G.CoinTween:Play()
 
+                                local bagBefore, _ = getCoinBagLive()
                                 local startWait = tick()
                                 local coinWasCollected = false
 
                                 while _G.CoinTween and closestCoin and closestCoin.Parent and (tick() - startWait < tweenTime + 0.15) do
-                                    -- Continuous touch trigger
+                                    -- Continuous touch trigger during flight
                                     if typeof(firetouchinterest) == "function" then
                                         if closestCoin:IsA("BasePart") then
                                             firetouchinterest(hrp, closestCoin, 0)
@@ -6917,8 +6918,7 @@ task.spawn(function()
                                     end
 
                                     local nowDist = (hrp.Position - coinPos).Magnitude
-                                    if nowDist <= 3.5 then
-                                        coinWasCollected = true
+                                    if nowDist <= 3.0 then
                                         break
                                     end
 
@@ -6932,11 +6932,57 @@ task.spawn(function()
 
                                 if _G.CoinTween then _G.CoinTween:Cancel(); _G.CoinTween = nil end
 
-                                -- Register collection & blacklist collected coin temporarily
-                                _G.RanaxCoinsCollected = (_G.RanaxCoinsCollected or 0) + 1
-                                _G.FarmTotalCollected = (_G.FarmTotalCollected or 0) + 1
+                                -- ACTIVE COLLECTION VERIFICATION: Stay at coin and touch until coin disappears or bag increments
+                                if not coinWasCollected and closestCoin and closestCoin.Parent then
+                                    local collectWait = tick()
+                                    while (tick() - collectWait < 0.35) do
+                                        if typeof(firetouchinterest) == "function" then
+                                            if closestCoin and closestCoin.Parent and closestCoin:IsA("BasePart") then
+                                                firetouchinterest(hrp, closestCoin, 0)
+                                                firetouchinterest(hrp, closestCoin, 1)
+                                            end
+                                            local cv = closestCoin and closestCoin.Parent and closestCoin:FindFirstChild("CoinVisual")
+                                            if cv and cv:IsA("BasePart") then
+                                                firetouchinterest(hrp, cv, 0)
+                                                firetouchinterest(hrp, cv, 1)
+                                            end
+                                        end
+
+                                        -- Check 1: Did coin or its visual disappear/turn transparent?
+                                        local cv = closestCoin and closestCoin.Parent and closestCoin:FindFirstChild("CoinVisual")
+                                        if not closestCoin or not closestCoin.Parent or not cv or (cv:IsA("BasePart") and cv.Transparency >= 0.95) then
+                                            coinWasCollected = true
+                                            break
+                                        end
+
+                                        -- Check 2: Did the official MM2 CoinBag count increase?
+                                        local bagNow, _ = getCoinBagLive()
+                                        if bagNow and bagBefore and bagNow > bagBefore then
+                                            coinWasCollected = true
+                                            break
+                                        end
+
+                                        task.wait(0.03)
+                                    end
+                                end
+
                                 local bl = _G.BlacklistedCoins or {}
-                                bl[closestCoin] = tick() + 8
+
+                                -- ONLY increment 1, 2, 3, 4 if coin was ACTUALLY collected into bag!
+                                if coinWasCollected then
+                                    local liveBag, _ = getCoinBagLive()
+                                    if liveBag and type(liveBag) == "number" and liveBag > 0 then
+                                        _G.RanaxCoinsCollected = liveBag
+                                    else
+                                        _G.RanaxCoinsCollected = (_G.RanaxCoinsCollected or 0) + 1
+                                    end
+                                    _G.FarmTotalCollected = (_G.FarmTotalCollected or 0) + 1
+                                    bl[closestCoin] = tick() + 30
+                                else
+                                    -- Coin was not taken (unreachable or taken by other player), skip without counting
+                                    bl[closestCoin] = tick() + 3
+                                end
+
                                 _G.BlacklistedCoins = bl
                             else
                                 task.wait(0.05)
