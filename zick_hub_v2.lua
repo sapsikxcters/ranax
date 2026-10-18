@@ -78,6 +78,7 @@ local SETTINGS = {
 	NOCLIP           = false,          -- Duvarlardan gecme
 	FLY_ENABLED      = false,          -- Ucma hilesi
 	FLY_SPEED        = 45,
+	FLY_KEY          = Enum.KeyCode.F, -- F = Fly ac/kapa
 
 	-- Flick Shoot (Ranax MMV Motoru)
 	FLICK_ENABLED   = false,
@@ -1048,6 +1049,9 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	elseif input.KeyCode == SETTINGS.FLICK_KEY then
 		SETTINGS.FLICK_ENABLED = not SETTINGS.FLICK_ENABLED
 		notify("Flick Shoot", SETTINGS.FLICK_ENABLED and "ENABLED [ON]" or "DISABLED [OFF]", 1.6, SETTINGS.FLICK_ENABLED)
+	elseif SETTINGS.FLY_KEY and input.KeyCode == SETTINGS.FLY_KEY then
+		SETTINGS.FLY_ENABLED = not SETTINGS.FLY_ENABLED
+		notify("Fly Hack", SETTINGS.FLY_ENABLED and "ENABLED [ON]" or "DISABLED [OFF]", 1.6, SETTINGS.FLY_ENABLED)
 	end
 end)
 
@@ -2487,6 +2491,7 @@ createToggleRow(visualsTab, "FOV Circle", function() return SETTINGS.FOV_SHOW en
 
 -- PLAYER & MOVEMENT
 createToggleRow(playerTab, "Fly Hack", function() return SETTINGS.FLY_ENABLED end, function(v) SETTINGS.FLY_ENABLED = v end)
+createKeybindRow(playerTab, "Fly Keybind", function() return SETTINGS.FLY_KEY end, function(k) SETTINGS.FLY_KEY = k end)
 createSliderRow(playerTab, "Fly Speed", 15, 150, SETTINGS.FLY_SPEED, function(v) SETTINGS.FLY_SPEED = v end, function(v) return tostring(math.floor(v)) end)
 createToggleRow(playerTab, "Noclip", function() return SETTINGS.NOCLIP end, function(v) SETTINGS.NOCLIP = v end)
 createToggleRow(playerTab, "Bunny Hop", function() return SETTINGS.BHOP_ENABLED end, function(v) SETTINGS.BHOP_ENABLED = v end)
