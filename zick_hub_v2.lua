@@ -2076,90 +2076,303 @@ task.spawn(function()
 	end
 end)
 
--- ============================ WATERMARK ============================
-local wmGui = create("ScreenGui", {
-	Name = "ZickHubWatermark",
+-- ==================== CLAUDE-TIER AAA COMPETITIVE HUD SYSTEM ====================
+local hudGui = create("ScreenGui", {
+	Name = "ZickHubMasterHUD",
 	ResetOnSpawn = false,
-	DisplayOrder = 999,
+	DisplayOrder = 1000,
 })
-guiParent(wmGui)
+guiParent(hudGui)
 
-local wmFrame = create("Frame", {
-	Name = "ZickFrame",
-	Size = UDim2.new(0, 260, 0, 72),
-	AnchorPoint = Vector2.new(1, 1),
-	Position = UDim2.new(0.98, 0, 0.95, 0),
-	BackgroundColor3 = SETTINGS.THEME_BG,
+-- 1. TOP-BAR SLEEK GLASSMORPHIC WATERMARK
+local topBarFrame = create("Frame", {
+	Name = "TopWatermark",
+	Size = UDim2.new(0, 440, 0, 36),
+	Position = UDim2.new(0, 20, 0, 14),
+	BackgroundColor3 = Color3.fromRGB(14, 10, 22),
 	BackgroundTransparency = 0.15,
-	ClipsDescendants = true,
 	BorderSizePixel = 0,
-}, wmGui)
-create("UICorner", { CornerRadius = UDim.new(0, 27) }, wmFrame)
-create("UIStroke", { Color = Color3.fromRGB(130, 50, 200), Thickness = 1.5, Transparency = 0.4 }, wmFrame)
+	Active = true,
+}, hudGui)
+create("UICorner", { CornerRadius = UDim.new(0, 8) }, topBarFrame)
+create("UIStroke", { Color = SETTINGS.THEME, Thickness = 1.4, Transparency = 0.35 }, topBarFrame)
+makeDraggable(topBarFrame)
 
-local avatarImage = create("ImageLabel", {
-	Size = UDim2.new(0, 36, 0, 36),
-	Position = UDim2.new(0, 10, 0, 9),
+-- User Headshot Avatar (Kullanicinin KENDİ karakteri!)
+local userAvatar = create("ImageLabel", {
+	Size = UDim2.new(0, 26, 0, 26),
+	Position = UDim2.new(0, 6, 0.5, -13),
 	BackgroundTransparency = 1,
 	Image = "",
-}, wmFrame)
-create("UICorner", { CornerRadius = UDim.new(1, 0) }, avatarImage)
-
-create("TextLabel", {
-	Size = UDim2.new(1, -65, 0, 16),
-	Position = UDim2.new(0, 56, 0, 11),
-	BackgroundTransparency = 1,
-	Font = Enum.Font.GothamBold,
-	TextColor3 = Color3.fromRGB(255, 255, 255),
-	TextSize = 12,
-	Text = "Version Beta V2",
-	TextXAlignment = Enum.TextXAlignment.Left,
-}, wmFrame)
-
-create("TextLabel", {
-	Size = UDim2.new(1, -65, 0, 16),
-	Position = UDim2.new(0, 56, 0, 27),
-	BackgroundTransparency = 1,
-	Font = Enum.Font.GothamMedium,
-	TextColor3 = Color3.fromRGB(180, 160, 200),
-	TextSize = 11,
-	Text = "V2.0 Phantom Scope Edition",
-	TextXAlignment = Enum.TextXAlignment.Left,
-}, wmFrame)
-
-create("Frame", {
-	Size = UDim2.new(1, -40, 0, 2),
-	Position = UDim2.new(0, 20, 1, -4),
-	BackgroundColor3 = Color3.fromRGB(160, 32, 240),
-	BackgroundTransparency = 0.2,
-	BorderSizePixel = 0,
-}, wmFrame)
-
-local shootStatusLabel = create("TextLabel", {
-	Size = UDim2.new(1, -65, 0, 14),
-	Position = UDim2.new(0, 56, 0, 42),
-	BackgroundTransparency = 1,
-	Font = Enum.Font.GothamBold,
-	TextColor3 = Color3.fromRGB(120, 220, 120),
-	TextSize = 11,
-	Text = "Shoot V2: ON (Q)",
-	TextXAlignment = Enum.TextXAlignment.Left,
-}, wmFrame)
+}, topBarFrame)
+create("UICorner", { CornerRadius = UDim.new(1, 0) }, userAvatar)
+create("UIStroke", { Color = Color3.fromRGB(255, 255, 255), Thickness = 1, Transparency = 0.7 }, userAvatar)
 
 task.spawn(function()
-	while shootStatusLabel.Parent do
-		shootStatusLabel.Text = "Shoot V2: " .. (SETTINGS.AUTO_FIRE and "ON (Q)" or "OFF (Q)")
-		shootStatusLabel.TextColor3 = SETTINGS.AUTO_FIRE and Color3.fromRGB(120, 220, 120) or Color3.fromRGB(230, 90, 90)
-		task.wait(0.25)
+	pcall(function()
+		local url = Players:GetUserThumbnailAsync(LocalPlayer.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size100x100)
+		userAvatar.Image = url
+	end)
+end)
+
+-- Glowing Logo & Title
+local logoText = create("TextLabel", {
+	Size = UDim2.new(0, 90, 1, 0),
+	Position = UDim2.new(0, 38, 0, 0),
+	BackgroundTransparency = 1,
+	Font = Enum.Font.GothamBold,
+	Text = "ZICK V2",
+	TextColor3 = SETTINGS.THEME,
+	TextSize = 13,
+	TextXAlignment = Enum.TextXAlignment.Left,
+}, topBarFrame)
+
+create("Frame", {
+	Size = UDim2.new(0, 1, 0, 16),
+	Position = UDim2.new(0, 98, 0.5, -8),
+	BackgroundColor3 = Color3.fromRGB(60, 50, 80),
+	BorderSizePixel = 0,
+}, topBarFrame)
+
+-- Live Status Metrics (FPS, Ping, Time, Game Mode)
+local metricsLabel = create("TextLabel", {
+	Size = UDim2.new(1, -110, 1, 0),
+	Position = UDim2.new(0, 108, 0, 0),
+	BackgroundTransparency = 1,
+	Font = Enum.Font.GothamMedium,
+	TextColor3 = Color3.fromRGB(220, 215, 235),
+	TextSize = 11,
+	Text = "FPS: -- | PING: --ms | 5v5 TRAINER",
+	TextXAlignment = Enum.TextXAlignment.Left,
+}, topBarFrame)
+
+-- FPS & Ping Loop
+local fpsCount = 0
+local lastFpsTick = os.clock()
+local liveFPS = 60
+
+RunService.RenderStepped:Connect(function()
+	fpsCount = fpsCount + 1
+	local now = os.clock()
+	if now - lastFpsTick >= 1 then
+		liveFPS = fpsCount
+		fpsCount = 0
+		lastFpsTick = now
 	end
 end)
 
 task.spawn(function()
-	pcall(function()
-		local uid = Players:GetUserIdFromNameAsync("Clockzoos")
-		local url = Players:GetUserThumbnailAsync(uid, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size150x150)
-		avatarImage.Image = url
+	while topBarFrame.Parent do
+		local ping = 0
+		pcall(function()
+			ping = math.floor(game:GetService("Stats").Network.ServerStatsItem["Data Ping"]:GetValue())
+		end)
+		local timeStr = os.date("%H:%M:%S")
+		local modeTag = (SETTINGS.TARGET_MODE == "Range (Mesafe)" and "RANGE" or "FOV")
+		metricsLabel.Text = string.format("FPS: %d  •  %dms  •  %s  •  [%s]", liveFPS, ping, timeStr, modeTag)
+		task.wait(0.5)
+	end
+end)
+
+-- 2. GAMESENSE / NEVERLOSE STYLE ACTIVE KEYBINDS & MODULES HUD
+local keybindsFrame = create("Frame", {
+	Name = "KeybindsHUD",
+	Size = UDim2.new(0, 190, 0, 210),
+	Position = UDim2.new(0, 20, 0, 60),
+	BackgroundColor3 = Color3.fromRGB(15, 12, 22),
+	BackgroundTransparency = 0.18,
+	BorderSizePixel = 0,
+	Active = true,
+}, hudGui)
+create("UICorner", { CornerRadius = UDim.new(0, 8) }, keybindsFrame)
+create("UIStroke", { Color = SETTINGS.THEME, Thickness = 1.3, Transparency = 0.4 }, keybindsFrame)
+makeDraggable(keybindsFrame)
+
+local kbTop = create("Frame", {
+	Size = UDim2.new(1, 0, 0, 24),
+	BackgroundColor3 = Color3.fromRGB(22, 16, 34),
+	BorderSizePixel = 0,
+}, keybindsFrame)
+create("UICorner", { CornerRadius = UDim.new(0, 8) }, kbTop)
+
+create("TextLabel", {
+	Size = UDim2.new(1, -12, 1, 0),
+	Position = UDim2.new(0, 8, 0, 0),
+	BackgroundTransparency = 1,
+	Font = Enum.Font.GothamBold,
+	Text = "⚡ ACTIVE MODULES",
+	TextColor3 = SETTINGS.THEME,
+	TextSize = 11,
+	TextXAlignment = Enum.TextXAlignment.Left,
+}, kbTop)
+
+local kbList = create("ScrollingFrame", {
+	Size = UDim2.new(1, -8, 1, -28),
+	Position = UDim2.new(0, 4, 0, 26),
+	BackgroundTransparency = 1,
+	BorderSizePixel = 0,
+	ScrollBarThickness = 2,
+	ScrollBarImageColor3 = SETTINGS.THEME,
+	CanvasSize = UDim2.new(0, 0, 0, 0),
+}, keybindsFrame)
+local kbLayout = create("UIListLayout", { Padding = UDim.new(0, 3), SortOrder = Enum.SortOrder.LayoutOrder }, kbList)
+kbLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+	kbList.CanvasSize = UDim2.new(0, 0, 0, kbLayout.AbsoluteContentSize.Y + 6)
+	keybindsFrame.Size = UDim2.new(0, 190, 0, math.clamp(kbLayout.AbsoluteContentSize.Y + 34, 40, 260))
+end)
+
+local function makeModuleRow(name, getKey, getStatus)
+	local row = create("Frame", {
+		Size = UDim2.new(1, 0, 0, 18),
+		BackgroundTransparency = 1,
+	}, kbList)
+
+	local nLbl = create("TextLabel", {
+		Size = UDim2.new(0.65, 0, 1, 0),
+		Position = UDim2.new(0, 4, 0, 0),
+		BackgroundTransparency = 1,
+		Font = Enum.Font.GothamMedium,
+		Text = name,
+		TextColor3 = Color3.fromRGB(200, 195, 215),
+		TextSize = 10,
+		TextXAlignment = Enum.TextXAlignment.Left,
+	}, row)
+
+	local sLbl = create("TextLabel", {
+		Size = UDim2.new(0.35, -4, 1, 0),
+		Position = UDim2.new(0.65, 0, 0, 0),
+		BackgroundTransparency = 1,
+		Font = Enum.Font.GothamBold,
+		Text = "[--]",
+		TextColor3 = Color3.fromRGB(120, 220, 120),
+		TextSize = 10,
+		TextXAlignment = Enum.TextXAlignment.Right,
+	}, row)
+
+	task.spawn(function()
+		while row.Parent do
+			local active, text, col = getStatus()
+			row.Visible = (active == true)
+			if active then
+				sLbl.Text = text
+				sLbl.TextColor3 = col or Color3.fromRGB(120, 220, 120)
+			end
+			task.wait(0.2)
+		end
 	end)
+end
+
+-- Keybinds HUD Rows:
+makeModuleRow("Shoot V2 [Q]", nil, function()
+	return SETTINGS.AUTO_FIRE, "[AUTO]", Color3.fromRGB(120, 220, 120)
+end)
+makeModuleRow("Flick Shoot [R]", nil, function()
+	return SETTINGS.FLICK_ENABLED, "[FLICK]", Color3.fromRGB(180, 100, 255)
+end)
+makeModuleRow("Triggerbot", nil, function()
+	return SETTINGS.TRIGGERBOT, "[TRIGGER]", Color3.fromRGB(255, 215, 60)
+end)
+makeModuleRow("Hitbox Extender", nil, function()
+	return SETTINGS.HITBOX_ENABLED, "[" .. tostring(math.floor(SETTINGS.HITBOX_SIZE)) .. "s]", Color3.fromRGB(255, 120, 120)
+end)
+makeModuleRow("Kill Aura", nil, function()
+	return KILL_AURA.Enabled, "[" .. tostring(KILL_AURA.Range) .. "s]", Color3.fromRGB(255, 70, 70)
+end)
+makeModuleRow("Spinbot", nil, function()
+	return SETTINGS.SPINBOT_ENABLED, "[SPIN]", Color3.fromRGB(80, 220, 255)
+end)
+makeModuleRow("Fly Hack", nil, function()
+	return SETTINGS.FLY_ENABLED, "[FLY]", Color3.fromRGB(80, 255, 180)
+end)
+makeModuleRow("Noclip", nil, function()
+	return SETTINGS.NOCLIP, "[NOCLIP]", Color3.fromRGB(220, 160, 255)
+end)
+makeModuleRow("Bunny Hop", nil, function()
+	return SETTINGS.BHOP_ENABLED, "[BHOP]", Color3.fromRGB(255, 200, 100)
+end)
+makeModuleRow("Auto Equip", nil, function()
+	return SETTINGS.AUTO_EQUIP, "[ON]", Color3.fromRGB(140, 240, 140)
+end)
+
+-- 3. MODERN FLOATING TARGET CARD (Aim Trainer Crosshair Tracker)
+local targetCard = create("Frame", {
+	Name = "TargetInfoCard",
+	Size = UDim2.new(0, 180, 0, 52),
+	AnchorPoint = Vector2.new(0.5, 0),
+	Position = UDim2.new(0.5, 0, 0.55, 0),
+	BackgroundColor3 = Color3.fromRGB(15, 12, 22),
+	BackgroundTransparency = 0.2,
+	BorderSizePixel = 0,
+	Visible = false,
+}, hudGui)
+create("UICorner", { CornerRadius = UDim.new(0, 8) }, targetCard)
+create("UIStroke", { Color = SETTINGS.THEME, Thickness = 1.3, Transparency = 0.3 }, targetCard)
+
+local targetNameLbl = create("TextLabel", {
+	Size = UDim2.new(1, -12, 0, 16),
+	Position = UDim2.new(0, 8, 0, 5),
+	BackgroundTransparency = 1,
+	Font = Enum.Font.GothamBold,
+	Text = "Target: --",
+	TextColor3 = Color3.fromRGB(255, 255, 255),
+	TextSize = 11,
+	TextXAlignment = Enum.TextXAlignment.Left,
+}, targetCard)
+
+local targetDistLbl = create("TextLabel", {
+	Size = UDim2.new(1, -12, 0, 14),
+	Position = UDim2.new(0, 8, 0, 19),
+	BackgroundTransparency = 1,
+	Font = Enum.Font.GothamMedium,
+	Text = "Distance: --m  •  Status: LOCKED",
+	TextColor3 = Color3.fromRGB(180, 170, 200),
+	TextSize = 10,
+	TextXAlignment = Enum.TextXAlignment.Left,
+}, targetCard)
+
+-- Target Health Bar
+local hpBg = create("Frame", {
+	Size = UDim2.new(1, -16, 0, 5),
+	Position = UDim2.new(0, 8, 1, -10),
+	BackgroundColor3 = Color3.fromRGB(30, 25, 40),
+	BorderSizePixel = 0,
+}, targetCard)
+create("UICorner", { CornerRadius = UDim.new(0, 2) }, hpBg)
+
+local hpFill = create("Frame", {
+	Size = UDim2.new(1, 0, 1, 0),
+	BackgroundColor3 = Color3.fromRGB(80, 220, 100),
+	BorderSizePixel = 0,
+}, hpBg)
+create("UICorner", { CornerRadius = UDim.new(0, 2) }, hpFill)
+
+-- Target Card Dynamic Render Loop
+RunService.RenderStepped:Connect(function()
+	if currentAimTarget and currentAimTarget.Character and (SETTINGS.AUTO_FIRE or SETTINGS.FLICK_ENABLED) then
+		local tChar = currentAimTarget.Character
+		local tHRP = tChar:FindFirstChild("HumanoidRootPart") or tChar:FindFirstChild("Torso")
+		local tHum = tChar:FindFirstChildOfClass("Humanoid")
+		if tHRP and tHum and tHum.Health > 0 then
+			local myChar = LocalPlayer.Character
+			local myHRP = myChar and myChar:FindFirstChild("HumanoidRootPart")
+			local dist = myHRP and math.floor((myHRP.Position - tHRP.Position).Magnitude) or 0
+			local pos, onScreen = Camera:WorldToViewportPoint(tHRP.Position)
+
+			if onScreen then
+				targetCard.Visible = true
+				targetNameLbl.Text = "🎯 " .. currentAimTarget.DisplayName .. " (@" .. currentAimTarget.Name .. ")"
+				targetDistLbl.Text = string.format("Dist: %dm  •  HP: %d/%d", dist, math.floor(tHum.Health), math.floor(tHum.MaxHealth))
+				local hpRatio = math.clamp(tHum.Health / math.max(tHum.MaxHealth, 1), 0, 1)
+				hpFill.Size = UDim2.new(hpRatio, 0, 1, 0)
+				hpFill.BackgroundColor3 = Color3.fromHSV(hpRatio * 0.33, 0.85, 0.95)
+
+				-- Place Card smoothly right below the enemy
+				targetCard.Position = UDim2.new(0, pos.X, 0, pos.Y + 28)
+				return
+			end
+		end
+	end
+	targetCard.Visible = false
 end)
 
 -- ============================ FRIEND GUI ============================
