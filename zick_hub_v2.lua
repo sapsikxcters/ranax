@@ -120,7 +120,7 @@ local ESP_SETTINGS = {
 
 local PLAYER_SETTINGS = {
 	SpeedEnabled  = false,
-	SpeedValue    = 16,
+	SpeedValue    = 45,
 	JumpEnabled   = false,
 	JumpValue     = 50,
 	AntiAFK       = false,
@@ -2490,9 +2490,11 @@ createToggleRow(playerTab, "Fly Hack", function() return SETTINGS.FLY_ENABLED en
 createSliderRow(playerTab, "Fly Speed", 15, 150, SETTINGS.FLY_SPEED, function(v) SETTINGS.FLY_SPEED = v end, function(v) return tostring(math.floor(v)) end)
 createToggleRow(playerTab, "Noclip", function() return SETTINGS.NOCLIP end, function(v) SETTINGS.NOCLIP = v end)
 createToggleRow(playerTab, "Bunny Hop", function() return SETTINGS.BHOP_ENABLED end, function(v) SETTINGS.BHOP_ENABLED = v end)
-createToggleRow(playerTab, "Infinite Jump", function() return SETTINGS.INF_JUMP end, function(v) SETTINGS.INF_JUMP = v end)
-createToggleRow(playerTab, "WalkSpeed", function() return PLAYER_SETTINGS.SpeedEnabled end, function(v) PLAYER_SETTINGS.SpeedEnabled = v end)
-createSliderRow(playerTab, "WalkSpeed Value", 16, 150, PLAYER_SETTINGS.SpeedValue, function(v) PLAYER_SETTINGS.SpeedValue = v end, function(v) return tostring(math.floor(v)) end)
+createToggleRow(playerTab, "Speed TP (CFrame)", function() return PLAYER_SETTINGS.SpeedEnabled end, function(v)
+	PLAYER_SETTINGS.SpeedEnabled = v
+	notify("Movement", v and "Speed TP: ACTIVE" or "Speed TP: OFF", 2, v and "zap" or "x")
+end)
+createSliderRow(playerTab, "Speed TP Value", 16, 200, PLAYER_SETTINGS.SpeedValue, function(v) PLAYER_SETTINGS.SpeedValue = v end, function(v) return tostring(math.floor(v)) end)
 createToggleRow(playerTab, "JumpPower", function() return PLAYER_SETTINGS.JumpEnabled end, function(v) PLAYER_SETTINGS.JumpEnabled = v end)
 createSliderRow(playerTab, "JumpPower Value", 50, 250, PLAYER_SETTINGS.JumpValue, function(v) PLAYER_SETTINGS.JumpValue = v end, function(v) return tostring(math.floor(v)) end)
 createButtonRow(playerTab, "Reset Movement", function()
@@ -2775,19 +2777,42 @@ task.spawn(function()
 	end
 end)
 
--- Hareket mods uygulayici
+-- ============================ SPEED TP ENGINE (CFRAME MOVEDIRECTION) ============================
+local speedRayParams = RaycastParams.new()
+speedRayParams.FilterType = Enum.RaycastFilterType.Exclude
+
+RunService.Heartbeat:Connect(function(dt)
+	if PLAYER_SETTINGS.SpeedEnabled then
+		local char = LocalPlayer.Character
+		local hrp = char and char:FindFirstChild("HumanoidRootPart")
+		local hum = char and char:FindFirstChildOfClass("Humanoid")
+		if hrp and hum and hum.Health > 0 and hum.MoveDirection.Magnitude > 0.05 then
+			local targetSpeed = tonumber(PLAYER_SETTINGS.SpeedValue) or 45
+			local extraSpeed = math.max(0, targetSpeed - 16)
+			if extraSpeed > 0 then
+				local step = hum.MoveDirection * (extraSpeed * dt)
+				if SETTINGS.NOCLIP then
+					hrp.CFrame = hrp.CFrame + step
+				else
+					speedRayParams.FilterDescendantsInstances = { char }
+					local hit = workspace:Raycast(hrp.Position, step.Unit * (step.Magnitude + 1.0), speedRayParams)
+					if not hit then
+						hrp.CFrame = hrp.CFrame + step
+					end
+				end
+			end
+		end
+	end
+end)
+
+-- JumpPower uygulayici
 task.spawn(function()
 	while true do
 		local char = LocalPlayer.Character
 		local hum = char and char:FindFirstChildOfClass("Humanoid")
-		if hum then
-			if PLAYER_SETTINGS.SpeedEnabled then
-				hum.WalkSpeed = PLAYER_SETTINGS.SpeedValue
-			end
-			if PLAYER_SETTINGS.JumpEnabled then
-				hum.UseJumpPower = true
-				hum.JumpPower = PLAYER_SETTINGS.JumpValue
-			end
+		if hum and PLAYER_SETTINGS.JumpEnabled then
+			hum.UseJumpPower = true
+			hum.JumpPower = PLAYER_SETTINGS.JumpValue
 		end
 		task.wait(0.5)
 	end
