@@ -84,7 +84,7 @@ local SETTINGS = {
 	FLICK_KEY       = Enum.KeyCode.R, -- R = Flick ac/kapa
 	FLICK_TURN_TIME = 0.08,           -- flick donme suresi (sn)
 	FLICK_RESTORE   = true,           -- atis sonrasi eski rotasyona don
-	FLICK_CAMERA    = false,          -- flick sirasinda kamerayi hedefe cevir
+	FLICK_CAMERA    = true,          -- flick sirasinda kamerayi hedefe cevir
 
 	-- Menu Keybind
 	MENU_KEY        = Enum.KeyCode.LeftControl,
@@ -166,11 +166,11 @@ local function makeDraggable(frame, handle)
 	end)
 end
 
--- Kendi bildirim sistemi (StarterGui'ye bagli degil, her zaman gider)
+-- ==================== ANIMATED NOTIFICATION ENGINE ====================
 local notifyGui = create("ScreenGui", {
 	Name = "ZickHubNotifs",
 	ResetOnSpawn = false,
-	DisplayOrder = 1001,
+	DisplayOrder = 10001,
 })
 guiParent(notifyGui)
 
@@ -178,69 +178,130 @@ local activeNotifs = {}
 
 local function repositionNotifs()
 	for i, n in ipairs(activeNotifs) do
-		n.frame.Position = UDim2.new(1, -270, 0, 10 + (i - 1) * 64)
+		if n.frame and n.frame.Parent then
+			local targetY = 16 + (i - 1) * 60
+			TweenService:Create(n.frame, TweenInfo.new(0.22, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+				Position = UDim2.new(1, -270, 0, targetY)
+			}):Play()
+		end
 	end
 end
 
-local function notify(title, text, dur)
+local function notify(title, text, dur, isState)
 	local n = {}
+	local accentColor = SETTINGS.THEME
+	local stateTag = ""
+	local stateTagColor = Color3.fromRGB(255, 255, 255)
+
+	if isState == true then
+		accentColor = Color3.fromRGB(0, 235, 120)
+		stateTag = "ON"
+		stateTagColor = Color3.fromRGB(0, 235, 120)
+	elseif isState == false then
+		accentColor = Color3.fromRGB(255, 75, 75)
+		stateTag = "OFF"
+		stateTagColor = Color3.fromRGB(255, 75, 75)
+	end
+
+	local targetIndex = #activeNotifs + 1
+	local targetY = 16 + (targetIndex - 1) * 60
+
 	n.frame = create("Frame", {
-		Size = UDim2.new(0, 255, 0, 56),
-		Position = UDim2.new(1, 280, 0, 10),
-		BackgroundColor3 = SETTINGS.THEME_BG,
-		BackgroundTransparency = 0.1,
+		Size = UDim2.new(0, 254, 0, 52),
+		Position = UDim2.new(1, 40, 0, targetY),
+		BackgroundColor3 = Color3.fromRGB(15, 11, 23),
+		BackgroundTransparency = 0.12,
 		BorderSizePixel = 0,
 		ZIndex = 50,
 	}, notifyGui)
 	create("UICorner", { CornerRadius = UDim.new(0, 8) }, n.frame)
-	create("UIStroke", { Color = SETTINGS.THEME, Thickness = 1.2, Transparency = 0.3 }, n.frame)
+	create("UIStroke", { Color = accentColor, Thickness = 1.3, Transparency = 0.3 }, n.frame)
 
+	-- Glowing accent bar on the left edge
+	local accentBar = create("Frame", {
+		Size = UDim2.new(0, 3.5, 1, -12),
+		Position = UDim2.new(0, 6, 0.5, -((52 - 12) / 2)),
+		BackgroundColor3 = accentColor,
+		BorderSizePixel = 0,
+		ZIndex = 51,
+	}, n.frame)
+	create("UICorner", { CornerRadius = UDim.new(0, 2) }, accentBar)
+
+	-- Title
 	create("TextLabel", {
-		Size = UDim2.new(1, -16, 0, 18),
-		Position = UDim2.new(0, 10, 0, 6),
+		Size = UDim2.new(1, -65, 0, 18),
+		Position = UDim2.new(0, 16, 0, 7),
 		BackgroundTransparency = 1,
 		Font = Enum.Font.GothamBold,
 		Text = title,
-		TextColor3 = SETTINGS.THEME,
-		TextSize = 13,
+		TextColor3 = Color3.fromRGB(240, 235, 255),
+		TextSize = 12,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		ZIndex = 51,
 	}, n.frame)
 
+	-- State Pill (ON / OFF badge)
+	if stateTag ~= "" then
+		local pill = create("TextLabel", {
+			Size = UDim2.new(0, 36, 0, 18),
+			Position = UDim2.new(1, -44, 0, 7),
+			BackgroundColor3 = Color3.fromRGB(22, 16, 32),
+			BackgroundTransparency = 0.2,
+			Font = Enum.Font.GothamBold,
+			Text = stateTag,
+			TextColor3 = stateTagColor,
+			TextSize = 10,
+			ZIndex = 51,
+		}, n.frame)
+		create("UICorner", { CornerRadius = UDim.new(0, 4) }, pill)
+		create("UIStroke", { Color = stateTagColor, Thickness = 1, Transparency = 0.4 }, pill)
+	end
+
+	-- Subtitle text
 	create("TextLabel", {
-		Size = UDim2.new(1, -16, 0, 30),
-		Position = UDim2.new(0, 10, 0, 24),
+		Size = UDim2.new(1, -26, 0, 20),
+		Position = UDim2.new(0, 16, 0, 26),
 		BackgroundTransparency = 1,
 		Font = Enum.Font.GothamMedium,
 		Text = text,
-		TextColor3 = SETTINGS.THEME_TEXT,
-		TextSize = 12,
+		TextColor3 = Color3.fromRGB(185, 175, 205),
+		TextSize = 11,
 		TextWrapped = true,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		ZIndex = 51,
 	}, n.frame)
 
 	table.insert(activeNotifs, n)
-	repositionNotifs()
 
-	TweenService:Create(n.frame, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-		Position = UDim2.new(1, -270, n.frame.Position.Y.Scale, n.frame.Position.Y.Offset)
+	-- Smooth slide-in
+	TweenService:Create(n.frame, TweenInfo.new(0.28, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+		Position = UDim2.new(1, -270, 0, targetY)
 	}):Play()
 
-	task.delay(dur or 4, function()
+	task.delay(dur or 1.8, function()
 		local idx = table.find(activeNotifs, n)
 		if idx then
 			table.remove(activeNotifs, idx)
 		end
-		TweenService:Create(n.frame, TweenInfo.new(0.2), { Position = UDim2.new(1, 280, n.frame.Position.Y.Scale, n.frame.Position.Y.Offset) }):Play()
-		task.delay(0.25, function()
-			n.frame:Destroy()
+		if n.frame and n.frame.Parent then
+			local curY = n.frame.Position.Y.Offset
+			local slideOut = TweenService:Create(n.frame, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+				Position = UDim2.new(1, 40, 0, curY),
+				BackgroundTransparency = 1
+			})
+			slideOut:Play()
+			slideOut.Completed:Connect(function()
+				pcall(function() n.frame:Destroy() end)
+				repositionNotifs()
+			end)
+		else
 			repositionNotifs()
-		end)
+		end
 	end)
 end
 
 local lastLogKey, lastLogTime = nil, 0
+
 local function dlog(key, msg)
 	if not SETTINGS.DEBUG then
 		return
@@ -730,29 +791,14 @@ local remoteCooldown = 0
 local shotsInBurst = 0
 local currentAimTarget = nil
 
--- Tum MM2, Aim Trainer ve Modded remote tiplerini destekleyen universal tetikleyici
+-- Tum MM2, Aim Trainer ve Modded remote tiplerini destekleyen universal tetikleyici (TEK ATIS)
 local function fireRemote(rem, origin, hitPos, gun)
 	if not rem then return end
+	local aimCF = CFrame.lookAt(origin, hitPos)
+	local targetCF = CFrame.new(hitPos)
 	pcall(function()
-		local aimCF = CFrame.lookAt(origin, hitPos)
-		-- 1. Standart MM2 CFrame + CFrame
-		rem:FireServer(aimCF, CFrame.new(hitPos))
-		-- 2. CFrame + Vector3
-		rem:FireServer(aimCF, hitPos)
-		-- 3. Vector3 + Vector3
-		rem:FireServer(origin, hitPos)
-		-- 4. HitPos tekil
-		rem:FireServer(hitPos)
-		-- 5. Aim CFrame tekil
-		rem:FireServer(aimCF)
-		-- 6. RemoteFunction invoke
-		if rem:IsA("RemoteFunction") then
-			rem:InvokeServer(1, hitPos, "AH2")
-		end
+		rem:FireServer(aimCF, targetCF)
 	end)
-	if gun and gun:IsA("Tool") then
-		pcall(function() gun:Activate() end)
-	end
 	if SETTINGS.HIT_SOUND then
 		playHitSound()
 	end
@@ -768,62 +814,71 @@ local function executeFlickShoot(target, hitPos, remote, gun, origin)
 	if not (myHRP and myHum) then return end
 
 	flickActive = true
-	local savedCF = myHRP.CFrame
+	local origCFrame   = myHRP.CFrame
+	local origCameraCF = Workspace.CurrentCamera and Workspace.CurrentCamera.CFrame
 	local savedAutoRotate = myHum.AutoRotate
-	local savedCamCF = (Camera and Camera.CFrame)
 	myHum.AutoRotate = false
 
 	local turnTime = math.clamp(SETTINGS.FLICK_TURN_TIME or 0.08, 0.03, 0.25)
 	local steps = math.max(4, math.floor(turnTime / 0.016))
 	local flatTarget = Vector3.new(hitPos.X, myHRP.Position.Y, hitPos.Z)
-	local targetRotCF = CFrame.lookAt(myHRP.Position, flatTarget)
-	local targetCamCF = (Camera and savedCamCF and CFrame.lookAt(savedCamCF.Position, hitPos))
+	local aimCFrame = CFrame.lookAt(myHRP.Position, flatTarget)
 
-	-- 1. Smooth Cubic Lerp Snap to Target (Ease-In)
+	-- 1. Ease-IN: smooth rotation from current -> aim (Ranax cubic lerp)
 	for i = 1, steps do
 		if not (myHRP and myHRP.Parent) then break end
 		local alpha = (i / steps) ^ 0.6 -- Ranax flick ivmesi
-		local curRot = savedCF:Lerp(targetRotCF, alpha)
-		myHRP.CFrame = CFrame.new(myHRP.Position) * curRot.Rotation
-		myChar:PivotTo(CFrame.new(myHRP.Position) * curRot.Rotation)
+		local newRot = origCFrame:Lerp(aimCFrame, alpha)
+		myHRP.CFrame = CFrame.new(myHRP.Position) * newRot.Rotation
 
-		if SETTINGS.FLICK_CAMERA and Camera and savedCamCF and targetCamCF then
-			Camera.CFrame = savedCamCF:Lerp(targetCamCF, alpha)
+		if SETTINGS.FLICK_CAMERA and Workspace.CurrentCamera and origCameraCF then
+			pcall(function()
+				local camAim = CFrame.lookAt(Workspace.CurrentCamera.CFrame.Position, hitPos)
+				Workspace.CurrentCamera.CFrame = origCameraCF:Lerp(camAim, alpha)
+			end)
+			pcall(function()
+				moveMouseToWorld(hitPos)
+			end)
 		end
-		RunService.RenderStepped:Wait()
+		task.wait()
 	end
 
-	-- 2. Mouse Snap at peak
-	pcall(function() moveMouseToWorld(hitPos) end)
+	-- 2. Camera & Mouse snap to target at peak
+	if SETTINGS.FLICK_CAMERA then
+		pcall(function()
+			moveMouseToWorld(hitPos)
+		end)
+	end
 
-	-- 3. Namlu konumunu guncelle ve zirvede ates et
+	-- 3. Namlu konumunu al ve zirvede tek sefer ates et
 	local newOrigin = getOriginPosition()
 	if newOrigin then origin = newOrigin end
 	fireRemote(remote, origin, hitPos, gun)
 
-	-- 4. Kisa dogal atis beklemesi
-	task.wait(0.03)
+	-- 4. Kisa dogal atis beklemesi (peak hold for shot registration)
+	task.wait(0.04)
 
-	-- 5. Ease-Out return to original orientation (Smooth Geri Donus)
+	-- 5. Ease-OUT: smoothly return to original orientation
 	if SETTINGS.FLICK_RESTORE then
-		local peakCF = myHRP.CFrame
-		local peakCamCF = (Camera and Camera.CFrame)
-		local returnSteps = math.max(3, math.floor(steps * 0.7))
+		local peakCFrame   = myHRP.CFrame
+		local peakCameraCF = Workspace.CurrentCamera and Workspace.CurrentCamera.CFrame
+		local returnSteps  = math.max(3, math.floor(steps * 0.7))
 		for i = 1, returnSteps do
 			if not (myHRP and myHRP.Parent) then break end
 			local alpha = (i / returnSteps) ^ 1.4 -- Decelerating ease-out
-			local curRot = peakCF:Lerp(savedCF, alpha)
-			myHRP.CFrame = CFrame.new(myHRP.Position) * curRot.Rotation
-			myChar:PivotTo(CFrame.new(myHRP.Position) * curRot.Rotation)
+			local newRot = peakCFrame:Lerp(origCFrame, alpha)
+			myHRP.CFrame = CFrame.new(myHRP.Position) * newRot.Rotation
 
-			if SETTINGS.FLICK_CAMERA and Camera and peakCamCF and savedCamCF then
-				Camera.CFrame = peakCamCF:Lerp(savedCamCF, alpha)
+			if SETTINGS.FLICK_CAMERA and Workspace.CurrentCamera and peakCameraCF and origCameraCF then
+				pcall(function()
+					Workspace.CurrentCamera.CFrame = peakCameraCF:Lerp(origCameraCF, alpha)
+				end)
 			end
-			RunService.RenderStepped:Wait()
+			task.wait()
 		end
 
-		if SETTINGS.FLICK_CAMERA and Camera and savedCamCF then
-			Camera.CFrame = savedCamCF
+		if SETTINGS.FLICK_CAMERA and Workspace.CurrentCamera and origCameraCF then
+			Workspace.CurrentCamera.CFrame = origCameraCF
 		end
 	end
 
@@ -948,9 +1003,10 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	end
 	if input.KeyCode == SETTINGS.KEYBIND then
 		SETTINGS.AUTO_FIRE = not SETTINGS.AUTO_FIRE
+		notify("Shoot V2", SETTINGS.AUTO_FIRE and "ETKINLESTIRILDI [ON]" or "DEVRE DISI [OFF]", 1.6, SETTINGS.AUTO_FIRE)
 	elseif input.KeyCode == SETTINGS.FLICK_KEY then
 		SETTINGS.FLICK_ENABLED = not SETTINGS.FLICK_ENABLED
-		notify("Flick Shoot", SETTINGS.FLICK_ENABLED and "Acik (R)" or "Kapali (R)", 2)
+		notify("Flick Shoot", SETTINGS.FLICK_ENABLED and "ETKINLESTIRILDI [ON]" or "DEVRE DISI [OFF]", 1.6, SETTINGS.FLICK_ENABLED)
 	end
 end)
 
@@ -1882,8 +1938,11 @@ local function createToggleRow(content, text, get, set)
 		pill.BackgroundColor3 = v and Color3.fromRGB(60, 160, 60) or Color3.fromRGB(60, 60, 60)
 	end
 	row.MouseButton1Click:Connect(function()
-		set(not get())
+		local cur = get()
+		local newVal = not cur
+		set(newVal)
 		refresh()
+		notify(text, newVal and "ETKINLESTIRILDI [ON]" or "DEVRE DISI [OFF]", 1.6, newVal)
 	end)
 	refresh()
 	table.insert(toggleRefreshers, refresh)
