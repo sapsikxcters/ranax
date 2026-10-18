@@ -6122,6 +6122,7 @@ _G.MurdererDiedThisRound = false
 local function onMurdererDied(m)
     if _G.MurdererDiedThisRound then return end
     _G.MurdererDiedThisRound = true
+    _G.MurdererDiedTimestamp = os.clock()
     _G.RanaxRoundInProgress = false
 
     -- Stop farm INSTANTLY upon Murderer death!
@@ -6350,8 +6351,28 @@ end
 local function getMapCoins()
     local coins = {}
     local bl = _G.BlacklistedCoins or {}
-    local cc = getCoinContainer()
-    if cc then
+
+    -- 1) Gather all potential coin containers across workspace
+    local containers = {}
+    local function checkAndAddContainer(parent)
+        if not parent then return end
+        for _, name in ipairs({"CoinContainer", "Coins", "Coin_Server", "CoinServer", "CoinHolder"}) do
+            local found = parent:FindFirstChild(name, true)
+            if found and not table.find(containers, found) then
+                table.insert(containers, found)
+            end
+        end
+    end
+
+    checkAndAddContainer(workspace:FindFirstChild("Normal"))
+    for _, obj in ipairs(workspace:GetChildren()) do
+        if obj:IsA("Model") and obj.Name ~= "Lobby" and obj.Name ~= "RegularLobby" and obj.Name ~= "Terrain" then
+            checkAndAddContainer(obj)
+        end
+    end
+    checkAndAddContainer(workspace)
+
+    for _, cc in ipairs(containers) do
         for _, c in ipairs(cc:GetChildren()) do
             if not bl[c] or bl[c] <= tick() then
                 local visual = c:FindFirstChild("CoinVisual")
@@ -6363,19 +6384,22 @@ local function getMapCoins()
                     if isVis then
                         table.insert(coins, c)
                     end
+                elseif c:IsA("BasePart") and c.Transparency < 0.95 then
+                    table.insert(coins, c)
                 end
             end
         end
     end
 
-    -- Direct fallback if container wasn't named CoinContainer
+    -- 2) Fallback search across all non-lobby map models for CoinVisual
     if #coins == 0 then
-        local normal = workspace:FindFirstChild("Normal")
-        if normal then
-            for _, d in ipairs(normal:GetDescendants()) do
-                if d.Name == "CoinVisual" and d.Parent and (not bl[d.Parent] or bl[d.Parent] <= tick()) then
-                    if not (d:IsA("BasePart") and d.Transparency >= 0.95) then
-                        table.insert(coins, d.Parent)
+        for _, obj in ipairs(workspace:GetChildren()) do
+            if obj:IsA("Model") and obj.Name ~= "Lobby" and obj.Name ~= "RegularLobby" and obj.Name ~= "Terrain" then
+                for _, d in ipairs(obj:GetDescendants()) do
+                    if d.Name == "CoinVisual" and d.Parent and (not bl[d.Parent] or bl[d.Parent] <= tick()) then
+                        if not (d:IsA("BasePart") and d.Transparency >= 0.95) then
+                            table.insert(coins, d.Parent)
+                        end
                     end
                 end
             end
@@ -6849,20 +6873,35 @@ task.spawn(function()
 
                 -- MURDERER DIED DURING THIS MATCH: Stop instantly and teleport to lobby until next round!
                 elseif _G.MurdererDiedThisRound then
-                    if _G.CoinTween then _G.CoinTween:Cancel(); _G.CoinTween = nil end
-                    pcall(removeCoinFarmPlatform)
-                    pcall(function() removeFarmFloat(char) end)
-                    if hrp then
-                        hrp.AssemblyLinearVelocity = Vector3.zero
-                        hrp.AssemblyAngularVelocity = Vector3.zero
+                    -- Auto-recover if new round started (live murderer detected or 8s victory screen passed)
+                    local activeM = (typeof(getMurdererLive) == "function") and getMurdererLive()
+                    local murdAlive = false
+                    if activeM and activeM.Character then
+                        local hum = activeM.Character:FindFirstChildOfClass("Humanoid")
+                        if hum and hum.Health > 0 and not IsPlayerInLobby(activeM) then
+                            murdAlive = true
+                        end
                     end
-                    pcall(TeleportToLobby)
-                    task.wait(0.5)
+                    if murdAlive or (os.clock() - (_G.MurdererDiedTimestamp or 0) > 8) then
+                        _G.MurdererDiedThisRound = false
+                        _G.HasTeleportedAboveFirst = false
+                        _G.CoinFarmHandlingBagFull = false
+                    else
+                        if _G.CoinTween then _G.CoinTween:Cancel(); _G.CoinTween = nil end
+                        pcall(removeCoinFarmPlatform)
+                        pcall(function() removeFarmFloat(char) end)
+                        if hrp then
+                            hrp.AssemblyLinearVelocity = Vector3.zero
+                            hrp.AssemblyAngularVelocity = Vector3.zero
+                        end
+                        pcall(TeleportToLobby)
+                        task.wait(0.5)
+                    end
 
                 -- BAG FULL HANDLING: Parked until round ends
                 elseif _G.CoinFarmHandlingBagFull then
-                    -- When coins on map disappear (round ended), clear flag!
-                    if #mapCoins == 0 then
+                    -- When coins on map disappear or bag is not full (new round started), clear flag!
+                    if #mapCoins == 0 or not IsCoinBagFull() then
                         _G.HasTeleportedAboveFirst = false
                         _G.CoinFarmHandlingBagFull = false
                         _G.RanaxCoinsCollected = 0
@@ -7240,11 +7279,11 @@ task.spawn(function()
                                     local activeM = _currentTrackedMurderer or (typeof(getMurdererLive) == "function" and getMurdererLive())
                                     if activeM then
                                         local isMDead = false
-                                        if not activeM.Parent or not activeM.Character or not activeM.Character.Parent then
+                                        if not activeM.Parent then
                                             isMDead = true
-                                        else
+                                        elseif activeM.Character and activeM.Character.Parent then
                                             local mHum = activeM.Character:FindFirstChildOfClass("Humanoid")
-                                            if not mHum or mHum.Health <= 0 then
+                                            if mHum and mHum.Health <= 0 then
                                                 isMDead = true
                                             end
                                         end
