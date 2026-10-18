@@ -6125,6 +6125,9 @@ local function onMurdererDied(m)
     _G.MurdererDiedTimestamp = os.clock()
     _G.RanaxRoundInProgress = false
 
+    local isFarming = (_G.SafeAutoFarm or _G.AutoCoins or (V and V.CoinFarm))
+    if not isFarming then return end
+
     -- Stop farm INSTANTLY upon Murderer death!
     if _G.CoinTween then
         _G.CoinTween:Cancel()
@@ -6793,7 +6796,10 @@ local function hookLocalDeath(c)
                 hrp.AssemblyLinearVelocity = Vector3.zero
                 hrp.AssemblyAngularVelocity = Vector3.zero
             end
-            notify("Coin Farm", "You died in match! Pausing farm until next round...", 2.5, "clock")
+            local isFarming = (_G.SafeAutoFarm or _G.AutoCoins or (V and V.CoinFarm))
+            if isFarming then
+                notify("Coin Farm", "You died in match! Pausing farm until next round...", 2.5, "clock")
+            end
         end)
     end
 end
