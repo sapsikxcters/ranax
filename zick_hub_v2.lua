@@ -51,7 +51,7 @@ local SETTINGS = {
 	KEYBIND         = Enum.KeyCode.Q,
 	SHOOT_DELAY     = 0.1,
 	PREDICT_OFFSET  = 2.8,
-	WALL_CHECK      = true,
+	WALL_CHECK      = false,
 	AUTO_RELOAD     = true,
 	BURST_SIZE      = 0,
 	BURST_PAUSE     = 0.5,
@@ -662,20 +662,22 @@ end
 -- ============================ FLICK SHOOT MOTORU ============================
 local flickActive = false
 
-local function isTargetVisible(targetChar, customOrigin)
+local function visibleToCamera(targetObj)
 	if not SETTINGS.WALL_CHECK then
 		return true
 	end
-	if not targetChar then return false end
+	if not targetObj then return true end
 
-	local origin = customOrigin or (Camera and Camera.CFrame.Position)
+	local origin = Camera and Camera.CFrame.Position
 	if not origin then return true end
 
-	local partsToCheck = {
-		targetChar:FindFirstChild("Head"),
-		targetChar:FindFirstChild("HumanoidRootPart") or targetChar:FindFirstChild("Torso") or targetChar:FindFirstChild("UpperTorso"),
-		targetChar:FindFirstChild("UpperTorso") or targetChar:FindFirstChild("LowerTorso")
-	}
+	local part = targetObj:IsA("BasePart") and targetObj or (targetObj:FindFirstChild("HumanoidRootPart") or targetObj:FindFirstChild("Head") or targetObj:FindFirstChild("Torso") or targetObj:FindFirstChild("UpperTorso"))
+	if not part then return true end
+
+	local dir = part.Position - origin
+	if dir.Magnitude < 0.5 then
+		return true
+	end
 
 	local params = RaycastParams.new()
 	params.FilterType = Enum.RaycastFilterType.Exclude
@@ -690,25 +692,19 @@ local function isTargetVisible(targetChar, customOrigin)
 	end
 	params.FilterDescendantsInstances = exclude
 
-	for _, part in ipairs(partsToCheck) do
-		if part then
-			local dir = part.Position - origin
-			if dir.Magnitude < 0.5 then
-				return true
-			end
-			local result = Workspace:Raycast(origin, dir, params)
-			if not result then
-				return true
-			end
-			if result.Instance and (result.Instance:IsDescendantOf(targetChar) or result.Instance.Transparency > 0.65 or result.Instance.CanCollide == false) then
-				return true
-			end
-		end
+	local result = Workspace:Raycast(origin, dir, params)
+	if not result then
+		return true
 	end
 
-	return false
+	local targetChar = targetObj:IsA("Model") and targetObj or targetObj.Parent
+	return result.Instance and targetChar and (
+		result.Instance:IsDescendantOf(targetChar)
+		or result.Instance.Transparency > 0.65
+		or result.Instance.CanCollide == false
+	)
 end
-local visibleToCamera = isTargetVisible
+local isTargetVisible = visibleToCamera
 
 -- 5V5 / AIM TRAINER / FFA / MM2 UYUMLU CLOSEST HEDEFLEME:
 -- Role (Murderer/Sheriff) bakmaz, arkadas olmayan en yakin CANLI oyuncuyu secer!
@@ -842,9 +838,6 @@ end
 -- ==================== RANAX MMV FLICK SHOOT MOTORU ====================
 local function executeFlickShoot(target, hitPos, remote, gun, origin)
 	if flickActive then return end
-	if SETTINGS.WALL_CHECK and target and target.Character and not isTargetVisible(target.Character, origin) then
-		return
-	end
 	local myChar = LocalPlayer.Character
 	local myHRP = myChar and myChar:FindFirstChild("HumanoidRootPart")
 	local myHum = myChar and myChar:FindFirstChildOfClass("Humanoid")
@@ -967,10 +960,6 @@ local function shootV2()
 	local origin = getOriginPosition()
 	if not origin then return end
 	local hitPos = getPredictedPosition(hrp, hum, SETTINGS.PREDICT_OFFSET, origin)
-
-	if SETTINGS.WALL_CHECK and not isTargetVisible(tchar, origin) then
-		return
-	end
 
 	if SETTINGS.FLICK_ENABLED then
 		executeFlickShoot(target, hitPos, remote, gun, origin)
