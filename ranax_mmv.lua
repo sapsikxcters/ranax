@@ -755,6 +755,40 @@ if V.AntiFlingThreshold == nil then V.AntiFlingThreshold = 250 end
 if V.SheriffDeathNotify == nil then V.SheriffDeathNotify = true end
 if getgenv().RanaxNotifyEnabled == nil then getgenv().RanaxNotifyEnabled = true end
 if getgenv().GUIKeybind == nil then getgenv().GUIKeybind = "LeftControl" end
+if _G.AutoChatMurdDeath == nil then _G.AutoChatMurdDeath = false end
+if _G.AutoChatMurdDeathMsg == nil or _G.AutoChatMurdDeathMsg == "" then _G.AutoChatMurdDeathMsg = "ez" end
+if _G.AutoChatKill == nil then _G.AutoChatKill = false end
+if _G.AutoChatKillMsg == nil or _G.AutoChatKillMsg == "" then _G.AutoChatKillMsg = "ez" end
+
+-- ==================== SAFE MULTI-SYSTEM CHAT EMITTER ====================
+local function sendRobloxChatMessage(msg)
+    if not msg or msg == "" then return end
+    task.spawn(function()
+        pcall(function()
+            local TextChatService = game:GetService("TextChatService")
+            if TextChatService and TextChatService.ChatVersion == Enum.ChatVersion.TextChatService then
+                local textChannels = TextChatService:FindFirstChild("TextChannels")
+                local general = textChannels and (textChannels:FindFirstChild("RBXGeneral") or textChannels:FindFirstChild("General"))
+                if general then
+                    general:SendAsync(tostring(msg))
+                    return
+                end
+            end
+            local ReplicatedStorage = game:GetService("ReplicatedStorage")
+            local events = ReplicatedStorage:FindFirstChild("DefaultChatSystemChatEvents")
+            local sayReq = events and events:FindFirstChild("SayMessageRequest")
+            if sayReq and sayReq:IsA("RemoteEvent") then
+                sayReq:FireServer(tostring(msg), "All")
+                return
+            end
+            local say = ReplicatedStorage:FindFirstChild("SayMessageRequest", true)
+            if say and say:IsA("RemoteEvent") then
+                say:FireServer(tostring(msg), "All")
+            end
+        end)
+    end)
+end
+_G.sendRobloxChatMessage = sendRobloxChatMessage
 
 -- Ranax Advanced MM2 Shoot Settings for Sheriff
 if V.RanaxPredictOffset == nil then V.RanaxPredictOffset = 2.8 end
@@ -1345,6 +1379,10 @@ local function SaveConfig(name)
         SpeedGlitch         = _G.SpeedGlitchActive or false,
         SpeedGlitchBoost    = _G.SpeedGlitchBoost or 50,
         RanaxSprayDecalID   = _G.RanaxSprayDecalID or "18933215907",
+        AutoChatMurdDeath   = _G.AutoChatMurdDeath or false,
+        AutoChatMurdDeathMsg = _G.AutoChatMurdDeathMsg or "ez",
+        AutoChatKill        = _G.AutoChatKill or false,
+        AutoChatKillMsg     = _G.AutoChatKillMsg or "ez",
 
         -- ===== PROTECTION & NOTIFICATIONS =====
         AntiFling           = V.AntiFling ~= nil and V.AntiFling or true,
@@ -1624,6 +1662,20 @@ local function LoadConfig(name)
                 end
                 if decoded.RanaxSprayDecalID ~= nil then
                     _G.RanaxSprayDecalID = decoded.RanaxSprayDecalID
+                end
+                if decoded.AutoChatMurdDeath ~= nil then
+                    _G.AutoChatMurdDeath = decoded.AutoChatMurdDeath
+                    setUIVal(UIElements.AutoChatMurdDeathToggle, decoded.AutoChatMurdDeath)
+                end
+                if decoded.AutoChatMurdDeathMsg ~= nil then
+                    _G.AutoChatMurdDeathMsg = decoded.AutoChatMurdDeathMsg
+                end
+                if decoded.AutoChatKill ~= nil then
+                    _G.AutoChatKill = decoded.AutoChatKill
+                    setUIVal(UIElements.AutoChatKillToggle, decoded.AutoChatKill)
+                end
+                if decoded.AutoChatKillMsg ~= nil then
+                    _G.AutoChatKillMsg = decoded.AutoChatKillMsg
                 end
                 if decoded.FpsBoosterActive ~= nil then
                     _G.FpsBoosterActive = decoded.FpsBoosterActive
@@ -2805,6 +2857,80 @@ AutoGrabGunToggle = MiscTab:Toggle({
         end
     end
 })
+MiscTab:Divider()
+
+-- ==================== AUTO CHAT SYSTEM ====================
+MiscTab:Section({
+    Title = "Auto Chat System",
+    TextSize = 15
+})
+
+UIElements.AutoChatMurdDeathToggle = MiscTab:Toggle({
+    Title = "Auto Chat on Murderer Death",
+    Desc = "Sends custom chat message when Murderer dies / eliminated",
+    Icon = "message-square",
+    Type = "Checkbox",
+    Value = _G.AutoChatMurdDeath or false,
+    Callback = function(state)
+        _G.AutoChatMurdDeath = state
+        notify("Auto Chat", "Murderer Death Chat: " .. (state and "ON" or "OFF"), 2, "message-square")
+    end
+})
+
+UIElements.AutoChatMurdDeathMsgInput = MiscTab:Input({
+    Title = "Murderer Death Message",
+    Desc = "Message sent to chat when Murderer dies (default: ez)",
+    Icon = "message-circle",
+    Placeholder = "ez",
+    Value = _G.AutoChatMurdDeathMsg or "ez",
+    Callback = function(val)
+        val = tostring(val or ""):match("^%s*(.-)%s*$")
+        if val and val ~= "" then
+            _G.AutoChatMurdDeathMsg = val
+            notify("Auto Chat", "Death Message: " .. val, 2, "message-circle")
+        end
+    end
+})
+
+UIElements.AutoChatKillToggle = MiscTab:Toggle({
+    Title = "Auto Chat on Kill",
+    Desc = "Sends custom chat message when you eliminate someone",
+    Icon = "swords",
+    Type = "Checkbox",
+    Value = _G.AutoChatKill or false,
+    Callback = function(state)
+        _G.AutoChatKill = state
+        notify("Auto Chat", "Kill Chat: " .. (state and "ON" or "OFF"), 2, "swords")
+    end
+})
+
+UIElements.AutoChatKillMsgInput = MiscTab:Input({
+    Title = "Kill Message",
+    Desc = "Message sent to chat when you eliminate a target (default: ez)",
+    Icon = "crosshair",
+    Placeholder = "ez",
+    Value = _G.AutoChatKillMsg or "ez",
+    Callback = function(val)
+        val = tostring(val or ""):match("^%s*(.-)%s*$")
+        if val and val ~= "" then
+            _G.AutoChatKillMsg = val
+            notify("Auto Chat", "Kill Message: " .. val, 2, "crosshair")
+        end
+    end
+})
+
+MiscTab:Button({
+    Title = "Test Chat Message",
+    Desc = "Sends the current Murderer Death message to test chat connection",
+    Icon = "send",
+    Locked = false,
+    Callback = function()
+        local msg = _G.AutoChatMurdDeathMsg or "ez"
+        sendRobloxChatMessage(msg)
+        notify("Auto Chat", "Test sent: " .. msg, 2, "send")
+    end
+})
+
 MiscTab:Divider()
 
 local TeleportLobby = MiscTab:Button({
@@ -8101,6 +8227,14 @@ do
         -- NO SUICIDAL FLING! A Sheriff has a gun and shoots from safe distance.
         if targetDied then
             notify("Rage Shoot", "Eliminated Murderer: " .. tostring(target.Name), 2.5, "skull")
+            if _G.AutoChatKill then
+                task.delay(0.2, function()
+                    local kmsg = _G.AutoChatKillMsg or "ez"
+                    if kmsg and kmsg ~= "" then
+                        sendRobloxChatMessage(kmsg)
+                    end
+                end)
+            end
             return true, target.Name
         else
             return false, "Murderer survived shot"
@@ -10967,6 +11101,82 @@ task.spawn(function()
         end
     end
 end)
+
+-- ==================== AUTO CHAT ON MURDERER DEATH ENGINE ====================
+do
+    local trackedMurdPlr = nil
+    local murdDiedConn = nil
+    local lastDeathChatTick = 0
+
+    local function triggerMurdDeathChat(murdPlr)
+        if not _G.AutoChatMurdDeath then return end
+        if not murdPlr or murdPlr == LocalPlayer then return end
+        local now = tick()
+        if now - lastDeathChatTick < 6 then return end
+        lastDeathChatTick = now
+
+        task.delay(0.45, function()
+            local msg = _G.AutoChatMurdDeathMsg or "ez"
+            if msg and msg ~= "" then
+                sendRobloxChatMessage(msg)
+            end
+        end)
+    end
+
+    local function hookMurderer(plr)
+        if not plr or plr == LocalPlayer then return end
+        if murdDiedConn then
+            pcall(function() murdDiedConn:Disconnect() end)
+            murdDiedConn = nil
+        end
+        local char = plr.Character
+        local hum = char and (char:FindFirstChildOfClass("Humanoid") or char:WaitForChild("Humanoid", 2))
+        if hum then
+            murdDiedConn = hum.Died:Connect(function()
+                triggerMurdDeathChat(plr)
+            end)
+        end
+    end
+
+    task.spawn(function()
+        while true do
+            task.wait(0.3)
+            if _G.AutoChatMurdDeath then
+                local currentMurd = nil
+                pcall(function()
+                    if typeof(getMurdererLive) == "function" then
+                        currentMurd = getMurdererLive()
+                    elseif typeof(getMurderer) == "function" then
+                        currentMurd = getMurderer()
+                    end
+                end)
+
+                if currentMurd and currentMurd ~= LocalPlayer then
+                    if currentMurd ~= trackedMurdPlr then
+                        trackedMurdPlr = currentMurd
+                        hookMurderer(currentMurd)
+                    else
+                        local char = currentMurd.Character
+                        local hum = char and char:FindFirstChildOfClass("Humanoid")
+                        if hum and hum.Health <= 0 then
+                            triggerMurdDeathChat(currentMurd)
+                        end
+                    end
+                elseif trackedMurdPlr then
+                    local char = trackedMurdPlr.Character
+                    local hum = char and char:FindFirstChildOfClass("Humanoid")
+                    if not char or not hum or hum.Health <= 0 then
+                        triggerMurdDeathChat(trackedMurdPlr)
+                    end
+                    trackedMurdPlr = nil
+                end
+            else
+                trackedMurdPlr = nil
+                task.wait(0.8)
+            end
+        end
+    end)
+end
 
 -- Ready toast
 task.delay(1, function()

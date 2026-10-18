@@ -97,6 +97,10 @@ local SETTINGS = {
 	THEME_ROW    = Color3.fromRGB(35, 25, 50),
 	THEME_TEXT   = Color3.fromRGB(220, 210, 240),
 	DISCORD      = "https://discord.gg",
+	AUTO_CHAT_MURD = false,
+	AUTO_CHAT_MURD_MSG = "ez",
+	AUTO_CHAT_KILL = false,
+	AUTO_CHAT_KILL_MSG = "ez",
 }
 
 local ESP_SETTINGS = {
@@ -2534,6 +2538,80 @@ local function createSliderRow(content, text, min, max, default, onChange, fmt)
 	return row
 end
 
+-- ==================== UNIVERSAL ROBLOX CHAT EMITTER ====================
+local function sendRobloxChatMessage(msg)
+	if not msg or msg == "" then return end
+	task.spawn(function()
+		pcall(function()
+			local TextChatService = game:GetService("TextChatService")
+			if TextChatService and TextChatService.ChatVersion == Enum.ChatVersion.TextChatService then
+				local textChannels = TextChatService:FindFirstChild("TextChannels")
+				local general = textChannels and (textChannels:FindFirstChild("RBXGeneral") or textChannels:FindFirstChild("General"))
+				if general then
+					general:SendAsync(tostring(msg))
+					return
+				end
+			end
+			local ReplicatedStorage = game:GetService("ReplicatedStorage")
+			local events = ReplicatedStorage:FindFirstChild("DefaultChatSystemChatEvents")
+			local sayReq = events and events:FindFirstChild("SayMessageRequest")
+			if sayReq and sayReq:IsA("RemoteEvent") then
+				sayReq:FireServer(tostring(msg), "All")
+				return
+			end
+			local say = ReplicatedStorage:FindFirstChild("SayMessageRequest", true)
+			if say and say:IsA("RemoteEvent") then
+				say:FireServer(tostring(msg), "All")
+			end
+		end)
+	end)
+end
+
+local function createInputRow(content, text, placeholder, get, set)
+	local order = nextOrder(content)
+	local row = create("Frame", {
+		Size = UDim2.new(1, -6, 0, 36),
+		BackgroundColor3 = SETTINGS.THEME_ROW,
+		BorderSizePixel = 0,
+		ZIndex = 2,
+		LayoutOrder = order,
+	}, content)
+	create("UICorner", { CornerRadius = UDim.new(0, 6) }, row)
+
+	create("TextLabel", {
+		Size = UDim2.new(0, 110, 1, 0),
+		Position = UDim2.new(0, 10, 0, 0),
+		BackgroundTransparency = 1,
+		Font = Enum.Font.GothamMedium,
+		Text = text,
+		TextColor3 = SETTINGS.THEME_TEXT,
+		TextSize = 12,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		ZIndex = 3,
+	}, row)
+
+	local box = create("TextBox", {
+		Size = UDim2.new(1, -130, 0, 24),
+		Position = UDim2.new(1, -125, 0.5, -12),
+		BackgroundColor3 = SETTINGS.THEME_BG,
+		BorderSizePixel = 0,
+		Font = Enum.Font.GothamMedium,
+		PlaceholderText = placeholder or "ez",
+		Text = tostring(get() or ""),
+		TextColor3 = SETTINGS.THEME_TEXT,
+		TextSize = 11,
+		ClearTextOnFocus = false,
+		ZIndex = 3,
+	}, row)
+	create("UICorner", { CornerRadius = UDim.new(0, 5) }, box)
+
+	box.FocusLost:Connect(function(enter)
+		set(box.Text)
+		notify("Auto Chat", text .. " set to: " .. box.Text, 2)
+	end)
+	return row
+end
+
 local function createButtonRow(content, text, action)
 	local order = nextOrder(content)
 	local row = create("TextButton", {
@@ -2660,6 +2738,15 @@ createToggleRow(miscTab, "FPS Boost", function() return PLAYER_SETTINGS.FPSBoost
 			end
 		end
 	end)
+end)
+createToggleRow(miscTab, "Auto Chat on Murderer Death", function() return SETTINGS.AUTO_CHAT_MURD end, function(v) SETTINGS.AUTO_CHAT_MURD = v end)
+createInputRow(miscTab, "Death Message", "ez", function() return SETTINGS.AUTO_CHAT_MURD_MSG end, function(v) SETTINGS.AUTO_CHAT_MURD_MSG = v end)
+createToggleRow(miscTab, "Auto Chat on Kill", function() return SETTINGS.AUTO_CHAT_KILL end, function(v) SETTINGS.AUTO_CHAT_KILL = v end)
+createInputRow(miscTab, "Kill Message", "ez", function() return SETTINGS.AUTO_CHAT_KILL_MSG end, function(v) SETTINGS.AUTO_CHAT_KILL_MSG = v end)
+createButtonRow(miscTab, "Test Chat Message", function()
+	local msg = SETTINGS.AUTO_CHAT_MURD_MSG or "ez"
+	sendRobloxChatMessage(msg)
+	notify("Auto Chat", "Test message sent: " .. msg, 2)
 end)
 createToggleRow(miscTab, "Debug Log", function() return SETTINGS.DEBUG end, function(v) SETTINGS.DEBUG = v end)
 createButtonRow(miscTab, "Copy Discord Invite", function()
@@ -3068,6 +3155,97 @@ task.spawn(function()
 		task.wait(0.5)
 	end
 end)
+
+-- ==================== ZICK HUB V2 AUTO CHAT ENGINE ====================
+do
+	local trackedMurdPlr = nil
+	local murdDiedConn = nil
+	local lastDeathChatTick = 0
+
+	local function triggerMurdDeathChat(murdPlr)
+		if not SETTINGS.AUTO_CHAT_MURD then return end
+		if not murdPlr or murdPlr == LocalPlayer then return end
+		local now = tick()
+		if now - lastDeathChatTick < 6 then return end
+		lastDeathChatTick = now
+
+		task.delay(0.45, function()
+			local msg = SETTINGS.AUTO_CHAT_MURD_MSG or "ez"
+			if msg and msg ~= "" then
+				sendRobloxChatMessage(msg)
+			end
+		end)
+	end
+
+	local function hookMurd(plr)
+		if not plr or plr == LocalPlayer then return end
+		if murdDiedConn then
+			pcall(function() murdDiedConn:Disconnect() end)
+			murdDiedConn = nil
+		end
+		local char = plr.Character
+		local hum = char and (char:FindFirstChildOfClass("Humanoid") or char:WaitForChild("Humanoid", 2))
+		if hum then
+			murdDiedConn = hum.Died:Connect(function()
+				triggerMurdDeathChat(plr)
+			end)
+		end
+	end
+
+	task.spawn(function()
+		while true do
+			task.wait(0.35)
+			if SETTINGS.AUTO_CHAT_MURD then
+				local murd = nil
+				for _, p in ipairs(Players:GetPlayers()) do
+				if p ~= LocalPlayer then
+					local c = p.Character
+					if c then
+						for _, it in ipairs(c:GetChildren()) do
+							if it:IsA("Tool") and (it.Name:lower():find("knife") or it.Name:lower():find("blade") or it.Name:lower():find("dagger") or it:FindFirstChild("KnifeServer")) then
+								murd = p
+								break
+							end
+						end
+					end
+					if not murd and p:FindFirstChild("Backpack") then
+						for _, it in ipairs(p.Backpack:GetChildren()) do
+							if it:IsA("Tool") and (it.Name:lower():find("knife") or it.Name:lower():find("blade") or it.Name:lower():find("dagger") or it:FindFirstChild("KnifeServer")) then
+								murd = p
+								break
+							end
+						end
+					end
+					if murd then break end
+				end
+				end
+
+				if murd and murd ~= LocalPlayer then
+					if murd ~= trackedMurdPlr then
+						trackedMurdPlr = murd
+						hookMurd(murd)
+					else
+						local char = murd.Character
+						local hum = char and char:FindFirstChildOfClass("Humanoid")
+						if hum and hum.Health <= 0 then
+							triggerMurdDeathChat(murd)
+						end
+					end
+				elseif trackedMurdPlr then
+					local char = trackedMurdPlr.Character
+					local hum = char and char:FindFirstChildOfClass("Humanoid")
+					if not char or not hum or hum.Health <= 0 then
+						triggerMurdDeathChat(trackedMurdPlr)
+					end
+					trackedMurdPlr = nil
+				end
+			else
+				trackedMurdPlr = nil
+				task.wait(0.8)
+			end
+		end
+	end)
+end
 
 -- ============================ BITIS ============================
 print("[Zick Hub V2] Loaded | Phantom Scope + Shoot V2 + Flick Shoot (R) + Kill Aura + ESP + Friends (Menu) (LeftControl)")
