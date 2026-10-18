@@ -1182,6 +1182,159 @@ task.spawn(function()
 	end
 end)
 
+-- ============================ BOT KILL FARM (AIM TRAINER / RIGS AUTO FARM) ============================
+local BOT_FARM = {
+	Enabled = false,
+	AutoSpawn = true,
+	TeleportOffset = -1.5,
+}
+
+task.spawn(function()
+	while true do
+		if BOT_FARM.Enabled and BOT_FARM.AutoSpawn then
+			pcall(function()
+				local events = ReplicatedStorage:FindFirstChild("Events")
+				local remoteEvents = events and events:FindFirstChild("RemoteEvents")
+				local startTraining = remoteEvents and remoteEvents:FindFirstChild("StartTraining")
+				if startTraining then
+					local botConfig = {
+						{
+							Trainer = "StandingStill",
+							SheriffSettings = { AutoShoot = false, ShotAccuracy = "Straight" },
+							TrainerSettings = { SpawnWithGun = true, Mini = false },
+							CustomNPCs = {
+								{ Default = "Roblox", Effect = "None", Knife = "Knife", Gun = "Gun", Morph = 1 },
+								{ Default = "Roblox", Effect = "None", Knife = "Knife", Gun = "Gun", Morph = 1 },
+								{ Default = "Roblox", Effect = "None", Knife = "Knife", Gun = "Gun", Morph = 1 },
+								{ Default = "Roblox", Effect = "None", Knife = "Knife", Gun = "Gun", Morph = 1 },
+								{ Default = "Roblox", Effect = "None", Knife = "Knife", Gun = "Gun", Morph = 1 },
+								{ Default = "Roblox", Effect = "None", Knife = "Knife", Gun = "Gun", Morph = 1 },
+								{ Default = "Roblox", Effect = "None", Knife = "Knife", Gun = "Gun", Morph = 1 },
+								{ Default = "Roblox", Effect = "None", Knife = "Knife", Gun = "Gun", Morph = 1 },
+								{ Default = "Roblox", Effect = "None", Knife = "Knife", Gun = "Gun", Morph = 1 },
+								{ Default = "Roblox", Effect = "None", Knife = "Knife", Gun = "Gun", Morph = 1 },
+							},
+							MorphType = "Custom",
+							Effect = "None",
+							Gun = "Gun",
+							Role = "Sheriff",
+							Movement = "Jump",
+							NPCs = 10,
+							Knife = "Knife",
+							MurdererSettings = { Stabbing = true, DualWield = false, ThrowAccuracy = "OFF" },
+							Perk = "None",
+							Morph = 1,
+						},
+					}
+					startTraining:FireServer(unpack(botConfig))
+				end
+			end)
+			task.wait(4.5)
+		else
+			task.wait(1.0)
+		end
+	end
+end)
+
+-- Auto Tool Equip & Slash loop
+task.spawn(function()
+	while true do
+		if BOT_FARM.Enabled then
+			pcall(function()
+				local char = LocalPlayer.Character
+				local hum = char and char:FindFirstChildOfClass("Humanoid")
+				if char and hum then
+					local tool = char:FindFirstChildOfClass("Tool")
+						or (LocalPlayer:FindFirstChild("Backpack") and LocalPlayer.Backpack:FindFirstChildOfClass("Tool"))
+					if tool then
+						if tool.Parent ~= char then
+							hum:EquipTool(tool)
+						end
+						local knifeServer = tool:FindFirstChild("KnifeServer")
+						local slashStart = knifeServer and knifeServer:FindFirstChild("SlashStart")
+						local stab = (knifeServer and knifeServer:FindFirstChild("Stab")) or tool:FindFirstChild("Stab")
+						local slash = tool:FindFirstChild("Slash")
+
+						if slashStart then
+							slashStart:FireServer()
+						end
+						if stab then
+							pcall(function()
+								stab:FireServer("Down")
+								stab:FireServer("Slash")
+							end)
+						end
+						if slash then
+							pcall(function() slash:FireServer() end)
+						end
+						pcall(function() tool:Activate() end)
+					end
+				end
+			end)
+			task.wait(0.2)
+		else
+			task.wait(1.0)
+		end
+	end
+end)
+
+-- Teleport Slasher loop for Rigs
+task.spawn(function()
+	while true do
+		if BOT_FARM.Enabled then
+			local rigs = workspace:FindFirstChild("Rigs")
+				or workspace:FindFirstChild("TrainingRigs")
+				or workspace:FindFirstChild("NPCs")
+				or workspace:FindFirstChild("Bots")
+			local foundTarget = false
+
+			if rigs then
+				for _, bot in ipairs(rigs:GetChildren()) do
+					if not BOT_FARM.Enabled then break end
+					if bot:IsA("Model") and bot:FindFirstChild("HumanoidRootPart") then
+						local bHum = bot:FindFirstChildOfClass("Humanoid")
+						local bHrp = bot.HumanoidRootPart
+						if (not bHum or bHum.Health > 0) and bHrp then
+							foundTarget = true
+							local startKill = os.clock()
+							while os.clock() - startKill < 2.5 do
+								if not BOT_FARM.Enabled then break end
+								if bHum and bHum.Health <= 0 then break end
+								if not bHrp or not bHrp.Parent then break end
+
+								local char = LocalPlayer.Character
+								local myHrp = char and char:FindFirstChild("HumanoidRootPart")
+								if myHrp and bHrp then
+									local offset = CFrame.new(0, 0, BOT_FARM.TeleportOffset)
+									myHrp.CFrame = CFrame.lookAt((bHrp.CFrame * offset).Position, bHrp.Position)
+
+									local tool = char:FindFirstChildOfClass("Tool")
+									if tool then
+										local handle = tool:FindFirstChild("Handle") or tool:FindFirstChildWhichIsA("BasePart")
+										if handle and typeof(firetouchinterest) == "function" then
+											firetouchinterest(handle, bHrp, 0)
+											firetouchinterest(handle, bHrp, 1)
+										end
+										pcall(function() tool:Activate() end)
+									end
+								end
+								task.wait(0.04)
+							end
+							task.wait(0.06)
+						end
+					end
+				end
+			end
+
+			if not foundTarget then
+				task.wait(0.4)
+			end
+		else
+			task.wait(1.0)
+		end
+	end
+end)
+
 -- ============================ ESP SISTEMI ============================
 -- ==================== NEON BULLET TRACERS & KILL BANNER ====================
 local function spawnBulletTracer(origin, hitPos)
@@ -2308,6 +2461,11 @@ createToggleRow(combatTab, "Kill Aura: Auto Equip Knife", function() return KILL
 createToggleRow(combatTab, "Kill Aura: Teleport Targets", function() return KILL_AURA.TeleportTarget end, function(v) KILL_AURA.TeleportTarget = v end)
 createSliderRow(combatTab, "Kill Aura Delay (s)", 0.05, 1, KILL_AURA.AttackDelay, function(v) KILL_AURA.AttackDelay = v end, function(v) return string.format("%.2f", v) end)
 createSliderRow(combatTab, "Kill Aura Range (studs)", 0, 100, KILL_AURA.Range, function(v) KILL_AURA.Range = v end, function(v) return v == 0 and "ALL" or tostring(math.floor(v)) end)
+createToggleRow(combatTab, "Bot Kill Farm (Aim Trainer)", function() return BOT_FARM.Enabled end, function(v)
+	BOT_FARM.Enabled = v
+	notify("Bot Farm", v and "Auto Bot Farm ACTIVE" or "Auto Bot Farm OFF", 2.5, v and "sword" or "x")
+end)
+createToggleRow(combatTab, "Bot Farm: Auto-Spawn Bots", function() return BOT_FARM.AutoSpawn end, function(v) BOT_FARM.AutoSpawn = v end)
 
 -- VISUALS
 createToggleRow(visualsTab, "ESP", function() return ESP_SETTINGS.Enabled end, function(v) ESP_SETTINGS.Enabled = v end)
