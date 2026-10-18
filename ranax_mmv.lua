@@ -10815,197 +10815,35 @@ UIElements.ToastToggle = SettingsTab:Toggle({
     end
 })
 
--- ==================== ADVANCED IMPENETRABLE ANTI-FLING ENGINE ====================
+-- ==================== INFINITE YIELD ANTI-FLING ENGINE ====================
 do
     local AntiFlingSteppedConn = nil
-    local AntiFlingHeartbeatConn = nil
-    local NoCollisionFolder = nil
-    local _boundFlingChars = setmetatable({}, { __mode = "k" })
-    local _lastSafeCFrame = nil
-    local _safeUpdateTick = 0
 
-    local function getNoCollisionFolder()
-        if not NoCollisionFolder or not NoCollisionFolder.Parent then
-            local char = LocalPlayer.Character
-            local hrp = char and char:FindFirstChild("HumanoidRootPart")
-            if not hrp then return nil end
-            NoCollisionFolder = hrp:FindFirstChild("RanaxAntiFlingConstraints")
-            if not NoCollisionFolder then
-                NoCollisionFolder = Instance.new("Folder")
-                NoCollisionFolder.Name = "RanaxAntiFlingConstraints"
-                NoCollisionFolder.Parent = hrp
-            end
-        end
-        return NoCollisionFolder
-    end
-
-    local function applyNoCollisionWithPlayer(player)
-        if player == LocalPlayer or not player.Character then return end
-        local pChar = player.Character
-        if _boundFlingChars[pChar] then return end
-        _boundFlingChars[pChar] = true
-
-        local myChar = LocalPlayer.Character
-        local myHrp = myChar and myChar:FindFirstChild("HumanoidRootPart")
-        local myTorso = myChar and (myChar:FindFirstChild("UpperTorso") or myChar:FindFirstChild("Torso"))
-        if not myHrp then return end
-
-        local folder = getNoCollisionFolder()
-        if not folder then return end
-
-        for _, part in ipairs(pChar:GetDescendants()) do
-            if part:IsA("BasePart") then
-                part.CanCollide = false
-                local cName = "NC_" .. player.Name .. "_" .. part.Name
-                if not folder:FindFirstChild(cName) then
-                    pcall(function()
-                        local nc = Instance.new("NoCollisionConstraint")
-                        nc.Name = cName
-                        nc.Part0 = myHrp
-                        nc.Part1 = part
-                        nc.Parent = folder
-
-                        if myTorso and myTorso ~= myHrp then
-                            local nc2 = Instance.new("NoCollisionConstraint")
-                            nc2.Name = cName .. "_Torso"
-                            nc2.Part0 = myTorso
-                            nc2.Part1 = part
-                            nc2.Parent = folder
-                        end
-                    end)
-                end
-            end
-        end
-    end
-
-    local function clearNoCollisionConstraints()
-        _boundFlingChars = setmetatable({}, { __mode = "k" })
-        if NoCollisionFolder then
-            pcall(function() NoCollisionFolder:Destroy() end)
-            NoCollisionFolder = nil
-        end
-    end
-
-    local function setupLocalCharacterPhysics()
-        local myChar = LocalPlayer.Character
-        if not myChar then return end
-        local hum = myChar:FindFirstChildOfClass("Humanoid")
-        if hum then
-            hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
-            hum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
-            hum:SetStateEnabled(Enum.HumanoidStateType.PlatformStanding, false)
-        end
-        local hrp = myChar:FindFirstChild("HumanoidRootPart")
+    local function resetLocalPhysics()
+        local char = LocalPlayer.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
         if hrp then
-            hrp.CanCollide = true
-            -- Maximum physical density (100) = Immovable anchor against external collisions
             pcall(function()
-                hrp.CustomPhysicalProperties = PhysicalProperties.new(100, 1, 0, 1, 100)
+                hrp.CustomPhysicalProperties = nil
             end)
-            _lastSafeCFrame = hrp.CFrame
         end
     end
 
     local function startAntiFlingEngine()
-        if AntiFlingSteppedConn then AntiFlingSteppedConn:Disconnect(); AntiFlingSteppedConn = nil end
-        if AntiFlingHeartbeatConn then AntiFlingHeartbeatConn:Disconnect(); AntiFlingHeartbeatConn = nil end
+        if AntiFlingSteppedConn then
+            AntiFlingSteppedConn:Disconnect()
+            AntiFlingSteppedConn = nil
+        end
+        resetLocalPhysics()
 
-        clearNoCollisionConstraints()
-        setupLocalCharacterPhysics()
-
-        -- 1. Pre-Simulation (Stepped): Runs before Roblox physics collision evaluation.
-        -- Phased out other players every single frame, zero collision calculation gaps!
         AntiFlingSteppedConn = RunService.Stepped:Connect(function()
             if not V.AntiFling then return end
-
-            local char = LocalPlayer.Character
-            local hrp = char and char:FindFirstChild("HumanoidRootPart")
-            local hum = char and char:FindFirstChildOfClass("Humanoid")
-            if not (char and hrp and hum and hum.Health > 0) then return end
-
-            -- Keep our own root firmly grounded on surfaces
-            if not hrp.CanCollide then hrp.CanCollide = true end
-            hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
-            hum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
-
-            -- Phase out ALL other players on every frame (0.002ms execution time)
-            local myPos = hrp.Position
             for _, player in ipairs(Players:GetPlayers()) do
                 if player ~= LocalPlayer and player.Character then
-                    local pChar = player.Character
-                    local pHrp = pChar:FindFirstChild("HumanoidRootPart")
-                    local isFlinger = false
-
-                    -- Check if nearby player has abnormal fling momentum
-                    if pHrp then
-                        local dist = (pHrp.Position - myPos).Magnitude
-                        if dist < 28 then
-                            local pLin = pHrp.AssemblyLinearVelocity
-                            local pAng = pHrp.AssemblyAngularVelocity
-                            if pLin.Magnitude > 50 or pAng.Magnitude > 30 then
-                                isFlinger = true
-                            end
+                    for _, part in ipairs(player.Character:GetDescendants()) do
+                        if part:IsA("BasePart") then
+                            part.CanCollide = false
                         end
-                    end
-
-                    for _, p in ipairs(pChar:GetDescendants()) do
-                        if p:IsA("BasePart") then
-                            if p.CanCollide then p.CanCollide = false end
-                            if isFlinger then
-                                pcall(function()
-                                    p.AssemblyLinearVelocity = Vector3.zero
-                                    p.AssemblyAngularVelocity = Vector3.zero
-                                end)
-                            end
-                        end
-                    end
-                    applyNoCollisionWithPlayer(player)
-                end
-            end
-        end)
-
-        -- 2. Post-Simulation (Heartbeat): Active Velocity Neutralizer & Snapback Shield
-        -- If an exploiter attempts to fling you or you receive high impulse, instantly wipe velocity and restore safe CFrame!
-        AntiFlingHeartbeatConn = RunService.Heartbeat:Connect(function()
-            if not V.AntiFling then return end
-
-            local char = LocalPlayer.Character
-            local hrp = char and char:FindFirstChild("HumanoidRootPart")
-            local hum = char and char:FindFirstChildOfClass("Humanoid")
-            if not (char and hrp and hum and hum.Health > 0) then return end
-
-            local lin = hrp.AssemblyLinearVelocity
-            local ang = hrp.AssemblyAngularVelocity
-            local horizSpeed = Vector2.new(lin.X, lin.Z).Magnitude
-            local vertSpeed = math.abs(lin.Y)
-            local angSpeed = ang.Magnitude
-
-            -- Standard MM2 speeds: walking is ~16-32, jump is ~50. Fling exploits inject 65+ to 100,000+
-            local isFlingDetected = (horizSpeed > 55) or (vertSpeed > 65) or (angSpeed > 25)
-
-            if isFlingDetected then
-                -- INSTANT VELOCITY WIPE
-                hrp.AssemblyLinearVelocity = Vector3.zero
-                hrp.AssemblyAngularVelocity = Vector3.zero
-                pcall(function() hrp.Velocity = Vector3.zero end)
-                pcall(function() hrp.RotVelocity = Vector3.zero end)
-
-                -- SNAPBACK TO SAFE POSITION: Prevents character from ever floating into the sky!
-                if _lastSafeCFrame then
-                    hrp.CFrame = _lastSafeCFrame
-                    pcall(function() char:PivotTo(_lastSafeCFrame) end)
-                end
-
-                hum.PlatformStand = false
-                hum.Sit = false
-                pcall(function() hum:ChangeState(Enum.HumanoidStateType.Running) end)
-            else
-                -- Continuously record safe position when moving normally
-                local now = os.clock()
-                if now - _safeUpdateTick >= 0.05 then
-                    _safeUpdateTick = now
-                    if hrp.Position.Y > -150 then
-                        _lastSafeCFrame = hrp.CFrame
                     end
                 end
             end
@@ -11013,31 +10851,23 @@ do
     end
 
     local function stopAntiFlingEngine()
-        if AntiFlingSteppedConn then AntiFlingSteppedConn:Disconnect(); AntiFlingSteppedConn = nil end
-        if AntiFlingHeartbeatConn then AntiFlingHeartbeatConn:Disconnect(); AntiFlingHeartbeatConn = nil end
-        clearNoCollisionConstraints()
-        local char = LocalPlayer.Character
-        local hrp = char and char:FindFirstChild("HumanoidRootPart")
-        if hrp then
-            hrp.CanCollide = true
-            pcall(function()
-                hrp.CustomPhysicalProperties = nil
-            end)
+        if AntiFlingSteppedConn then
+            AntiFlingSteppedConn:Disconnect()
+            AntiFlingSteppedConn = nil
         end
-        local hum = char and char:FindFirstChildOfClass("Humanoid")
-        if hum then
-            hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, true)
-            hum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, true)
-            hum:SetStateEnabled(Enum.HumanoidStateType.PlatformStanding, true)
-        end
+        resetLocalPhysics()
     end
+
+    getgenv().StartRanaxAntiFling = startAntiFlingEngine
+    getgenv().StopRanaxAntiFling = stopAntiFlingEngine
 
     if V.AntiFling then
         startAntiFlingEngine()
     end
 
-    LocalPlayer.CharacterAdded:Connect(function(newChar)
-        task.wait(0.3)
+    LocalPlayer.CharacterAdded:Connect(function()
+        task.wait(0.2)
+        resetLocalPhysics()
         if V.AntiFling then
             startAntiFlingEngine()
         end
@@ -11045,7 +10875,7 @@ do
 
     UIElements.AntiFling = SettingsTab:Toggle({
         Title = "Anti-Fling",
-        Desc = "Advanced anti-fling: native NoCollisionConstraint & smooth velocity dampening (no teleport snapback)",
+        Desc = "Official Infinite Yield Anti-Fling: zero slow-fall, turns off player collision",
         Icon = "shield",
         Type = "Checkbox",
         Value = V.AntiFling,
@@ -11053,7 +10883,7 @@ do
             V.AntiFling = state
             if state then
                 startAntiFlingEngine()
-                notify("Protection", "Anti-Fling: ACTIVE (Smooth)", 2.5, "shield")
+                notify("Protection", "Anti-Fling: ACTIVE (Infinite Yield)", 2.5, "shield")
             else
                 stopAntiFlingEngine()
                 notify("Protection", "Anti-Fling: OFF", 2)
