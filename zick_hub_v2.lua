@@ -2277,6 +2277,7 @@ local combatTab = createTab("Combat")
 local visualsTab = createTab("Visuals")
 local playerTab = createTab("Player")
 local miscTab = createTab("Misc")
+local friendsTab = createTab("Friends")
 
 -- COMBAT (5v5 / AIM TRAINER / FFA / MM2 CLOSEST MOTORU)
 createToggleRow(combatTab, "Shoot V2 (Auto-Fire)", function() return SETTINGS.AUTO_FIRE end, function(v) SETTINGS.AUTO_FIRE = v end)
@@ -2383,6 +2384,194 @@ createButtonRow(miscTab, "Rejoin Server", function()
 		TeleportService:Teleport(game.PlaceId, LocalPlayer)
 	end)
 end)
+
+-- ============================ FRIENDS TAB (INTEGRATED INTO CLICK GUI) ============================
+local friendInputRow = create("Frame", {
+	Size = UDim2.new(1, -6, 0, 36),
+	BackgroundColor3 = SETTINGS.THEME_ROW,
+	BorderSizePixel = 0,
+	LayoutOrder = nextOrder(friendsTab),
+	ZIndex = 2,
+}, friendsTab)
+create("UICorner", { CornerRadius = UDim.new(0, 6) }, friendInputRow)
+
+local friendNameBox = create("TextBox", {
+	Size = UDim2.new(1, -130, 0, 26),
+	Position = UDim2.new(0, 8, 0.5, -13),
+	BackgroundColor3 = SETTINGS.THEME_BG,
+	BorderSizePixel = 0,
+	Font = Enum.Font.GothamMedium,
+	PlaceholderText = "Enter Username to Friend...",
+	Text = "",
+	TextColor3 = SETTINGS.THEME_TEXT,
+	TextSize = 12,
+	ClearTextOnFocus = false,
+	ZIndex = 3,
+}, friendInputRow)
+create("UICorner", { CornerRadius = UDim.new(0, 5) }, friendNameBox)
+
+local friendAddBtn = create("TextButton", {
+	Size = UDim2.new(0, 52, 0, 26),
+	Position = UDim2.new(1, -116, 0.5, -13),
+	BackgroundColor3 = Color3.fromRGB(45, 140, 65),
+	Font = Enum.Font.GothamBold,
+	Text = "Add",
+	TextColor3 = Color3.fromRGB(255, 255, 255),
+	TextSize = 12,
+	ZIndex = 3,
+}, friendInputRow)
+create("UICorner", { CornerRadius = UDim.new(0, 5) }, friendAddBtn)
+
+local friendClearBtn = create("TextButton", {
+	Size = UDim2.new(0, 54, 0, 26),
+	Position = UDim2.new(1, -60, 0.5, -13),
+	BackgroundColor3 = Color3.fromRGB(150, 40, 40),
+	Font = Enum.Font.GothamBold,
+	Text = "Clear",
+	TextColor3 = Color3.fromRGB(255, 255, 255),
+	TextSize = 11,
+	ZIndex = 3,
+}, friendInputRow)
+create("UICorner", { CornerRadius = UDim.new(0, 5) }, friendClearBtn)
+
+local friendHeaderRow = create("Frame", {
+	Size = UDim2.new(1, -6, 0, 22),
+	BackgroundTransparency = 1,
+	LayoutOrder = nextOrder(friendsTab),
+	ZIndex = 2,
+}, friendsTab)
+
+local friendCountLabel = create("TextLabel", {
+	Size = UDim2.new(1, 0, 1, 0),
+	Position = UDim2.new(0, 4, 0, 0),
+	BackgroundTransparency = 1,
+	Font = Enum.Font.GothamBold,
+	Text = "Saved Friends (0)",
+	TextColor3 = SETTINGS.THEME,
+	TextSize = 12,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	ZIndex = 3,
+}, friendHeaderRow)
+
+local friendListContainer = create("Frame", {
+	Size = UDim2.new(1, -6, 0, 0),
+	BackgroundTransparency = 1,
+	LayoutOrder = nextOrder(friendsTab),
+	AutomaticSize = Enum.AutomaticSize.Y,
+	ZIndex = 2,
+}, friendsTab)
+local friendListLayout = create("UIListLayout", {
+	SortOrder = Enum.SortOrder.LayoutOrder,
+	Padding = UDim.new(0, 5),
+}, friendListContainer)
+
+local function renderMenuFriendList()
+	for _, child in ipairs(friendListContainer:GetChildren()) do
+		if child:IsA("Frame") then
+			child:Destroy()
+		end
+	end
+
+	friendCountLabel.Text = "Saved Friends (" .. tostring(#FriendOrder) .. ")"
+
+	if #FriendOrder == 0 then
+		local emptyRow = create("Frame", {
+			Size = UDim2.new(1, 0, 0, 36),
+			BackgroundColor3 = SETTINGS.THEME_ROW,
+			BorderSizePixel = 0,
+			LayoutOrder = 1,
+			ZIndex = 2,
+		}, friendListContainer)
+		create("UICorner", { CornerRadius = UDim.new(0, 6) }, emptyRow)
+		create("TextLabel", {
+			Size = UDim2.new(1, -12, 1, 0),
+			Position = UDim2.new(0, 6, 0, 0),
+			BackgroundTransparency = 1,
+			Font = Enum.Font.Gotham,
+			Text = "No friends added. Friends are ignored by Aimbot, Flick Shoot & Kill Aura.",
+			TextColor3 = Color3.fromRGB(150, 140, 170),
+			TextSize = 11,
+			ZIndex = 3,
+		}, emptyRow)
+		return
+	end
+
+	for i, name in ipairs(FriendOrder) do
+		local inServer = Players:FindFirstChild(name) ~= nil
+		local row = create("Frame", {
+			Size = UDim2.new(1, 0, 0, 32),
+			BackgroundColor3 = SETTINGS.THEME_ROW,
+			BorderSizePixel = 0,
+			LayoutOrder = i,
+			ZIndex = 2,
+		}, friendListContainer)
+		create("UICorner", { CornerRadius = UDim.new(0, 6) }, row)
+
+		local dot = create("Frame", {
+			Size = UDim2.new(0, 8, 0, 8),
+			Position = UDim2.new(0, 10, 0.5, -4),
+			BackgroundColor3 = inServer and Color3.fromRGB(50, 220, 80) or Color3.fromRGB(100, 100, 110),
+			BorderSizePixel = 0,
+			ZIndex = 3,
+		}, row)
+		create("UICorner", { CornerRadius = UDim.new(1, 0) }, dot)
+
+		create("TextLabel", {
+			Size = UDim2.new(1, -120, 1, 0),
+			Position = UDim2.new(0, 26, 0, 0),
+			BackgroundTransparency = 1,
+			Font = Enum.Font.GothamMedium,
+			Text = name .. (inServer and " [In Server]" or ""),
+			TextColor3 = inServer and Color3.fromRGB(255, 255, 255) or SETTINGS.THEME_TEXT,
+			TextSize = 12,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			ZIndex = 3,
+		}, row)
+
+		local delBtn = create("TextButton", {
+			Size = UDim2.new(0, 56, 0, 22),
+			Position = UDim2.new(1, -62, 0.5, -11),
+			BackgroundColor3 = Color3.fromRGB(130, 35, 35),
+			Font = Enum.Font.GothamBold,
+			Text = "Remove",
+			TextColor3 = Color3.fromRGB(255, 255, 255),
+			TextSize = 11,
+			ZIndex = 3,
+		}, row)
+		create("UICorner", { CornerRadius = UDim.new(0, 5) }, delBtn)
+		delBtn.MouseButton1Click:Connect(function()
+			if removeFriend(name) then
+				renderMenuFriendList()
+			end
+		end)
+	end
+end
+
+friendAddBtn.MouseButton1Click:Connect(function()
+	local n = friendNameBox.Text:gsub("^%s*(.-)%s*$", "%1")
+	if n ~= "" and addFriend(n) then
+		friendNameBox.Text = ""
+		renderMenuFriendList()
+	end
+end)
+
+friendNameBox.FocusLost:Connect(function(enterPressed)
+	if enterPressed then
+		local n = friendNameBox.Text:gsub("^%s*(.-)%s*$", "%1")
+		if n ~= "" and addFriend(n) then
+			friendNameBox.Text = ""
+			renderMenuFriendList()
+		end
+	end
+end)
+
+friendClearBtn.MouseButton1Click:Connect(function()
+	clearFriends()
+	saveFriends()
+	renderMenuFriendList()
+end)
+
+renderMenuFriendList()
 
 -- Menyu ac/kapa (LeftControl) + Alt/Ust Kapatma Butonlari
 local menuVisible = true
@@ -2568,348 +2757,5 @@ task.spawn(function()
 	end
 end)
 
--- Sol bar ve Target HUD kullanici istegiyle kaldirildi (temiz, sade ve ferah ekran)
-
--- ============================ FRIEND GUI ============================
-local friendsGui = create("ScreenGui", {
-	Name = "ZickHubFriends",
-	ResetOnSpawn = false,
-	DisplayOrder = 998,
-})
-guiParent(friendsGui)
-
-local friendsMain = create("Frame", {
-	Name = "FriendsFrame",
-	Size = UDim2.new(0, 260, 0, 310),
-	Position = UDim2.new(0, 20, 0.25, 0),
-	BackgroundColor3 = SETTINGS.THEME_BG,
-	BorderSizePixel = 0,
-	Active = true,
-}, friendsGui)
-create("UICorner", { CornerRadius = UDim.new(0, 10) }, friendsMain)
-create("UIStroke", { Color = SETTINGS.THEME, Thickness = 1.4 }, friendsMain)
-
-local friendsTop = create("Frame", {
-	Size = UDim2.new(1, 0, 0, 30),
-	BackgroundColor3 = SETTINGS.THEME_TOP,
-	BorderSizePixel = 0,
-	ZIndex = 2,
-}, friendsMain)
-create("UICorner", { CornerRadius = UDim.new(0, 10) }, friendsTop)
-makeDraggable(friendsMain, friendsTop)
-
-create("TextLabel", {
-	Size = UDim2.new(1, -40, 1, 0),
-	Position = UDim2.new(0, 10, 0, 0),
-	BackgroundTransparency = 1,
-	Font = Enum.Font.GothamBold,
-	Text = "Friend System",
-	TextColor3 = SETTINGS.THEME,
-	TextSize = 13,
-	TextXAlignment = Enum.TextXAlignment.Left,
-	ZIndex = 3,
-}, friendsTop)
-
-local friendsMin = create("TextButton", {
-	Size = UDim2.new(0, 22, 0, 22),
-	Position = UDim2.new(1, -28, 0, 4),
-	BackgroundColor3 = SETTINGS.THEME,
-	Font = Enum.Font.GothamBold,
-	Text = "-",
-	TextColor3 = Color3.fromRGB(255, 255, 255),
-	TextSize = 14,
-	ZIndex = 3,
-}, friendsTop)
-create("UICorner", { CornerRadius = UDim.new(0, 6) }, friendsMin)
-
-local friendsContent = create("Frame", {
-	Size = UDim2.new(1, 0, 1, -35),
-	Position = UDim2.new(0, 0, 0, 35),
-	BackgroundTransparency = 1,
-	ZIndex = 2,
-}, friendsMain)
-
-local nameBox = create("TextBox", {
-	Size = UDim2.new(1, -90, 0, 26),
-	Position = UDim2.new(0, 8, 0, 4),
-	BackgroundColor3 = SETTINGS.THEME_ROW,
-	BorderSizePixel = 0,
-	Font = Enum.Font.GothamMedium,
-	PlaceholderText = "Username...",
-	Text = "",
-	TextColor3 = SETTINGS.THEME_TEXT,
-	TextSize = 12,
-	ClearTextOnFocus = false,
-	ZIndex = 3,
-}, friendsContent)
-create("UICorner", { CornerRadius = UDim.new(0, 6) }, nameBox)
-
-local addBtn = create("TextButton", {
-	Size = UDim2.new(0, 38, 0, 26),
-	Position = UDim2.new(1, -76, 0, 4),
-	BackgroundColor3 = Color3.fromRGB(50, 130, 60),
-	Font = Enum.Font.GothamBold,
-	Text = "Add",
-	TextColor3 = Color3.fromRGB(255, 255, 255),
-	TextSize = 11,
-	ZIndex = 3,
-}, friendsContent)
-create("UICorner", { CornerRadius = UDim.new(0, 6) }, addBtn)
-
-local refreshBtn = create("TextButton", {
-	Size = UDim2.new(0, 32, 0, 26),
-	Position = UDim2.new(1, -38, 0, 4),
-	BackgroundColor3 = SETTINGS.THEME,
-	Font = Enum.Font.GothamBold,
-	Text = "RF",
-	TextColor3 = Color3.fromRGB(255, 255, 255),
-	TextSize = 11,
-	ZIndex = 3,
-}, friendsContent)
-create("UICorner", { CornerRadius = UDim.new(0, 6) }, refreshBtn)
-
-local friendsScroll = create("ScrollingFrame", {
-	Size = UDim2.new(1, -12, 1, -72),
-	Position = UDim2.new(0, 8, 0, 38),
-	BackgroundTransparency = 1,
-	BorderSizePixel = 0,
-	ScrollBarThickness = 3,
-	ScrollBarImageColor3 = SETTINGS.THEME,
-	CanvasSize = UDim2.new(0, 0, 0, 0),
-	ZIndex = 2,
-}, friendsContent)
-
-local friendsLayout = create("UIListLayout", {
-	SortOrder = Enum.SortOrder.LayoutOrder,
-	Padding = UDim.new(0, 6),
-}, friendsScroll)
-
-friendsLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-	friendsScroll.CanvasSize = UDim2.new(0, 0, 0, friendsLayout.AbsoluteContentSize.Y + 10)
-end)
-
-local function renderFriendList()
-	for _, child in ipairs(friendsScroll:GetChildren()) do
-		if child:IsA("Frame") then
-			child:Destroy()
-		end
-	end
-	for i, name in ipairs(FriendOrder) do
-		local row = create("Frame", {
-			Size = UDim2.new(1, -6, 0, 28),
-			BackgroundColor3 = SETTINGS.THEME_ROW,
-			BorderSizePixel = 0,
-			LayoutOrder = i,
-		}, friendsScroll)
-		create("UICorner", { CornerRadius = UDim.new(0, 6) }, row)
-		create("TextLabel", {
-			Size = UDim2.new(1, -64, 1, 0),
-			Position = UDim2.new(0, 8, 0, 0),
-			BackgroundTransparency = 1,
-			Font = Enum.Font.GothamMedium,
-			Text = name,
-			TextColor3 = SETTINGS.THEME_TEXT,
-			TextScaled = true,
-			TextXAlignment = Enum.TextXAlignment.Left,
-		}, row)
-		local del = create("TextButton", {
-			Size = UDim2.new(0, 52, 0, 20),
-			Position = UDim2.new(1, -58, 0.5, -10),
-			BackgroundColor3 = Color3.fromRGB(120, 30, 30),
-			Font = Enum.Font.GothamBold,
-			Text = "Delete",
-			TextColor3 = Color3.fromRGB(255, 255, 255),
-			TextSize = 12,
-		}, row)
-		create("UICorner", { CornerRadius = UDim.new(0, 4) }, del)
-		del.MouseButton1Click:Connect(function()
-			if removeFriend(name) then
-				renderFriendList()
-			end
-		end)
-	end
-end
-
-addBtn.MouseButton1Click:Connect(function()
-	local n = nameBox.Text
-	if addFriend(n) then
-		nameBox.Text = ""
-		renderFriendList()
-	end
-end)
-
-refreshBtn.MouseButton1Click:Connect(function()
-	clearFriends()
-	loadFriends()
-	renderFriendList()
-end)
-
-friendsMin.MouseButton1Click:Connect(function()
-	friendsContent.Visible = not friendsContent.Visible
-	friendsMin.Text = friendsContent.Visible and "-" or "+"
-	friendsMain.Size = friendsContent.Visible and UDim2.new(0, 260, 0, 310) or UDim2.new(0, 260, 0, 35)
-end)
-
-renderFriendList()
-
--- ============================ OUTFIT FOR YOU GUI ============================
-local OUTFITS = {
-	"koolkid_2722", "Alexander041914", "f3arSN1x", "15kElixs",
-	"IzJulienTheOne", "coolmanluke81", "D9utchy", "Ishraq198415",
-	"OTFROB1234", "Vex_971", "zTwiisted", "IceblueNinjax",
-	"knocries", "OneElite", "chicymunk", "jqckfr",
-}
-
-local outfitGui = create("ScreenGui", {
-	Name = "OutfitForYouGui",
-	ResetOnSpawn = false,
-	DisplayOrder = 997,
-})
-guiParent(outfitGui)
-
-local outfitFrame = create("Frame", {
-	Name = "MainFrame",
-	Size = UDim2.new(0.28, 0, 0.45, 0),
-	Position = UDim2.new(0.02, 0, 0.25, 0),
-	BackgroundTransparency = 1,
-	Active = true,
-}, outfitGui)
-
-create("UISizeConstraint", {
-	MinSize = Vector2.new(240, 220),
-	MaxSize = Vector2.new(320, 300),
-}, outfitFrame)
-
-local outfitContent = create("Frame", {
-	Name = "ContentFrame",
-	Size = UDim2.new(1, 0, 1, 0),
-	BackgroundColor3 = SETTINGS.THEME_BG,
-	BorderSizePixel = 0,
-	ClipsDescendants = true,
-}, outfitFrame)
-create("UICorner", { CornerRadius = UDim.new(0, 10) }, outfitContent)
-create("UIStroke", { Color = SETTINGS.THEME, Thickness = 1.5 }, outfitContent)
-
-local outfitTop = create("Frame", {
-	Name = "TopBar",
-	Size = UDim2.new(1, 0, 0, 35),
-	BackgroundColor3 = SETTINGS.THEME_TOP,
-	BorderSizePixel = 0,
-	ZIndex = 2,
-}, outfitFrame)
-create("UICorner", { CornerRadius = UDim.new(0, 10) }, outfitTop)
-makeDraggable(outfitFrame, outfitTop)
-
-create("TextLabel", {
-	Size = UDim2.new(0.75, 0, 1, 0),
-	Position = UDim2.new(0.04, 0, 0, 0),
-	BackgroundTransparency = 1,
-	Font = Enum.Font.GothamBold,
-	Text = "Outfit For You",
-	TextColor3 = Color3.fromRGB(255, 255, 255),
-	TextScaled = true,
-	TextXAlignment = Enum.TextXAlignment.Left,
-	ZIndex = 3,
-}, outfitTop)
-
-local outfitMin = create("TextButton", {
-	Size = UDim2.new(0, 25, 0, 25),
-	Position = UDim2.new(1, -30, 0.5, -12.5),
-	BackgroundColor3 = SETTINGS.THEME,
-	Font = Enum.Font.GothamBold,
-	Text = "-",
-	TextColor3 = Color3.fromRGB(255, 255, 255),
-	TextSize = 16,
-	ZIndex = 3,
-}, outfitTop)
-create("UICorner", { CornerRadius = UDim.new(0, 6) }, outfitMin)
-
-outfitMin.MouseButton1Click:Connect(function()
-	outfitContent.Visible = not outfitContent.Visible
-	outfitMin.Text = outfitContent.Visible and "-" or "+"
-end)
-
-local outfitScroll = create("ScrollingFrame", {
-	Size = UDim2.new(1, -16, 1, -45),
-	Position = UDim2.new(0, 8, 0, 40),
-	BackgroundTransparency = 1,
-	BorderSizePixel = 0,
-	ScrollBarThickness = 3,
-	ScrollBarImageColor3 = SETTINGS.THEME,
-	CanvasSize = UDim2.new(0, 0, 0, 0),
-}, outfitContent)
-
-local outfitLayout = create("UIListLayout", {
-	SortOrder = Enum.SortOrder.LayoutOrder,
-	Padding = UDim.new(0, 6),
-}, outfitScroll)
-
-outfitLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-	outfitScroll.CanvasSize = UDim2.new(0, 0, 0, outfitLayout.AbsoluteContentSize.Y + 10)
-end)
-
-for i, outfitName in ipairs(OUTFITS) do
-	local row = create("Frame", {
-		Size = UDim2.new(1, -6, 0, 30),
-		BackgroundColor3 = SETTINGS.THEME_ROW,
-		BorderSizePixel = 0,
-		LayoutOrder = i,
-	}, outfitScroll)
-	create("UICorner", { CornerRadius = UDim.new(0, 6) }, row)
-
-	create("TextLabel", {
-		Size = UDim2.new(0.72, 0, 1, 0),
-		Position = UDim2.new(0, 8, 0, 0),
-		BackgroundTransparency = 1,
-		Font = Enum.Font.GothamMedium,
-		Text = "@" .. outfitName,
-		TextColor3 = SETTINGS.THEME_TEXT,
-		TextScaled = true,
-		TextXAlignment = Enum.TextXAlignment.Left,
-	}, row)
-
-	local useBtn = create("TextButton", {
-		Size = UDim2.new(0.22, 0, 0.7, 0),
-		Position = UDim2.new(0.96, 0, 0.5, 0),
-		AnchorPoint = Vector2.new(1, 0.5),
-		BackgroundColor3 = SETTINGS.THEME,
-		Font = Enum.Font.GothamBold,
-		Text = "Use",
-		TextColor3 = Color3.fromRGB(255, 255, 255),
-		TextScaled = true,
-	}, row)
-	create("UICorner", { CornerRadius = UDim.new(0, 4) }, useBtn)
-
-	local useBusy = false
-	useBtn.MouseButton1Click:Connect(function()
-		if useBusy then return end
-		useBusy = true
-		local oldText = useBtn.Text
-		useBtn.Text = "..."
-		task.spawn(function()
-			local ok, err = pcall(function()
-				local userId = Players:GetUserIdFromNameAsync(outfitName)
-				local remotes = ReplicatedStorage:WaitForChild("Remotes", 10)
-				assert(remotes, "Remotes bulunamadi (10 sn)")
-				local characterFolder = remotes:WaitForChild("Character", 10)
-				assert(characterFolder, "Character klasoru bulunamadi (10 sn)")
-				local applyCharacter = characterFolder:WaitForChild("ApplyCharacter", 10)
-				assert(applyCharacter, "ApplyCharacter remote bulunamadi (10 sn)")
-				applyCharacter:FireServer(userId)
-			end)
-			if ok then
-				useBtn.Text = "OK!"
-				notify("Outfit For You", outfitName .. " uygulandi!", 3)
-			else
-				useBtn.Text = "Hata"
-				notify("Outfit For You", "Hata: " .. tostring(err), 4)
-			end
-			task.wait(1.5)
-			useBtn.Text = oldText
-			useBusy = false
-		end)
-	end)
-end
-
 -- ============================ BITIS ============================
-print("[Zick Hub V2] Loaded | Phantom Scope + Shoot V2 + Flick Shoot (R) + Kill Aura + ESP + Menu (LeftControl)")
+print("[Zick Hub V2] Loaded | Phantom Scope + Shoot V2 + Flick Shoot (R) + Kill Aura + ESP + Friends (Menu) (LeftControl)")
