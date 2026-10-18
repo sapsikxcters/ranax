@@ -9276,12 +9276,10 @@ local function triggerKnifeKillAuraHit(knife, troot)
     if not knife or not troot then return end
     pcall(function()
         knife:Activate()
-        local handle = knife:FindFirstChild("Handle")
-        if handle then
+        local handle = knife:FindFirstChild("Handle") or knife:FindFirstChildWhichIsA("BasePart")
+        if handle and typeof(firetouchinterest) == "function" then
             firetouchinterest(troot, handle, 0)
             firetouchinterest(troot, handle, 1)
-            firetouchinterest(handle, troot, 0)
-            firetouchinterest(handle, troot, 1)
         end
         local events = knife:FindFirstChild("Events")
         if events then
@@ -9289,16 +9287,11 @@ local function triggerKnifeKillAuraHit(knife, troot)
             local touched = events:FindFirstChild("HandleTouched")
             if stab then stab:FireServer("Slash") end
             if touched then touched:FireServer(troot) end
-        end
-        for _, d in ipairs(knife:GetDescendants()) do
-            if d:IsA("RemoteEvent") then
-                local dn = d.Name:lower()
-                if d.Name == "HandleTouched" then
-                    d:FireServer(troot)
-                elseif d.Name == "KnifeStabbed" or dn:find("slash") or dn:find("stab") then
-                    d:FireServer("Slash")
-                end
-            end
+        else
+            local stab = knife:FindFirstChild("KnifeStabbed") or knife:FindFirstChild("Slash") or knife:FindFirstChild("Stab")
+            local touched = knife:FindFirstChild("HandleTouched")
+            if stab and stab:IsA("RemoteEvent") then stab:FireServer("Slash") end
+            if touched and touched:IsA("RemoteEvent") then touched:FireServer(troot) end
         end
     end)
 end
@@ -9966,30 +9959,37 @@ local function matchesKeyword(name, list)
     return false
 end
 
+local _knifeToolCache = setmetatable({}, { __mode = "k" })
 local function isKnifeTool(tool)
     if not tool or not (tool:IsA("Tool") or tool:IsA("Model")) then return false end
+    local cached = _knifeToolCache[tool]
+    if cached ~= nil then return cached end
+
     local toolName = tostring(tool.Name):lower()
+    if matchesKeyword(toolName, NON_WEAPON_KEYWORDS) then
+        _knifeToolCache[tool] = false
+        return false
+    end
 
-    -- FakeBomb, GoldBomb, Toys are never considered knives
-    if matchesKeyword(toolName, NON_WEAPON_KEYWORDS) then return false end
+    if matchesKeyword(tool.Name, KNIFE_KEYWORDS) then
+        _knifeToolCache[tool] = true
+        return true
+    end
 
-    -- Descendant check: reject if bomb/fake/toy found inside tool
+    -- Fast single pass over descendants
     for _, d in ipairs(tool:GetDescendants()) do
         local dn = d.Name:lower()
         if dn:find("bomb") or dn:find("fake") or dn:find("toy") then
+            _knifeToolCache[tool] = false
             return false
         end
-    end
-
-    if matchesKeyword(tool.Name, KNIFE_KEYWORDS) then return true end
-
-    -- Only real MM2 knife descendants (generic "throw" no longer counts)
-    for _, d in ipairs(tool:GetDescendants()) do
-        local dn = d.Name:lower()
         if dn == "slash" or dn == "stab" or dn == "knifeserver" or dn == "throwknife" or dn == "knifestabbed" or dn == "handletouched" or dn == "knife" then
+            _knifeToolCache[tool] = true
             return true
         end
     end
+
+    _knifeToolCache[tool] = false
     return false
 end
 
@@ -11073,59 +11073,106 @@ end)
 -- =================================================================================================================
 -- 8) BACKGROUND LOOPS
 -- =================================================================================================================
--- Knife Kill Aura Loop (Close proximity slash)
+-- Knife Kill Aura Loop (Close proximity slash - High Performance / Zero FPS Drop)
 task.spawn(function()
+    local lastAttackTick = 0
+    local cachedKnife = nil
+    local cachedHandle = nil
+    local cachedEvents = nil
+
+    local function getAuraKnife(char)
+        if cachedKnife and cachedKnife.Parent == char then
+            return cachedKnife
+        end
+        cachedKnife = nil
+        cachedHandle = nil
+        cachedEvents = nil
+
+        local held = char:FindFirstChildOfClass("Tool")
+        if held and isKnifeTool(held) then
+            cachedKnife = held
+            cachedHandle = held:FindFirstChild("Handle") or held:FindFirstChildWhichIsA("BasePart")
+            cachedEvents = held:FindFirstChild("Events")
+            return held
+        end
+
+        local bp = LocalPlayer:FindFirstChildOfClass("Backpack")
+        if bp then
+            for _, t in ipairs(bp:GetChildren()) do
+                if t:IsA("Tool") and isKnifeTool(t) then
+                    local hum = char:FindFirstChildOfClass("Humanoid")
+                    if hum then pcall(function() hum:EquipTool(t) end) end
+                    cachedKnife = t
+                    cachedHandle = t:FindFirstChild("Handle") or t:FindFirstChildWhichIsA("BasePart")
+                    cachedEvents = t:FindFirstChild("Events")
+                    return t
+                end
+            end
+        end
+        return nil
+    end
+
     while true do
         if _G.KnifeKillAuraEnabled then
-            task.wait(0.08)
+            task.wait(0.06)
             local char = LocalPlayer.Character
             local hrp = char and char:FindFirstChild("HumanoidRootPart")
             local hum = char and char:FindFirstChildOfClass("Humanoid")
             if hrp and hum and hum.Health > 0 then
-                local knife = equipKnife()
-                if knife and isKnifeTool(knife) then
-                    local myPos = hrp.Position
-                    local range = _G.KnifeKillAuraDistance or 14
-                    for _, plr in ipairs(Players:GetPlayers()) do
-                        if plr ~= LocalPlayer and not IsFriend(plr) and not isProtected(plr) then
-                            local tchar = plr.Character
-                            local thum = tchar and tchar:FindFirstChildOfClass("Humanoid")
-                            local troot = tchar and tchar:FindFirstChild("HumanoidRootPart")
-                            if thum and troot and thum.Health > 0 and (troot.Position - myPos).Magnitude <= range then
-                                pcall(function()
-                                    knife:Activate()
-                                    local handle = knife:FindFirstChild("Handle")
-                                    if handle then
-                                        firetouchinterest(troot, handle, 0)
-                                        firetouchinterest(troot, handle, 1)
-                                        firetouchinterest(handle, troot, 0)
-                                        firetouchinterest(handle, troot, 1)
-                                    end
-                                    local events = knife:FindFirstChild("Events")
-                                    if events then
-                                        local stab = events:FindFirstChild("KnifeStabbed")
-                                        local touched = events:FindFirstChild("HandleTouched")
-                                        if stab then stab:FireServer("Slash") end
-                                        if touched then touched:FireServer(troot) end
-                                    end
-                                    for _, d in ipairs(knife:GetDescendants()) do
-                                        if d:IsA("RemoteEvent") then
-                                            if d.Name == "HandleTouched" then
-                                                d:FireServer(troot)
-                                            elseif d.Name == "KnifeStabbed" or d.Name:lower():find("slash") or d.Name:lower():find("stab") then
-                                                d:FireServer("Slash")
-                                            end
+                local knife = getAuraKnife(char)
+                if knife then
+                    local now = tick()
+                    if now - lastAttackTick >= 0.18 then
+                        local myPos = hrp.Position
+                        local range = _G.KnifeKillAuraDistance or 14
+                        local rangeSq = range * range
+
+                        for _, plr in ipairs(Players:GetPlayers()) do
+                            if plr ~= LocalPlayer and not IsFriend(plr) then
+                                local tchar = plr.Character
+                                if tchar then
+                                    local thum = tchar:FindFirstChildOfClass("Humanoid")
+                                    local troot = tchar:FindFirstChild("HumanoidRootPart") or tchar:FindFirstChild("Torso")
+                                    if thum and troot and thum.Health > 0 then
+                                        local diff = troot.Position - myPos
+                                        local distSq = diff.X * diff.X + diff.Y * diff.Y + diff.Z * diff.Z
+                                        if distSq <= rangeSq then
+                                            lastAttackTick = now
+                                            pcall(function()
+                                                knife:Activate()
+                                                local handle = cachedHandle or knife:FindFirstChild("Handle") or knife:FindFirstChildWhichIsA("BasePart")
+                                                if handle and typeof(firetouchinterest) == "function" then
+                                                    firetouchinterest(troot, handle, 0)
+                                                    firetouchinterest(troot, handle, 1)
+                                                end
+                                                local events = cachedEvents or knife:FindFirstChild("Events")
+                                                if events then
+                                                    local stab = events:FindFirstChild("KnifeStabbed")
+                                                    local touched = events:FindFirstChild("HandleTouched")
+                                                    if stab then stab:FireServer("Slash") end
+                                                    if touched then touched:FireServer(troot) end
+                                                else
+                                                    local stab = knife:FindFirstChild("KnifeStabbed") or knife:FindFirstChild("Slash") or knife:FindFirstChild("Stab")
+                                                    local touched = knife:FindFirstChild("HandleTouched")
+                                                    if stab and stab:IsA("RemoteEvent") then stab:FireServer("Slash") end
+                                                    if touched and touched:IsA("RemoteEvent") then touched:FireServer(troot) end
+                                                end
+                                            end)
+                                            break
                                         end
                                     end
-                                end)
-                                break
+                                end
                             end
                         end
                     end
+                else
+                    task.wait(0.2)
                 end
+            else
+                task.wait(0.25)
             end
         else
-            task.wait(0.5)
+            task.wait(0.4)
         end
     end
 end)
