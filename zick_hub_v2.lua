@@ -662,16 +662,21 @@ end
 -- ============================ FLICK SHOOT MOTORU ============================
 local flickActive = false
 
-local function visibleToCamera(hrp)
+local function isTargetVisible(targetChar, customOrigin)
 	if not SETTINGS.WALL_CHECK then
 		return true
 	end
-	local origin = Camera and Camera.CFrame.Position
+	if not targetChar then return false end
+
+	local origin = customOrigin or (Camera and Camera.CFrame.Position)
 	if not origin then return true end
-	local dir = hrp.Position - origin
-	if dir.Magnitude < 0.5 then
-		return true
-	end
+
+	local partsToCheck = {
+		targetChar:FindFirstChild("Head"),
+		targetChar:FindFirstChild("HumanoidRootPart") or targetChar:FindFirstChild("Torso") or targetChar:FindFirstChild("UpperTorso"),
+		targetChar:FindFirstChild("UpperTorso") or targetChar:FindFirstChild("LowerTorso")
+	}
+
 	local params = RaycastParams.new()
 	params.FilterType = Enum.RaycastFilterType.Exclude
 	local exclude = {}
@@ -684,13 +689,26 @@ local function visibleToCamera(hrp)
 		end
 	end
 	params.FilterDescendantsInstances = exclude
-	local result = Workspace:Raycast(origin, dir, params)
-	if not result then
-		return true
+
+	for _, part in ipairs(partsToCheck) do
+		if part then
+			local dir = part.Position - origin
+			if dir.Magnitude < 0.5 then
+				return true
+			end
+			local result = Workspace:Raycast(origin, dir, params)
+			if not result then
+				return true
+			end
+			if result.Instance and (result.Instance:IsDescendantOf(targetChar) or result.Instance.Transparency > 0.65 or result.Instance.CanCollide == false) then
+				return true
+			end
+		end
 	end
-	local targetChar = hrp.Parent
-	return result.Instance and targetChar and (result.Instance:IsDescendantOf(targetChar) or result.Instance.Transparency > 0.65 or result.Instance.CanCollide == false)
+
+	return false
 end
+local visibleToCamera = isTargetVisible
 
 -- 5V5 / AIM TRAINER / FFA / MM2 UYUMLU CLOSEST HEDEFLEME:
 -- Role (Murderer/Sheriff) bakmaz, arkadas olmayan en yakin CANLI oyuncuyu secer!
@@ -808,6 +826,9 @@ end
 -- ==================== RANAX MMV FLICK SHOOT MOTORU ====================
 local function executeFlickShoot(target, hitPos, remote, gun, origin)
 	if flickActive then return end
+	if SETTINGS.WALL_CHECK and target and target.Character and not isTargetVisible(target.Character, origin) then
+		return
+	end
 	local myChar = LocalPlayer.Character
 	local myHRP = myChar and myChar:FindFirstChild("HumanoidRootPart")
 	local myHum = myChar and myChar:FindFirstChildOfClass("Humanoid")
@@ -931,6 +952,10 @@ local function shootV2()
 	if not origin then return end
 	local hitPos = getPredictedPosition(hrp, hum, SETTINGS.PREDICT_OFFSET, origin)
 
+	if SETTINGS.WALL_CHECK and not isTargetVisible(tchar, origin) then
+		return
+	end
+
 	if SETTINGS.FLICK_ENABLED then
 		executeFlickShoot(target, hitPos, remote, gun, origin)
 	else
@@ -1003,10 +1028,10 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	end
 	if input.KeyCode == SETTINGS.KEYBIND then
 		SETTINGS.AUTO_FIRE = not SETTINGS.AUTO_FIRE
-		notify("Shoot V2", SETTINGS.AUTO_FIRE and "ETKINLESTIRILDI [ON]" or "DEVRE DISI [OFF]", 1.6, SETTINGS.AUTO_FIRE)
+		notify("Shoot V2", SETTINGS.AUTO_FIRE and "ENABLED [ON]" or "DISABLED [OFF]", 1.6, SETTINGS.AUTO_FIRE)
 	elseif input.KeyCode == SETTINGS.FLICK_KEY then
 		SETTINGS.FLICK_ENABLED = not SETTINGS.FLICK_ENABLED
-		notify("Flick Shoot", SETTINGS.FLICK_ENABLED and "ETKINLESTIRILDI [ON]" or "DEVRE DISI [OFF]", 1.6, SETTINGS.FLICK_ENABLED)
+		notify("Flick Shoot", SETTINGS.FLICK_ENABLED and "ENABLED [ON]" or "DISABLED [OFF]", 1.6, SETTINGS.FLICK_ENABLED)
 	end
 end)
 
@@ -1880,7 +1905,7 @@ local function createKeybindRow(content, text, getKey, setKey)
 				conn = nil
 				listening = false
 				setKey(input.KeyCode)
-				notify("Keybind", text .. " tusu ayarlandi: [" .. input.KeyCode.Name .. "]", 2)
+				notify("Keybind", text .. " bound to: [" .. input.KeyCode.Name .. "]", 2)
 				refresh()
 			elseif input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.MouseButton2 then
 				conn:Disconnect()
@@ -1942,7 +1967,7 @@ local function createToggleRow(content, text, get, set)
 		local newVal = not cur
 		set(newVal)
 		refresh()
-		notify(text, newVal and "ETKINLESTIRILDI [ON]" or "DEVRE DISI [OFF]", 1.6, newVal)
+		notify(text, newVal and "ENABLED [ON]" or "DISABLED [OFF]", 1.6, newVal)
 	end)
 	refresh()
 	table.insert(toggleRefreshers, refresh)
@@ -2056,58 +2081,58 @@ local miscTab = createTab("Misc")
 
 -- COMBAT (5v5 / AIM TRAINER / FFA / MM2 CLOSEST MOTORU)
 createToggleRow(combatTab, "Shoot V2 (Auto-Fire)", function() return SETTINGS.AUTO_FIRE end, function(v) SETTINGS.AUTO_FIRE = v end)
-createKeybindRow(combatTab, "Shoot Tusu", function() return SETTINGS.KEYBIND end, function(k) SETTINGS.KEYBIND = k end)
+createKeybindRow(combatTab, "Shoot Keybind", function() return SETTINGS.KEYBIND end, function(k) SETTINGS.KEYBIND = k end)
 createToggleRow(combatTab, "Flick Shoot", function() return SETTINGS.FLICK_ENABLED end, function(v) SETTINGS.FLICK_ENABLED = v end)
-createKeybindRow(combatTab, "Flick Tusu", function() return SETTINGS.FLICK_KEY end, function(k) SETTINGS.FLICK_KEY = k end)
+createKeybindRow(combatTab, "Flick Keybind", function() return SETTINGS.FLICK_KEY end, function(k) SETTINGS.FLICK_KEY = k end)
 createToggleRow(combatTab, "Silent Triggerbot", function() return SETTINGS.TRIGGERBOT end, function(v) SETTINGS.TRIGGERBOT = v end)
-createDropdownRow(combatTab, "Hedefleme Modu", {"FOV", "Range (Mesafe)"}, function() return SETTINGS.TARGET_MODE end, function(v) SETTINGS.TARGET_MODE = v end)
-createToggleRow(combatTab, "Auto Equip (Silah Al/Kusan)", function() return SETTINGS.AUTO_EQUIP end, function(v) SETTINGS.AUTO_EQUIP = v end)
-createDropdownRow(combatTab, "Atis Metodu", {"New (Blatant)", "Normal"}, function() return SETTINGS.SHOOT_METHOD end, function(v) SETTINGS.SHOOT_METHOD = v end)
-createToggleRow(combatTab, "Hitbox Expander (Extender)", function() return SETTINGS.HITBOX_ENABLED end, function(v) SETTINGS.HITBOX_ENABLED = v end)
-createSliderRow(combatTab, "Hitbox Boyutu (stud)", 5, 30, SETTINGS.HITBOX_SIZE, function(v) SETTINGS.HITBOX_SIZE = v end, function(v) return tostring(math.floor(v)) end)
-createToggleRow(combatTab, "Flick Kamera Snap", function() return SETTINGS.FLICK_CAMERA end, function(v) SETTINGS.FLICK_CAMERA = v end)
-createToggleRow(combatTab, "Flick Geri Don", function() return SETTINGS.FLICK_RESTORE end, function(v) SETTINGS.FLICK_RESTORE = v end)
-createSliderRow(combatTab, "Flick Suresi (sn)", 0.02, 0.3, SETTINGS.FLICK_TURN_TIME, function(v) SETTINGS.FLICK_TURN_TIME = v end, function(v) return string.format("%.2f", v) end)
+createDropdownRow(combatTab, "Targeting Mode", {"FOV", "Range (Mesafe)"}, function() return SETTINGS.TARGET_MODE end, function(v) SETTINGS.TARGET_MODE = v end)
+createToggleRow(combatTab, "Auto Equip Gun", function() return SETTINGS.AUTO_EQUIP end, function(v) SETTINGS.AUTO_EQUIP = v end)
+createDropdownRow(combatTab, "Shooting Method", {"New (Blatant)", "Normal"}, function() return SETTINGS.SHOOT_METHOD end, function(v) SETTINGS.SHOOT_METHOD = v end)
+createToggleRow(combatTab, "Hitbox Expander", function() return SETTINGS.HITBOX_ENABLED end, function(v) SETTINGS.HITBOX_ENABLED = v end)
+createSliderRow(combatTab, "Hitbox Size (studs)", 5, 30, SETTINGS.HITBOX_SIZE, function(v) SETTINGS.HITBOX_SIZE = v end, function(v) return tostring(math.floor(v)) end)
+createToggleRow(combatTab, "Flick Camera Snap", function() return SETTINGS.FLICK_CAMERA end, function(v) SETTINGS.FLICK_CAMERA = v end)
+createToggleRow(combatTab, "Flick Return Ease", function() return SETTINGS.FLICK_RESTORE end, function(v) SETTINGS.FLICK_RESTORE = v end)
+createSliderRow(combatTab, "Flick Duration (s)", 0.02, 0.3, SETTINGS.FLICK_TURN_TIME, function(v) SETTINGS.FLICK_TURN_TIME = v end, function(v) return string.format("%.2f", v) end)
 createToggleRow(combatTab, "Wall Check", function() return SETTINGS.WALL_CHECK end, function(v) SETTINGS.WALL_CHECK = v end)
-createToggleRow(combatTab, "Lazer Mermi Izleri (Tracers)", function() return SETTINGS.BULLET_TRACERS end, function(v) SETTINGS.BULLET_TRACERS = v end)
-createToggleRow(combatTab, "Kill Banner UI", function() return SETTINGS.KILL_BANNER end, function(v) SETTINGS.KILL_BANNER = v end)
-createToggleRow(combatTab, "Gun Magnet (Silah Cekici)", function() return SETTINGS.GUN_MAGNET end, function(v) SETTINGS.GUN_MAGNET = v end)
-createToggleRow(combatTab, "Vurus Sesi (Hit Sound)", function() return SETTINGS.HIT_SOUND end, function(v) SETTINGS.HIT_SOUND = v end)
+createToggleRow(combatTab, "Bullet Tracers", function() return SETTINGS.BULLET_TRACERS end, function(v) SETTINGS.BULLET_TRACERS = v end)
+createToggleRow(combatTab, "Kill Banner", function() return SETTINGS.KILL_BANNER end, function(v) SETTINGS.KILL_BANNER = v end)
+createToggleRow(combatTab, "Gun Magnet", function() return SETTINGS.GUN_MAGNET end, function(v) SETTINGS.GUN_MAGNET = v end)
+createToggleRow(combatTab, "Hit Sound", function() return SETTINGS.HIT_SOUND end, function(v) SETTINGS.HIT_SOUND = v end)
 createToggleRow(combatTab, "Auto Reload", function() return SETTINGS.AUTO_RELOAD end, function(v) SETTINGS.AUTO_RELOAD = v end)
-createSliderRow(combatTab, "Shoot Delay (sn)", 0.05, 1, SETTINGS.SHOOT_DELAY, function(v) SETTINGS.SHOOT_DELAY = v end, function(v) return string.format("%.2f", v) end)
+createSliderRow(combatTab, "Shoot Delay (s)", 0.05, 1, SETTINGS.SHOOT_DELAY, function(v) SETTINGS.SHOOT_DELAY = v end, function(v) return string.format("%.2f", v) end)
 createSliderRow(combatTab, "Prediction Lead", 0, 10, SETTINGS.PREDICT_OFFSET, function(v) SETTINGS.PREDICT_OFFSET = v end, function(v) return string.format("%.1f", v) end)
 createSliderRow(combatTab, "FOV Radius (px)", 20, 500, SETTINGS.FOV_RADIUS, function(v) SETTINGS.FOV_RADIUS = v end, function(v) return tostring(math.floor(v)) end)
-createSliderRow(combatTab, "Max Range (stud)", 0, 1000, SETTINGS.MAX_RANGE, function(v) SETTINGS.MAX_RANGE = v end, function(v) return v == 0 and "Sinirsiz" or tostring(math.floor(v)) end)
+createSliderRow(combatTab, "Max Range (studs)", 0, 1000, SETTINGS.MAX_RANGE, function(v) SETTINGS.MAX_RANGE = v end, function(v) return v == 0 and "Infinite" or tostring(math.floor(v)) end)
 createToggleRow(combatTab, "Kill Aura (5v5/FFA/MM2)", function() return KILL_AURA.Enabled end, function(v) KILL_AURA.Enabled = v end)
 createToggleRow(combatTab, "Kill Aura: Auto Equip Knife", function() return KILL_AURA.AutoEquipKnife end, function(v) KILL_AURA.AutoEquipKnife = v end)
-createToggleRow(combatTab, "Kill Aura: Teleport Target", function() return KILL_AURA.TeleportTarget end, function(v) KILL_AURA.TeleportTarget = v end)
-createSliderRow(combatTab, "Kill Aura Delay (sn)", 0.05, 1, KILL_AURA.AttackDelay, function(v) KILL_AURA.AttackDelay = v end, function(v) return string.format("%.2f", v) end)
-createSliderRow(combatTab, "Kill Aura Range (stud)", 0, 100, KILL_AURA.Range, function(v) KILL_AURA.Range = v end, function(v) return v == 0 and "TUMU" or tostring(math.floor(v)) end)
+createToggleRow(combatTab, "Kill Aura: Teleport Targets", function() return KILL_AURA.TeleportTarget end, function(v) KILL_AURA.TeleportTarget = v end)
+createSliderRow(combatTab, "Kill Aura Delay (s)", 0.05, 1, KILL_AURA.AttackDelay, function(v) KILL_AURA.AttackDelay = v end, function(v) return string.format("%.2f", v) end)
+createSliderRow(combatTab, "Kill Aura Range (studs)", 0, 100, KILL_AURA.Range, function(v) KILL_AURA.Range = v end, function(v) return v == 0 and "ALL" or tostring(math.floor(v)) end)
 
 -- VISUALS
 createToggleRow(visualsTab, "ESP", function() return ESP_SETTINGS.Enabled end, function(v) ESP_SETTINGS.Enabled = v end)
 createToggleRow(visualsTab, "ESP Chams", function() return ESP_SETTINGS.Chams end, function(v) ESP_SETTINGS.Chams = v end)
-createToggleRow(visualsTab, "ESP Isim", function() return ESP_SETTINGS.Names end, function(v) ESP_SETTINGS.Names = v end)
-createToggleRow(visualsTab, "ESP Kutu", function() return ESP_SETTINGS.Boxes end, function(v) ESP_SETTINGS.Boxes = v end)
-createToggleRow(visualsTab, "ESP Tracer", function() return ESP_SETTINGS.Tracers end, function(v) ESP_SETTINGS.Tracers = v end)
-createToggleRow(visualsTab, "ESP Health Bar", function() return ESP_SETTINGS.HealthBars end, function(v) ESP_SETTINGS.HealthBars = v end)
-createToggleRow(visualsTab, "ESP Mesafe", function() return ESP_SETTINGS.Distance end, function(v) ESP_SETTINGS.Distance = v end)
+createToggleRow(visualsTab, "ESP Names", function() return ESP_SETTINGS.Names end, function(v) ESP_SETTINGS.Names = v end)
+createToggleRow(visualsTab, "ESP Boxes", function() return ESP_SETTINGS.Boxes end, function(v) ESP_SETTINGS.Boxes = v end)
+createToggleRow(visualsTab, "ESP Tracers", function() return ESP_SETTINGS.Tracers end, function(v) ESP_SETTINGS.Tracers = v end)
+createToggleRow(visualsTab, "ESP Health Bars", function() return ESP_SETTINGS.HealthBars end, function(v) ESP_SETTINGS.HealthBars = v end)
+createToggleRow(visualsTab, "ESP Distance", function() return ESP_SETTINGS.Distance end, function(v) ESP_SETTINGS.Distance = v end)
 createToggleRow(visualsTab, "ESP Team Check", function() return ESP_SETTINGS.TeamCheck end, function(v) ESP_SETTINGS.TeamCheck = v end)
-createSliderRow(visualsTab, "ESP Max Mesafe (stud)", 0, 2000, ESP_SETTINGS.MaxDistance, function(v) ESP_SETTINGS.MaxDistance = math.floor(v) end, function(v) return v == 0 and "Sinirsiz" or tostring(math.floor(v)) end)
-createSliderRow(visualsTab, "ESP Yazı Boyutu", 10, 22, ESP_SETTINGS.TextSize, function(v) ESP_SETTINGS.TextSize = math.floor(v) end)
-createToggleRow(visualsTab, "FOV Cemberi", function() return SETTINGS.FOV_SHOW end, function(v) SETTINGS.FOV_SHOW = v end)
+createSliderRow(visualsTab, "ESP Max Distance (studs)", 0, 2000, ESP_SETTINGS.MaxDistance, function(v) ESP_SETTINGS.MaxDistance = math.floor(v) end, function(v) return v == 0 and "Infinite" or tostring(math.floor(v)) end)
+createSliderRow(visualsTab, "ESP Font Size", 10, 22, ESP_SETTINGS.TextSize, function(v) ESP_SETTINGS.TextSize = math.floor(v) end)
+createToggleRow(visualsTab, "FOV Circle", function() return SETTINGS.FOV_SHOW end, function(v) SETTINGS.FOV_SHOW = v end)
 
 -- PLAYER & MOVEMENT
-createToggleRow(playerTab, "Fly Hack (Ucma)", function() return SETTINGS.FLY_ENABLED end, function(v) SETTINGS.FLY_ENABLED = v end)
-createSliderRow(playerTab, "Fly Hizi", 15, 150, SETTINGS.FLY_SPEED, function(v) SETTINGS.FLY_SPEED = v end, function(v) return tostring(math.floor(v)) end)
-createToggleRow(playerTab, "Noclip (Duvarlardan Gec)", function() return SETTINGS.NOCLIP end, function(v) SETTINGS.NOCLIP = v end)
-createToggleRow(playerTab, "Auto Bunny Hop (B-Hop)", function() return SETTINGS.BHOP_ENABLED end, function(v) SETTINGS.BHOP_ENABLED = v end)
-createToggleRow(playerTab, "Infinite Jump (Sinirsiz Ziplama)", function() return SETTINGS.INF_JUMP end, function(v) SETTINGS.INF_JUMP = v end)
-createToggleRow(playerTab, "Walk Speed", function() return PLAYER_SETTINGS.SpeedEnabled end, function(v) PLAYER_SETTINGS.SpeedEnabled = v end)
-createSliderRow(playerTab, "Walk Speed Değer", 16, 150, PLAYER_SETTINGS.SpeedValue, function(v) PLAYER_SETTINGS.SpeedValue = v end, function(v) return tostring(math.floor(v)) end)
-createToggleRow(playerTab, "Jump Power", function() return PLAYER_SETTINGS.JumpEnabled end, function(v) PLAYER_SETTINGS.JumpEnabled = v end)
-createSliderRow(playerTab, "Jump Power Değer", 50, 250, PLAYER_SETTINGS.JumpValue, function(v) PLAYER_SETTINGS.JumpValue = v end, function(v) return tostring(math.floor(v)) end)
-createButtonRow(playerTab, "Hareketi Sifirla", function()
+createToggleRow(playerTab, "Fly Hack", function() return SETTINGS.FLY_ENABLED end, function(v) SETTINGS.FLY_ENABLED = v end)
+createSliderRow(playerTab, "Fly Speed", 15, 150, SETTINGS.FLY_SPEED, function(v) SETTINGS.FLY_SPEED = v end, function(v) return tostring(math.floor(v)) end)
+createToggleRow(playerTab, "Noclip", function() return SETTINGS.NOCLIP end, function(v) SETTINGS.NOCLIP = v end)
+createToggleRow(playerTab, "Bunny Hop", function() return SETTINGS.BHOP_ENABLED end, function(v) SETTINGS.BHOP_ENABLED = v end)
+createToggleRow(playerTab, "Infinite Jump", function() return SETTINGS.INF_JUMP end, function(v) SETTINGS.INF_JUMP = v end)
+createToggleRow(playerTab, "WalkSpeed", function() return PLAYER_SETTINGS.SpeedEnabled end, function(v) PLAYER_SETTINGS.SpeedEnabled = v end)
+createSliderRow(playerTab, "WalkSpeed Value", 16, 150, PLAYER_SETTINGS.SpeedValue, function(v) PLAYER_SETTINGS.SpeedValue = v end, function(v) return tostring(math.floor(v)) end)
+createToggleRow(playerTab, "JumpPower", function() return PLAYER_SETTINGS.JumpEnabled end, function(v) PLAYER_SETTINGS.JumpEnabled = v end)
+createSliderRow(playerTab, "JumpPower Value", 50, 250, PLAYER_SETTINGS.JumpValue, function(v) PLAYER_SETTINGS.JumpValue = v end, function(v) return tostring(math.floor(v)) end)
+createButtonRow(playerTab, "Reset Movement", function()
 	PLAYER_SETTINGS.SpeedEnabled = false
 	PLAYER_SETTINGS.JumpEnabled = false
 	SETTINGS.FLY_ENABLED = false
@@ -2122,9 +2147,9 @@ createButtonRow(playerTab, "Hareketi Sifirla", function()
 end)
 
 -- MISC & RAGE TECH
-createKeybindRow(miscTab, "Menu Ac/Kapa Tusu", function() return SETTINGS.MENU_KEY end, function(k) SETTINGS.MENU_KEY = k end)
+createKeybindRow(miscTab, "Menu Keybind", function() return SETTINGS.MENU_KEY end, function(k) SETTINGS.MENU_KEY = k end)
 createToggleRow(miscTab, "Spinbot / Anti-Aim", function() return SETTINGS.SPINBOT_ENABLED end, function(v) SETTINGS.SPINBOT_ENABLED = v end)
-createSliderRow(miscTab, "Spinbot Hizi", 10, 100, SETTINGS.SPINBOT_SPEED, function(v) SETTINGS.SPINBOT_SPEED = v end, function(v) return tostring(math.floor(v)) end)
+createSliderRow(miscTab, "Spinbot Speed", 10, 100, SETTINGS.SPINBOT_SPEED, function(v) SETTINGS.SPINBOT_SPEED = v end, function(v) return tostring(math.floor(v)) end)
 createToggleRow(miscTab, "Anti AFK", function() return PLAYER_SETTINGS.AntiAFK end, function(v) PLAYER_SETTINGS.AntiAFK = v end)
 createToggleRow(miscTab, "FPS Boost", function() return PLAYER_SETTINGS.FPSBoost end, function(v)
 	PLAYER_SETTINGS.FPSBoost = v
@@ -2136,13 +2161,13 @@ createToggleRow(miscTab, "FPS Boost", function() return PLAYER_SETTINGS.FPSBoost
 	end)
 end)
 createToggleRow(miscTab, "Debug Log", function() return SETTINGS.DEBUG end, function(v) SETTINGS.DEBUG = v end)
-createButtonRow(miscTab, "Discord Kopyle", function()
+createButtonRow(miscTab, "Copy Discord Invite", function()
 	if type(setclipboard) == "function" then
 		pcall(setclipboard, SETTINGS.DISCORD)
 	end
-	notify("Zick Hub V2", "Discord linki kopyalandi!", 3)
+	notify("Zick Hub V2", "Discord invite copied to clipboard!", 3)
 end)
-createButtonRow(miscTab, "Sunucuya Tekrar Baglan", function()
+createButtonRow(miscTab, "Rejoin Server", function()
 	pcall(function()
 		TeleportService:Teleport(game.PlaceId, LocalPlayer)
 	end)
@@ -2157,12 +2182,12 @@ end
 
 minBtn.MouseButton1Click:Connect(function()
 	setMenuVisible(false)
-	notify("Zick Hub V2", "Menu gizlendi (Acmak icin: LeftControl)", 2)
+	notify("Zick Hub V2", "Menu hidden (Press " .. (SETTINGS.MENU_KEY and SETTINGS.MENU_KEY.Name or "LeftControl") .. " to open)", 2)
 end)
 
 closeBtn.MouseButton1Click:Connect(function()
 	setMenuVisible(false)
-	notify("Zick Hub V2", "Menu gizlendi (Acmak icin: LeftControl)", 2)
+	notify("Zick Hub V2", "Menu hidden (Press " .. (SETTINGS.MENU_KEY and SETTINGS.MENU_KEY.Name or "LeftControl") .. " to open)", 2)
 end)
 
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
@@ -2395,7 +2420,7 @@ local nameBox = create("TextBox", {
 	BackgroundColor3 = SETTINGS.THEME_ROW,
 	BorderSizePixel = 0,
 	Font = Enum.Font.GothamMedium,
-	PlaceholderText = "Oyuncu adi...",
+	PlaceholderText = "Username...",
 	Text = "",
 	TextColor3 = SETTINGS.THEME_TEXT,
 	TextSize = 12,
@@ -2672,4 +2697,4 @@ for i, outfitName in ipairs(OUTFITS) do
 end
 
 -- ============================ BITIS ============================
-print("[Zick Hub V2] Yuklendi | Phantom Scope + Shoot V2 + Flick (R) + Kill Aura + ESP + Menu (LeftControl)")
+print("[Zick Hub V2] Loaded | Phantom Scope + Shoot V2 + Flick Shoot (R) + Kill Aura + ESP + Menu (LeftControl)")
