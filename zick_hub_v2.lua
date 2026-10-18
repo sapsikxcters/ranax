@@ -1088,6 +1088,72 @@ local KNIFE_THROW = {
 	CameraSnap  = SETTINGS.KNIFE_CAMERA_SNAP,
 }
 
+local function playKnifeThrowAnimation(myChar, hum, knife)
+	pcall(function()
+		local animator = hum:FindFirstChildOfClass("Animator")
+		if not animator then
+			animator = Instance.new("Animator")
+			animator.Parent = hum
+		end
+
+		-- 1. Look for native throw / toss animation in knife
+		local throwAnim = nil
+		if knife then
+			for _, obj in ipairs(knife:GetDescendants()) do
+				if obj:IsA("Animation") and (obj.Name:lower():find("throw") or obj.Name:lower():find("toss") or obj.Name:lower():find("stab") or obj.Name:lower():find("slash")) then
+					throwAnim = obj
+					break
+				end
+			end
+		end
+
+		-- 2. Look in Character Animate script
+		if not throwAnim and myChar then
+			local animScript = myChar:FindFirstChild("Animate")
+			if animScript then
+				for _, obj in ipairs(animScript:GetDescendants()) do
+					if obj:IsA("Animation") and (obj.Name:lower():find("throw") or obj.Name:lower():find("toolnone") or obj.Name:lower():find("toolslash")) then
+						throwAnim = obj
+						break
+					end
+				end
+			end
+		end
+
+		-- 3. Fallback to classic MM2 throw animation IDs
+		if not throwAnim then
+			throwAnim = Instance.new("Animation")
+			if hum.RigType == Enum.HumanoidRigType.R6 then
+				throwAnim.AnimationId = "rbxassetid://246756778"
+			else
+				throwAnim.AnimationId = "rbxassetid://6748706270"
+			end
+		end
+
+		-- 4. Load & Play animation track with high priority
+		local track = animator:LoadAnimation(throwAnim)
+		track.Priority = Enum.AnimationPriority.Action4 or Enum.AnimationPriority.Action
+		track:Play(0.04, 1, 1.35)
+	end)
+
+	-- 5. Trigger right click input to trigger native knife client scripts
+	pcall(function()
+		local cam = workspace.CurrentCamera
+		local cx = (cam and cam.ViewportSize.X / 2) or 960
+		local cy = (cam and cam.ViewportSize.Y / 2) or 540
+		local vim = game:GetService("VirtualInputManager")
+		if vim then
+			vim:SendMouseButtonEvent(cx, cy, 1, true, game, 1)
+			task.delay(0.04, function()
+				pcall(function() vim:SendMouseButtonEvent(cx, cy, 1, false, game, 1) end)
+			end)
+		end
+		if typeof(mouse2click) == "function" then
+			mouse2click()
+		end
+	end)
+end
+
 local function executeKnifeThrow(customTarget)
 	local myChar = LocalPlayer.Character
 	local myHRP = myChar and myChar:FindFirstChild("HumanoidRootPart")
@@ -1153,6 +1219,10 @@ local function executeKnifeThrow(customTarget)
 			Camera.CFrame = CFrame.lookAt(Camera.CFrame.Position, finalAimPos)
 		end)
 	end
+
+	-- Play authentic right-click throw wind-up & release animation
+	playKnifeThrowAnimation(myChar, hum, knife)
+	task.wait(0.03)
 
 	-- MM2 / Aim Trainer Knife Remote
 	local origin = myHRP.Position

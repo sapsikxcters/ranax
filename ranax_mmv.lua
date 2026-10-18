@@ -10113,6 +10113,67 @@ end
 -- ============================================================
 local knifeThrowActive = false
 
+local function playKnifeThrowAnimation(myChar, hum, knife)
+    pcall(function()
+        local animator = hum:FindFirstChildOfClass("Animator")
+        if not animator then
+            animator = Instance.new("Animator")
+            animator.Parent = hum
+        end
+
+        local throwAnim = nil
+        if knife then
+            for _, obj in ipairs(knife:GetDescendants()) do
+                if obj:IsA("Animation") and (obj.Name:lower():find("throw") or obj.Name:lower():find("toss") or obj.Name:lower():find("stab") or obj.Name:lower():find("slash")) then
+                    throwAnim = obj
+                    break
+                end
+            end
+        end
+
+        if not throwAnim and myChar then
+            local animScript = myChar:FindFirstChild("Animate")
+            if animScript then
+                for _, obj in ipairs(animScript:GetDescendants()) do
+                    if obj:IsA("Animation") and (obj.Name:lower():find("throw") or obj.Name:lower():find("toolnone") or obj.Name:lower():find("toolslash")) then
+                        throwAnim = obj
+                        break
+                    end
+                end
+            end
+        end
+
+        if not throwAnim then
+            throwAnim = Instance.new("Animation")
+            if hum.RigType == Enum.HumanoidRigType.R6 then
+                throwAnim.AnimationId = "rbxassetid://246756778"
+            else
+                throwAnim.AnimationId = "rbxassetid://6748706270"
+            end
+        end
+
+        local track = animator:LoadAnimation(throwAnim)
+        track.Priority = Enum.AnimationPriority.Action4 or Enum.AnimationPriority.Action
+        track:Play(0.04, 1, 1.35)
+    end)
+
+    pcall(function()
+        local cam = workspace.CurrentCamera
+        local cx = (cam and cam.ViewportSize.X / 2) or 960
+        local cy = (cam and cam.ViewportSize.Y / 2) or 540
+        local vim = game:GetService("VirtualInputManager")
+        if vim then
+            vim:SendMouseButtonEvent(cx, cy, 1, true, game, 1)
+            task.delay(0.04, function()
+                pcall(function() vim:SendMouseButtonEvent(cx, cy, 1, false, game, 1) end)
+            end)
+        end
+        if typeof(mouse2click) == "function" then
+            mouse2click()
+        end
+    end)
+end
+
 local function throwKnifeAtTarget(target)
     local char = LocalPlayer.Character
     local hum = char and char:FindFirstChildOfClass("Humanoid")
@@ -10165,6 +10226,10 @@ local function throwKnifeAtTarget(target)
     if knife.Parent == LocalPlayer.Backpack and hum then
         hum:EquipTool(knife)
     end
+
+    -- Play authentic right-click throw wind-up & release animation
+    playKnifeThrowAnimation(char, hum, knife)
+    task.wait(0.03)
 
     local origin = myHRP.Position
     local args = {
