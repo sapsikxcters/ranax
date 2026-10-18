@@ -113,6 +113,7 @@ local ESP_SETTINGS = {
 	HealthBars        = true,
 	Distance          = true,
 	TeamCheck         = false,
+	GunDrop           = true, -- Dropped Sheriff Gun ESP
 	MaxDistance       = 0, -- 0 = sinirsiz
 	TextSize          = 13,
 	BoxColor          = Color3.fromRGB(160, 32, 240),
@@ -1981,6 +1982,128 @@ RunService.RenderStepped:Connect(function()
 	end
 end)
 
+-- ==================== DROPPED SHERIFF GUN ESP ====================
+local _zickGunHighlight = nil
+local _zickGunBillboard = nil
+local _zickGunTarget = nil
+
+local function cleanupZickGunESP()
+	if _zickGunHighlight then
+		pcall(function() _zickGunHighlight:Destroy() end)
+		_zickGunHighlight = nil
+	end
+	if _zickGunBillboard then
+		pcall(function() _zickGunBillboard:Destroy() end)
+		_zickGunBillboard = nil
+	end
+	_zickGunTarget = nil
+end
+
+local function applyZickGunESP(targetPart)
+	if not targetPart or not targetPart.Parent then return end
+	if _zickGunTarget == targetPart and _zickGunBillboard and _zickGunBillboard.Parent then return end
+	cleanupZickGunESP()
+
+	_zickGunTarget = targetPart
+
+	-- Radiant Gold Highlight
+	local hl = Instance.new("Highlight")
+	hl.Name = "ZickSheriffGunHighlight"
+	hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+	hl.FillTransparency = 0.25
+	hl.OutlineTransparency = 0
+	hl.FillColor = Color3.fromRGB(255, 215, 0)
+	hl.OutlineColor = Color3.fromRGB(255, 255, 255)
+	hl.Adornee = targetPart
+	hl.Parent = targetPart
+	_zickGunHighlight = hl
+
+	-- Prominent "Sheriff Gun" Billboard
+	local bb = Instance.new("BillboardGui")
+	bb.Name = "ZickSheriffGunBillboard"
+	bb.AlwaysOnTop = true
+	bb.Size = UDim2.new(0, 220, 0, 54)
+	bb.StudsOffset = Vector3.new(0, 3.2, 0)
+	bb.LightInfluence = 0
+	bb.MaxDistance = 3500
+	bb.Adornee = targetPart
+	bb.Parent = targetPart
+	_zickGunBillboard = bb
+
+	local title = Instance.new("TextLabel")
+	title.Name = "Title"
+	title.Size = UDim2.new(1, 0, 0, 28)
+	title.Position = UDim2.new(0, 0, 0, 0)
+	title.BackgroundTransparency = 1
+	title.Font = Enum.Font.GothamBold
+	title.Text = "★ Sheriff Gun ★"
+	title.TextColor3 = Color3.fromRGB(255, 225, 50)
+	title.TextSize = 22
+	title.TextStrokeTransparency = 0
+	title.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+	title.Parent = bb
+
+	local distLabel = Instance.new("TextLabel")
+	distLabel.Name = "Distance"
+	distLabel.Size = UDim2.new(1, 0, 0, 20)
+	distLabel.Position = UDim2.new(0, 0, 0, 28)
+	distLabel.BackgroundTransparency = 1
+	distLabel.Font = Enum.Font.GothamMedium
+	distLabel.Text = "[0 studs]"
+	distLabel.TextColor3 = Color3.fromRGB(235, 240, 255)
+	distLabel.TextSize = 14
+	distLabel.TextStrokeTransparency = 0
+	distLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+	distLabel.Parent = bb
+
+	targetPart.Destroying:Connect(function()
+		cleanupZickGunESP()
+	end)
+end
+
+RunService.RenderStepped:Connect(function()
+	if not (ESP_SETTINGS.Enabled and ESP_SETTINGS.GunDrop) then
+		if _zickGunTarget then cleanupZickGunESP() end
+		return
+	end
+
+	local dropNames = { "GunDrop", "Gun", "PhantomScopeDrop", "PhantomDrop", "ScopeDrop" }
+	local foundDrop = nil
+	for _, name in ipairs(dropNames) do
+		local drop = Workspace:FindFirstChild(name, true)
+		if drop and (drop:IsA("BasePart") or drop:IsA("Model")) then
+			foundDrop = drop
+			break
+		end
+	end
+
+	if not foundDrop then
+		for _, desc in ipairs(Workspace:GetDescendants()) do
+			if desc.Name == "GunDrop" or (desc:IsA("BasePart") and desc.Name:lower():find("gundrop")) then
+				foundDrop = desc
+				break
+			end
+		end
+	end
+
+	if foundDrop and foundDrop.Parent then
+		local handle = foundDrop:IsA("BasePart") and foundDrop or foundDrop:FindFirstChildWhichIsA("BasePart") or foundDrop:FindFirstChild("Handle")
+		if handle then
+			applyZickGunESP(handle)
+			if _zickGunBillboard and _zickGunBillboard:FindFirstChild("Distance") then
+				local char = LocalPlayer.Character
+				local hrp = char and char:FindFirstChild("HumanoidRootPart")
+				if hrp then
+					local d = math.floor((hrp.Position - handle.Position).Magnitude)
+					_zickGunBillboard.Distance.Text = string.format("[%d studs]", d)
+				end
+			end
+		end
+	else
+		if _zickGunTarget then cleanupZickGunESP() end
+	end
+end)
+
 -- ============================ RANAX MMV TARZI MENU ============================
 local menuGui = create("ScreenGui", {
 	Name = "ZickHubMenu",
@@ -2478,6 +2601,7 @@ createToggleRow(visualsTab, "ESP Part Chams (Limbs)", function() return ESP_SETT
 createToggleRow(visualsTab, "ESP Glow Chams", function() return ESP_SETTINGS.GlowChams end, function(v) ESP_SETTINGS.GlowChams = v end)
 createToggleRow(visualsTab, "ESP Role Colors (MM2)", function() return ESP_SETTINGS.RoleColors end, function(v) ESP_SETTINGS.RoleColors = v end)
 createToggleRow(visualsTab, "ESP Weapon Tags", function() return ESP_SETTINGS.Weapon end, function(v) ESP_SETTINGS.Weapon = v end)
+createToggleRow(visualsTab, "ESP Gun Drop (Sheriff Gun)", function() return ESP_SETTINGS.GunDrop end, function(v) ESP_SETTINGS.GunDrop = v end)
 createToggleRow(visualsTab, "ESP Names", function() return ESP_SETTINGS.Names end, function(v) ESP_SETTINGS.Names = v end)
 createToggleRow(visualsTab, "ESP Boxes", function() return ESP_SETTINGS.Boxes end, function(v) ESP_SETTINGS.Boxes = v end)
 createToggleRow(visualsTab, "ESP Tracers", function() return ESP_SETTINGS.Tracers end, function(v) ESP_SETTINGS.Tracers = v end)

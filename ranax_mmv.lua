@@ -2439,62 +2439,130 @@ ESPTab:Divider()
 
 GunDropToggle = ESPTab:Toggle({
     Title = "Gun Drop ESP",
-    Desc = "Highlights dropped gun (if there is one)",
+    Desc = "Highlights dropped Sheriff gun with prominent 'Sheriff Gun' text & distance",
     Icon = "bow-arrow",
     Type = "Checkbox",
     Value = false,
     Callback = function(state)
-        local GunDropColor = Color3.fromRGB(0, 100, 0)
-        local GunDrop = nil
-        local GunHighlightAndIAmHigh = nil
-        local DescendantAddedConnection = nil
-        
-        local function OnGunDropAdded(obj)
-            if obj.Name == "GunDrop" and obj:IsA("BasePart") then
-                if GunHighlightAndIAmHigh then
-                    GunHighlightAndIAmHigh:Destroy()
-                end
-                
-                GunDrop = obj
-                GunHighlightAndIAmHigh = Instance.new("Highlight")
-                GunHighlightAndIAmHigh.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-                GunHighlightAndIAmHigh.FillTransparency = 0.5
-                GunHighlightAndIAmHigh.OutlineTransparency = 1
-                GunHighlightAndIAmHigh.FillColor = GunDropColor
-                GunHighlightAndIAmHigh.OutlineColor = GunDropColor
-                GunHighlightAndIAmHigh.Parent = obj
-                
-                obj.Destroying:Connect(function()
-                    if GunHighlightAndIAmHigh then
-                        GunHighlightAndIAmHigh:Destroy()
-                        GunHighlightAndIAmHigh = nil
-                        GunDrop = nil
-                    end
-                end)
+        local GunHighlight = nil
+        local GunBillboard = nil
+        local DistConn = nil
+
+        local function cleanupGunESP()
+            if GunHighlight then
+                pcall(function() GunHighlight:Destroy() end)
+                GunHighlight = nil
+            end
+            if GunBillboard then
+                pcall(function() GunBillboard:Destroy() end)
+                GunBillboard = nil
+            end
+            if DistConn then
+                pcall(function() DistConn:Disconnect() end)
+                DistConn = nil
             end
         end
-        
+
+        local function applyGunESP(targetPart)
+            if not targetPart or not targetPart.Parent then return end
+            cleanupGunESP()
+
+            -- 1. Radiant Golden-Yellow Sheriff Highlight
+            local hl = Instance.new("Highlight")
+            hl.Name = "SheriffGunHighlight"
+            hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+            hl.FillTransparency = 0.25
+            hl.OutlineTransparency = 0
+            hl.FillColor = Color3.fromRGB(255, 215, 0)      -- Sheriff Gold
+            hl.OutlineColor = Color3.fromRGB(255, 255, 255)  -- Crisp White Outline
+            hl.Adornee = targetPart
+            hl.Parent = targetPart
+            GunHighlight = hl
+
+            -- 2. Prominent "Sheriff Gun" Billboard (Biraz Büyük & Belirgin)
+            local bb = Instance.new("BillboardGui")
+            bb.Name = "SheriffGunBillboard"
+            bb.AlwaysOnTop = true
+            bb.Size = UDim2.new(0, 220, 0, 54)
+            bb.StudsOffset = Vector3.new(0, 3.2, 0)
+            bb.LightInfluence = 0
+            bb.MaxDistance = 3500
+            bb.Adornee = targetPart
+            bb.Parent = targetPart
+            GunBillboard = bb
+
+            local title = Instance.new("TextLabel")
+            title.Name = "Title"
+            title.Size = UDim2.new(1, 0, 0, 28)
+            title.Position = UDim2.new(0, 0, 0, 0)
+            title.BackgroundTransparency = 1
+            title.Font = Enum.Font.GothamBold
+            title.Text = "★ Sheriff Gun ★"
+            title.TextColor3 = Color3.fromRGB(255, 225, 50) -- Glowing Sheriff Gold
+            title.TextSize = 22                             -- Biraz Büyük font boyutu
+            title.TextStrokeTransparency = 0
+            title.TextStrokeColor3 = Color3.fromRGB(0, 0, 0) -- Solid black stroke
+            title.Parent = bb
+
+            local distLabel = Instance.new("TextLabel")
+            distLabel.Name = "Distance"
+            distLabel.Size = UDim2.new(1, 0, 0, 20)
+            distLabel.Position = UDim2.new(0, 0, 0, 28)
+            distLabel.BackgroundTransparency = 1
+            distLabel.Font = Enum.Font.GothamMedium
+            distLabel.Text = "[0 studs]"
+            distLabel.TextColor3 = Color3.fromRGB(235, 240, 255)
+            distLabel.TextSize = 14
+            distLabel.TextStrokeTransparency = 0
+            distLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+            distLabel.Parent = bb
+
+            -- Live distance updater
+            DistConn = RunService.RenderStepped:Connect(function()
+                if not targetPart or not targetPart.Parent or not bb.Parent then
+                    cleanupGunESP()
+                    return
+                end
+                local char = LocalPlayer.Character
+                local hrp = char and char:FindFirstChild("HumanoidRootPart")
+                if hrp then
+                    local d = math.floor((hrp.Position - targetPart.Position).Magnitude)
+                    distLabel.Text = string.format("[%d studs]", d)
+                end
+            end)
+
+            targetPart.Destroying:Connect(function()
+                cleanupGunESP()
+            end)
+        end
+
+        local function checkObjectForGun(obj)
+            if not obj then return end
+            if obj.Name == "GunDrop" then
+                local p = obj:IsA("BasePart") and obj or obj:FindFirstChildWhichIsA("BasePart")
+                if p then applyGunESP(p) end
+            elseif obj:IsA("BasePart") and obj.Name:lower():find("gundrop") then
+                applyGunESP(obj)
+            end
+        end
+
         if state then
+            -- Find currently spawned GunDrop
             for _, obj in ipairs(Workspace:GetDescendants()) do
-                if obj.Name == "GunDrop" and obj:IsA("BasePart") then
-                    OnGunDropAdded(obj)
+                if obj.Name == "GunDrop" or (obj:IsA("BasePart") and obj.Name:lower():find("gundrop")) then
+                    checkObjectForGun(obj)
                     break
                 end
             end
-            
-            DescendantAddedConnection = Workspace.DescendantAdded:Connect(OnGunDropAdded)
-            getgenv().GunDropDescendantAddedConnection = DescendantAddedConnection
+
+            local conn = Workspace.DescendantAdded:Connect(checkObjectForGun)
+            getgenv().GunDropDescendantAddedConnection = conn
         else
             if getgenv().GunDropDescendantAddedConnection then
-                getgenv().GunDropDescendantAddedConnection:Disconnect()
+                pcall(function() getgenv().GunDropDescendantAddedConnection:Disconnect() end)
                 getgenv().GunDropDescendantAddedConnection = nil
             end
-            
-            if GunHighlightAndIAmHigh then
-                GunHighlightAndIAmHigh:Destroy()
-                GunHighlightAndIAmHigh = nil
-            end
-            GunDrop = nil
+            cleanupGunESP()
         end
     end
 })
