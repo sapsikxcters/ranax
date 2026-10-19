@@ -10,7 +10,311 @@ local cachedCoinLabel = nil
 local RANAX_WEBHOOK_URL = "https://discord.com/api/webhooks/1558574154549174322/XHenZJZV6rYQHVI4FAR04x8-MkI4GKK1n7evKQQlcSTKwVOWVqNhHWkVnet9TBvDjnis"  -- Paste your Discord webhook URL here
 -- =================================================================
 
--- Mode Selection removed: immediate load
+-- ==================== RANAX MODE SELECTION ====================
+do
+    local _Players  = game:GetService("Players")
+    local _TweenSvc = game:GetService("TweenService")
+    local _lp       = _Players.LocalPlayer
+
+    local function _getSafeParent()
+        if typeof(gethui) == "function" then
+            local ok2, h = pcall(function() return gethui() end)
+            if ok2 and h then return h end
+        end
+        local ok, cg = pcall(function() return game:GetService("CoreGui") end)
+        if ok and cg then return cg end
+        return _lp:WaitForChild("PlayerGui")
+    end
+
+    local _parent = _getSafeParent()
+    pcall(function()
+        local ex = _parent:FindFirstChild("RanaxModeSelectGUI")
+        if ex then ex:Destroy() end
+    end)
+
+    -- ScreenGui
+    local _sg = Instance.new("ScreenGui")
+    _sg.Name           = "RanaxModeSelectGUI"
+    _sg.ResetOnSpawn   = false
+    _sg.DisplayOrder   = 99999999
+    _sg.IgnoreGuiInset = true
+    _sg.Parent         = _parent
+
+    -- Blurred dark overlay
+    local _overlay = Instance.new("Frame")
+    _overlay.Size                   = UDim2.new(1, 0, 1, 0)
+    _overlay.BackgroundColor3       = Color3.fromRGB(6, 7, 12)
+    _overlay.BackgroundTransparency = 1
+    _overlay.BorderSizePixel        = 0
+    _overlay.Parent                 = _sg
+    _TweenSvc:Create(_overlay, TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+        { BackgroundTransparency = 0.38 }):Play()
+
+    -- Main card
+    local _card = Instance.new("Frame")
+    _card.Name                   = "RanaxCard"
+    _card.Size                   = UDim2.new(0, 500, 0, 316)
+    _card.Position               = UDim2.new(0.5, -250, 0.5, -80)
+    _card.BackgroundColor3       = Color3.fromRGB(11, 13, 20)
+    _card.BackgroundTransparency = 1
+    _card.BorderSizePixel        = 0
+    _card.ClipsDescendants       = true
+    _card.Parent                 = _sg
+
+    local _cardCorner = Instance.new("UICorner")
+    _cardCorner.CornerRadius = UDim.new(0, 16)
+    _cardCorner.Parent       = _card
+
+    -- Glowing border
+    local _cardStroke = Instance.new("UIStroke")
+    _cardStroke.Color        = Color3.fromRGB(75, 55, 160)
+    _cardStroke.Thickness    = 1.5
+    _cardStroke.Transparency = 1
+    _cardStroke.Parent       = _card
+
+    -- Dragging
+    local _dragging, _dragStart, _startPos = false, nil, nil
+    _card.InputBegan:Connect(function(inp)
+        if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then
+            _dragging = true; _dragStart = inp.Position; _startPos = _card.Position
+            inp.Changed:Connect(function() if inp.UserInputState == Enum.UserInputState.End then _dragging = false end end)
+        end
+    end)
+    _card.InputChanged:Connect(function(inp)
+        if _dragging and (inp.UserInputType == Enum.UserInputType.MouseMovement or inp.UserInputType == Enum.UserInputType.Touch) then
+            local d = inp.Position - _dragStart
+            _card.Position = UDim2.new(_startPos.X.Scale, _startPos.X.Offset + d.X, _startPos.Y.Scale, _startPos.Y.Offset + d.Y)
+        end
+    end)
+
+    -- Top gradient bar (matches WindUI accent)
+    local _topBar = Instance.new("Frame")
+    _topBar.Size             = UDim2.new(1, 0, 0, 4)
+    _topBar.BackgroundColor3 = Color3.fromRGB(88, 101, 242)
+    _topBar.BorderSizePixel  = 0
+    _topBar.ZIndex           = 2
+    _topBar.Parent           = _card
+    local _topGrad = Instance.new("UIGradient")
+    _topGrad.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0.0,  Color3.fromRGB(80,  60, 220)),
+        ColorSequenceKeypoint.new(0.45, Color3.fromRGB(130, 80, 255)),
+        ColorSequenceKeypoint.new(0.75, Color3.fromRGB(200, 60, 200)),
+        ColorSequenceKeypoint.new(1.0,  Color3.fromRGB(255, 70, 110)),
+    })
+    _topGrad.Parent = _topBar
+
+    -- Subtle top glow blob
+    local _glowBlob = Instance.new("Frame")
+    _glowBlob.Size                   = UDim2.new(0, 280, 0, 80)
+    _glowBlob.Position               = UDim2.new(0.5, -140, 0, -28)
+    _glowBlob.BackgroundColor3       = Color3.fromRGB(90, 60, 255)
+    _glowBlob.BackgroundTransparency = 0.88
+    _glowBlob.BorderSizePixel        = 0
+    _glowBlob.Parent                 = _card
+    Instance.new("UICorner", _glowBlob).CornerRadius = UDim.new(0, 60)
+
+    -- RANAX HUB pill badge
+    local _logoPill = Instance.new("Frame")
+    _logoPill.Size             = UDim2.new(0, 96, 0, 24)
+    _logoPill.Position         = UDim2.new(0, 18, 0, 16)
+    _logoPill.BackgroundColor3 = Color3.fromRGB(88, 101, 242)
+    _logoPill.BackgroundTransparency = 0.78
+    _logoPill.BorderSizePixel  = 0
+    _logoPill.ZIndex           = 3
+    _logoPill.Parent           = _card
+    Instance.new("UICorner", _logoPill).CornerRadius = UDim.new(0, 6)
+    local _logoStroke = Instance.new("UIStroke", _logoPill)
+    _logoStroke.Color = Color3.fromRGB(88, 101, 242); _logoStroke.Thickness = 1; _logoStroke.Transparency = 0.5
+    local _logoLbl = Instance.new("TextLabel", _logoPill)
+    _logoLbl.Size = UDim2.new(1,0,1,0); _logoLbl.BackgroundTransparency = 1
+    _logoLbl.Font = Enum.Font.GothamBold; _logoLbl.Text = "* RANAX HUB"
+    _logoLbl.TextColor3 = Color3.fromRGB(170, 150, 255); _logoLbl.TextSize = 11; _logoLbl.ZIndex = 4
+
+    -- Version badge top-right
+    local _verPill = Instance.new("Frame")
+    _verPill.Size             = UDim2.new(0, 46, 0, 20)
+    _verPill.Position         = UDim2.new(1, -64, 0, 18)
+    _verPill.BackgroundColor3 = Color3.fromRGB(48, 255, 106)
+    _verPill.BackgroundTransparency = 0.80
+    _verPill.BorderSizePixel  = 0; _verPill.ZIndex = 3
+    _verPill.Parent           = _card
+    Instance.new("UICorner", _verPill).CornerRadius = UDim.new(0, 5)
+    local _verLbl = Instance.new("TextLabel", _verPill)
+    _verLbl.Size = UDim2.new(1,0,1,0); _verLbl.BackgroundTransparency = 1
+    _verLbl.Font = Enum.Font.GothamBold; _verLbl.Text = "v1.7"
+    _verLbl.TextColor3 = Color3.fromRGB(48, 255, 106); _verLbl.TextSize = 10; _verLbl.ZIndex = 4
+
+    -- Title
+    local _titleLbl = Instance.new("TextLabel")
+    _titleLbl.Size                   = UDim2.new(1, -36, 0, 28)
+    _titleLbl.Position               = UDim2.new(0, 18, 0, 48)
+    _titleLbl.BackgroundTransparency = 1
+    _titleLbl.Font                   = Enum.Font.GothamBold
+    _titleLbl.Text                   = "Choose Your Mode"
+    _titleLbl.TextColor3             = Color3.fromRGB(232, 236, 255)
+    _titleLbl.TextSize               = 20
+    _titleLbl.TextXAlignment         = Enum.TextXAlignment.Left
+    _titleLbl.ZIndex                 = 3
+    _titleLbl.Parent                 = _card
+
+    -- Subtitle
+    local _subLbl = Instance.new("TextLabel")
+    _subLbl.Size                   = UDim2.new(1, -36, 0, 16)
+    _subLbl.Position               = UDim2.new(0, 18, 0, 78)
+    _subLbl.BackgroundTransparency = 1
+    _subLbl.Font                   = Enum.Font.Gotham
+    _subLbl.Text                   = "Select environment to load the right feature set"
+    _subLbl.TextColor3             = Color3.fromRGB(100, 108, 140)
+    _subLbl.TextSize               = 12
+    _subLbl.TextXAlignment         = Enum.TextXAlignment.Left
+    _subLbl.ZIndex                 = 3
+    _subLbl.Parent                 = _card
+
+    -- Divider line
+    local _div = Instance.new("Frame")
+    _div.Size             = UDim2.new(1, -36, 0, 1)
+    _div.Position         = UDim2.new(0, 18, 0, 104)
+    _div.BackgroundColor3 = Color3.fromRGB(28, 32, 52)
+    _div.BorderSizePixel  = 0; _div.ZIndex = 3
+    _div.Parent           = _card
+
+    -- Mode chosen flag
+    local _modeChosen = false
+    _G.RanaxPrivateSrv = false
+
+    local function _finishWithMode(isPrivate)
+        _G.RanaxPrivateSrv = isPrivate
+        _modeChosen = true
+        pcall(function()
+            _TweenSvc:Create(_card, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+                Position = UDim2.new(_card.Position.X.Scale, _card.Position.X.Offset,
+                                     _card.Position.Y.Scale, _card.Position.Y.Offset + 22),
+                BackgroundTransparency = 1
+            }):Play()
+            _TweenSvc:Create(_cardStroke, TweenInfo.new(0.22), { Transparency = 1 }):Play()
+            _TweenSvc:Create(_overlay, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
+                { BackgroundTransparency = 1 }):Play()
+        end)
+        task.wait(0.26)
+        pcall(function() _sg:Destroy() end)
+    end
+
+    -- Button factory
+    local function _mkBtn(yOff, title, desc, badgeText, accentRGB, iconChar, isPrivate)
+        local accent = Color3.fromRGB(table.unpack(accentRGB))
+
+        local btn = Instance.new("TextButton")
+        btn.Size             = UDim2.new(1, -36, 0, 88)
+        btn.Position         = UDim2.new(0, 18, 0, yOff)
+        btn.BackgroundColor3 = Color3.fromRGB(16, 18, 29)
+        btn.BorderSizePixel  = 0; btn.Text = ""; btn.AutoButtonColor = false
+        btn.ZIndex           = 3; btn.Parent = _card
+        Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 12)
+
+        local bStroke = Instance.new("UIStroke", btn)
+        bStroke.Color = Color3.fromRGB(30, 34, 56); bStroke.Thickness = 1.2
+
+        -- Left accent bar
+        local sideBar = Instance.new("Frame", btn)
+        sideBar.Size = UDim2.new(0, 3, 0.68, 0); sideBar.Position = UDim2.new(0, 0, 0.16, 0)
+        sideBar.BackgroundColor3 = accent; sideBar.BorderSizePixel = 0
+        Instance.new("UICorner", sideBar).CornerRadius = UDim.new(0, 3)
+
+        -- Icon circle
+        local iconCircle = Instance.new("Frame", btn)
+        iconCircle.Size = UDim2.new(0, 46, 0, 46); iconCircle.Position = UDim2.new(0, 12, 0.5, -23)
+        iconCircle.BackgroundColor3 = accent; iconCircle.BackgroundTransparency = 0.82
+        iconCircle.BorderSizePixel = 0; iconCircle.ZIndex = 4
+        Instance.new("UICorner", iconCircle).CornerRadius = UDim.new(0.5, 0)
+        local iconStroke = Instance.new("UIStroke", iconCircle)
+        iconStroke.Color = accent; iconStroke.Thickness = 1.2; iconStroke.Transparency = 0.55
+        local iconLbl = Instance.new("TextLabel", iconCircle)
+        iconLbl.Size = UDim2.new(1,0,1,0); iconLbl.BackgroundTransparency = 1
+        iconLbl.Font = Enum.Font.GothamBold; iconLbl.Text = iconChar
+        iconLbl.TextColor3 = accent; iconLbl.TextSize = 22; iconLbl.ZIndex = 5
+
+        -- Title
+        local tLbl = Instance.new("TextLabel", btn)
+        tLbl.Size = UDim2.new(1, -174, 0, 20); tLbl.Position = UDim2.new(0, 72, 0, 12)
+        tLbl.BackgroundTransparency = 1; tLbl.Font = Enum.Font.GothamBold
+        tLbl.Text = title; tLbl.TextColor3 = Color3.fromRGB(228, 234, 255)
+        tLbl.TextSize = 14; tLbl.TextXAlignment = Enum.TextXAlignment.Left; tLbl.ZIndex = 4
+
+        -- Badge pill
+        local pill = Instance.new("Frame", btn)
+        pill.Size = UDim2.new(0, 78, 0, 20); pill.Position = UDim2.new(1, -92, 0, 12)
+        pill.BackgroundColor3 = accent; pill.BackgroundTransparency = 0.80
+        pill.BorderSizePixel = 0; pill.ZIndex = 4
+        Instance.new("UICorner", pill).CornerRadius = UDim.new(0, 5)
+        local pillStroke = Instance.new("UIStroke", pill)
+        pillStroke.Color = accent; pillStroke.Thickness = 1; pillStroke.Transparency = 0.50
+        local pillLbl = Instance.new("TextLabel", pill)
+        pillLbl.Size = UDim2.new(1,0,1,0); pillLbl.BackgroundTransparency = 1
+        pillLbl.Font = Enum.Font.GothamBold; pillLbl.Text = badgeText
+        pillLbl.TextColor3 = accent; pillLbl.TextSize = 10; pillLbl.ZIndex = 5
+
+        -- Description
+        local dLbl = Instance.new("TextLabel", btn)
+        dLbl.Size = UDim2.new(1, -86, 0, 46); dLbl.Position = UDim2.new(0, 72, 0, 36)
+        dLbl.BackgroundTransparency = 1; dLbl.Font = Enum.Font.Gotham
+        dLbl.Text = desc; dLbl.TextColor3 = Color3.fromRGB(100, 108, 142)
+        dLbl.TextSize = 11; dLbl.TextWrapped = true
+        dLbl.TextXAlignment = Enum.TextXAlignment.Left
+        dLbl.TextYAlignment = Enum.TextYAlignment.Top; dLbl.ZIndex = 4
+
+        -- Arrow
+        local arrowLbl = Instance.new("TextLabel", btn)
+        arrowLbl.Size = UDim2.new(0, 18, 0, 18); arrowLbl.Position = UDim2.new(1, -28, 0.5, -9)
+        arrowLbl.BackgroundTransparency = 1; arrowLbl.Font = Enum.Font.GothamBold
+        arrowLbl.Text = ">"; arrowLbl.TextColor3 = Color3.fromRGB(50, 56, 88)
+        arrowLbl.TextSize = 20; arrowLbl.ZIndex = 4
+
+        -- Hover / click
+        btn.MouseEnter:Connect(function()
+            _TweenSvc:Create(btn,       TweenInfo.new(0.16), { BackgroundColor3 = Color3.fromRGB(20, 23, 38) }):Play()
+            _TweenSvc:Create(bStroke,   TweenInfo.new(0.16), { Color = accent, Transparency = 0.25 }):Play()
+            _TweenSvc:Create(arrowLbl,  TweenInfo.new(0.16), { TextColor3 = accent }):Play()
+            _TweenSvc:Create(iconCircle,TweenInfo.new(0.16), { BackgroundTransparency = 0.62 }):Play()
+        end)
+        btn.MouseLeave:Connect(function()
+            _TweenSvc:Create(btn,       TweenInfo.new(0.16), { BackgroundColor3 = Color3.fromRGB(16, 18, 29) }):Play()
+            _TweenSvc:Create(bStroke,   TweenInfo.new(0.16), { Color = Color3.fromRGB(30, 34, 56), Transparency = 0 }):Play()
+            _TweenSvc:Create(arrowLbl,  TweenInfo.new(0.16), { TextColor3 = Color3.fromRGB(50, 56, 88) }):Play()
+            _TweenSvc:Create(iconCircle,TweenInfo.new(0.16), { BackgroundTransparency = 0.82 }):Play()
+        end)
+        btn.MouseButton1Click:Connect(function()
+            _TweenSvc:Create(btn, TweenInfo.new(0.08), { BackgroundColor3 = accent, BackgroundTransparency = 0.75 }):Play()
+            task.wait(0.09)
+            _finishWithMode(isPrivate)
+        end)
+
+        return btn
+    end
+
+    -- Render the two mode buttons
+    _mkBtn(114, "MMV - Public / Standard",
+        "Standard MM2 cheats and coin farm. Targets Sheriff / Murderer accurately. Safe for public servers.",
+        "STANDARD", {88, 101, 242}, "Z", false)
+
+    _mkBtn(212, "MMV - Private Server",
+        "Aggressive private server mode. Rage shoot and combat targets closest players (friends excluded).",
+        "AGGRO", {255, 78, 100}, "!", true)
+
+    -- Animate card in with spring bounce
+    task.spawn(function()
+        task.wait()
+        _TweenSvc:Create(_card, TweenInfo.new(0.45, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+            Position = UDim2.new(0.5, -250, 0.5, -158),
+            BackgroundTransparency = 0
+        }):Play()
+        _TweenSvc:Create(_cardStroke, TweenInfo.new(0.45, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+            { Transparency = 0 }):Play()
+    end)
+
+    repeat task.wait(0.05) until _modeChosen
+end
+-- ==================== END MODE SELECTION ====================
+
 
 
 -- Multi-source WindUI Loader (Clean Official Sources, Zero Luraph)
@@ -6146,17 +6450,8 @@ UIElements.SafeAutoFarm = CoinFarmTab:Toggle({
 
 if _G.CoinFarmMode == nil then _G.CoinFarmMode = "Halloween (Candies)" end
 
-UIElements.CoinFarmMode = CoinFarmTab:Dropdown({
-    Title = "Farm Mode",
-    Desc = "Choose target currency: Halloween Candies, Standard Coins, or Both",
-    Values = {"Halloween (Candies)", "Standard (Coins)", "Auto / All (Coins + Candies)"},
-    Value = _G.CoinFarmMode or "Halloween (Candies)",
-    Callback = function(val)
-        _G.CoinFarmMode = val
-        _G.BlacklistedCoins = {}
-        notify("Coin Farm", "Mode: " .. tostring(val), 2, "sparkles")
-    end
-})
+-- CoinFarmMode dropdown removed (Auto collects all)
+
 
 UIElements.FlyMode = CoinFarmTab:Dropdown({
     Title = "Fly Mode",
