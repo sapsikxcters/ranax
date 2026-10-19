@@ -1567,15 +1567,107 @@ local function getNearestCoin(root)
     return nearest
 end
 
+local function isAlive(char)
+    if not (char and char.Parent and char:IsDescendantOf(workspace)) then return false end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not (hum and hrp) then return false end
+    if hum.Health <= 0 then return false end
+    return true
+end
+
+local function checkIsBagFull()
+    if not startedCollecting then return false end
+    local pgui = player:FindFirstChild("PlayerGui")
+    if not pgui then return false end
+    local mg = pgui:FindFirstChild("MainGUI") or pgui:FindFirstChild("MainGui") or pgui:FindFirstChild("Gui")
+    if not mg then return false end
+
+    for _, desc in ipairs(mg:GetDescendants()) do
+        if desc:IsA("TextLabel") and desc.Visible then
+            local txt = desc.Text
+            if txt and txt ~= "" then
+                local cur, mx = txt:match("(%d+)%s*/%s*(%d+)")
+                if cur and mx then
+                    local cNum, mNum = tonumber(cur), tonumber(mx)
+                    if cNum and mNum and (mNum >= 30 and mNum <= 100) and (cNum >= mNum and cNum > 0) then
+                        return true
+                    end
+                end
+                local pName = (desc.Parent and desc.Parent.Name:lower()) or ""
+                local dName = desc.Name:lower()
+                if (pName:find("coin") or dName:find("coin") or pName:find("candy") or dName:find("bag")) and txt:match("^[Ff][Uu][Ll][Ll]!*$") then
+                    return true
+                end
+            end
+        end
+    end
+    return false
+end
+
+local function executeBagFullAction()
+    local char = player.Character
+    local bp = player:FindFirstChild("Backpack")
+    local role = "Innocent"
+
+    if (char and char:FindFirstChild("Gun")) or (bp and bp:FindFirstChild("Gun")) then
+        role = "Sheriff"
+    elseif (char and char:FindFirstChild("Knife")) or (bp and bp:FindFirstChild("Knife")) then
+        role = "Murderer"
+    end
+
+    if role == "Sheriff" then
+        WindUI:Notify({ Title = "Bag Full", Content = "Sheriff: Rage Shooting Murderer!", Duration = 3, Icon = "crosshair" })
+        task.spawn(function()
+            local gun = (char and char:FindFirstChild("Gun")) or (bp and bp:FindFirstChild("Gun"))
+            if gun and gun:FindFirstChild("Shoot") then
+                local targetCFrame = getMurdererFrontCFrame()
+                if targetCFrame then
+                    local myCFrame = char and char:FindFirstChild("HumanoidRootPart") and char.HumanoidRootPart.CFrame or CFrame.new()
+                    gun.Shoot:FireServer(targetCFrame, myCFrame)
+                end
+            end
+        end)
+    elseif role == "Murderer" then
+        WindUI:Notify({ Title = "Bag Full", Content = "Murderer: Eliminating Players!", Duration = 3, Icon = "skull" })
+        task.spawn(function()
+            local knife = (char and char:FindFirstChild("Knife")) or (bp and bp:FindFirstChild("Knife"))
+            if knife and knife:FindFirstChild("Events") and knife.Events:FindFirstChild("KnifeThrown") then
+                for _, p in ipairs(Players:GetPlayers()) do
+                    if p ~= player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and p.Character:FindFirstChild("Humanoid") and p.Character.Humanoid.Health > 0 then
+                        local hrp = p.Character.HumanoidRootPart
+                        local targetPos = hrp.CFrame + (hrp.CFrame.LookVector * 2)
+                        pcall(function()
+                            knife.Events.KnifeThrown:FireServer(targetPos, hrp.CFrame)
+                        end)
+                        task.wait(0.08)
+                    end
+                end
+            end
+        end)
+    else
+        WindUI:Notify({ Title = "Bag Full", Content = "Innocent: Teleporting Safe Above Map!", Duration = 3, Icon = "map-pin" })
+        task.spawn(function()
+            local c = getChar()
+            if isAlive(c) then
+                c.HumanoidRootPart.CFrame = c.HumanoidRootPart.CFrame + Vector3.new(0, 220, 0)
+                c.HumanoidRootPart.AssemblyLinearVelocity = Vector3.zero
+            end
+        end)
+    end
+end
+
 local function flyToCoin(targetPart)
     local char = getChar()
-    local hrp = char:WaitForChild("HumanoidRootPart")
-    local hum = char:WaitForChild("Humanoid")
+    if not isAlive(char) then return end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not (hrp and hum) then return end
+
     hum.PlatformStand = true
-    local timeout = tick() + 10
-    while flying and char.Parent and targetPart.Parent do
-        if tick() > timeout then break end
-        if targetPart:GetAttribute("Collected") then break end
+    local timeout = tick() + 6
+    while flying and char.Parent and targetPart.Parent and isAlive(char) do
+        if tick() > timeout or targetPart:GetAttribute("Collected") then break end
         local targetPos = targetPart.Position
         if flyMode == "down" then
             targetPos = targetPos - Vector3.new(0, 3, 0)
@@ -1587,13 +1679,31 @@ local function flyToCoin(targetPart)
         else
             hrp.CFrame = CFrame.new(hrp.Position, targetPart.Position)
         end
-        if (hrp.Position - targetPos).Magnitude < 2 then
+
+        if typeof(firetouchinterest) == "function" then
+            pcall(function()
+                firetouchinterest(hrp, targetPart, 0)
+                task.wait()
+                firetouchinterest(hrp, targetPart, 1)
+            end)
+        end
+
+        if (hrp.Position - targetPos).Magnitude < 4.5 then
             hrp.CFrame = CFrame.new(targetPos)
+            if typeof(firetouchinterest) == "function" then
+                pcall(function()
+                    firetouchinterest(hrp, targetPart, 0)
+                    task.wait()
+                    firetouchinterest(hrp, targetPart, 1)
+                end)
+            end
             break
         end
         RunService.RenderStepped:Wait()
     end
-    hrp.AssemblyLinearVelocity = Vector3.zero
+    if hrp and hrp.Parent then
+        hrp.AssemblyLinearVelocity = Vector3.zero
+    end
     collectedCoins[targetPart] = true
     startedCollecting = true
 end
@@ -1612,7 +1722,25 @@ MapTab:Toggle({
             while flying do
                 local ok, err = pcall(function()
                     local char = getChar()
-                    local root = char:WaitForChild("HumanoidRootPart", 5)
+
+                    -- Guard: If dead, wait for respawn!
+                    if not isAlive(char) then
+                        startedCollecting = false
+                        collectedCoins = {}
+                        task.wait(1)
+                        return
+                    end
+
+                    -- Guard: Bag Full Action (triggers only after coins collected)
+                    if startedCollecting and checkIsBagFull() then
+                        flying = false
+                        restoreChar()
+                        executeBagFullAction()
+                        task.wait(2)
+                        return
+                    end
+
+                    local root = char:FindFirstChild("HumanoidRootPart")
                     if not root then return end
                     local coin = getNearestCoin(root)
                     if coin then
@@ -1623,7 +1751,7 @@ MapTab:Toggle({
                             task.wait(2)
                             startedCollecting = false
                         end
-                        task.wait(0.1)
+                        task.wait(0.15)
                     end
                 end)
                 if not ok then
