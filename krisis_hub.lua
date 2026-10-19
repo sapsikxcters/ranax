@@ -55,14 +55,41 @@ pcall(function()
 end)
 
 
-local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
+-- Multi-source WindUI Loader with Fallback
+local WindUI = nil
+local libUrls = {
+    "https://raw.githubusercontent.com/sapsikxcters/ranax/main/Library.luau",
+    "https://github.com/Footagesus/WindUI/releases/latest/download/main.lua",
+    "https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua",
+    "https://tree-hub.vercel.app/api/library/windui"
+}
+
+for _, url in ipairs(libUrls) do
+    local ok, res = pcall(function()
+        return game:HttpGet(url)
+    end)
+    if ok and res and #res > 500 then
+        local okLoad, loadedLib = pcall(function()
+            return loadstring(res)()
+        end)
+        if okLoad and loadedLib then
+            WindUI = loadedLib
+            break
+        end
+    end
+end
+
+if not WindUI then
+    warn("[Krisis Hub] Failed to load WindUI from all endpoints!")
+    return
+end
 
 local Window = WindUI:CreateWindow({
     Icon = KrisisAvatar,
     IconThemed = false,
-    Title = "Krisis Hub | MM2",
-    Author = "by Krisis",
-    Folder = "Krisis",
+    Title = "Krisis Hub | by xCters",
+    Author = "by xCters",
+    Folder = "xCters_Krisis",
     Size = UDim2.fromOffset(400, 400),
     MinSize = Vector2.new(560, 350),
     MaxSize = Vector2.new(850, 560),
@@ -72,7 +99,7 @@ local Window = WindUI:CreateWindow({
     SideBarWidth = 200,
     BackgroundImageTransparency = 0.42,
     HideSearchBar = false,
-    ScrollBarEnabled = false,
+    ScrollBarEnabled = true,
     OpenButton = {
         Title = "Krisis Hub",
         CornerRadius = UDim.new(1, 0),
@@ -1636,3 +1663,44 @@ MapTab:Toggle({
 })
 
 MapTab:GetToggle("Enable Anti AFK"):SetState(true)
+
+local CreditsTab = Window:Tab({
+    Title = "Credits",
+    Icon = "sparkles",
+    Locked = false,
+})
+
+CreditsTab:Paragraph({
+    Title = "Developer & Credits",
+    Desc = "Created by xCters | Discord User: xcters_Real\nOfficial Community: discord.gg/ranax"
+})
+
+CreditsTab:Button({
+    Title = "Copy Discord Username (xcters_Real)",
+    Desc = "Click to copy developer Discord username to clipboard",
+    Locked = false,
+    Callback = function()
+        local setclip = setclipboard or toclipboard or (syn and syn.write_clipboard)
+        if setclip then
+            setclip("xcters_Real")
+            WindUI:Notify({ Title = "Discord", Content = "Copied 'xcters_Real' to clipboard!", Duration = 3, Icon = "check" })
+        else
+            WindUI:Notify({ Title = "Discord", Content = "xcters_Real", Duration = 4, Icon = "info" })
+        end
+    end
+})
+
+CreditsTab:Button({
+    Title = "Join Discord Community (discord.gg/ranax)",
+    Desc = "Click to copy official Discord invite link",
+    Locked = false,
+    Callback = function()
+        local setclip = setclipboard or toclipboard or (syn and syn.write_clipboard)
+        if setclip then
+            setclip("https://discord.gg/ranax")
+            WindUI:Notify({ Title = "Discord", Content = "Copied invite link: discord.gg/ranax", Duration = 3, Icon = "check" })
+        else
+            WindUI:Notify({ Title = "Discord", Content = "discord.gg/ranax", Duration = 4, Icon = "info" })
+        end
+    end
+})
