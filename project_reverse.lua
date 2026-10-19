@@ -347,16 +347,14 @@ if not lib then
     return
 end
 
--- Universal Game Support (All Games Supported - No PlaceId/GameId Lock)
-if genv.mm2VisualLibraryLoaded then
-    lib:Notify({
-        Title = "Already loaded",
-        Content = "Project Reverse is already loaded in this session.",
-        Type = "Warning",
-        Duration = 4,
-    })
-    return
+-- Universal Game Support & Clean Auto-Reload
+if genv.MM2LibraryWindow then
+    pcall(function()
+        genv.MM2LibraryWindow:Destroy()
+    end)
+    genv.MM2LibraryWindow = nil
 end
+genv.mm2VisualLibraryLoaded = false
 
 local Players, ReplicatedStorage, RunService, Workspace, TweenService, TeleportService, localPlayer, fn, fn2, v, tbl, fn3, fn4, fn5, fn6, fn7, v2, fn8, flag, fn9
 local vector2, v3
