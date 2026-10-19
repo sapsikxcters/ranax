@@ -1327,14 +1327,14 @@ end
 
 
 -- ==================== FORWARD DECLARATIONS FOR CONFIG SYSTEM ====================
-local PlayerESPToggle = nil
-local NameESPToggle = nil
-local GunDropToggle = nil
-local TrapESPToggle = nil
-local AutoGrabGunToggle = nil
-local RemoveBarrierAutomaticToggle = nil
-local GhostModeToggle = nil
-local GameStatusHUDToggle = nil
+UIElements.PlayerESPToggle = nil
+UIElements.NameESPToggle = nil
+UIElements.GunDropToggle = nil
+UIElements.TrapESPToggle = nil
+UIElements.AutoGrabGunToggle = nil
+UIElements.RemoveBarrierAutomaticToggle = nil
+UIElements.GhostModeToggle = nil
+UIElements.GameStatusHUDToggle = nil
 
 local function SaveConfig(name)
     if not name or name:match("^%s*$") then name = "default" end
@@ -5951,44 +5951,31 @@ end)
 local function getNearestCoin(root)
     local nearest = nil
     local dist = math.huge
-    local mode = _G.CoinFarmMode or "Halloween (Candies)"
 
     for _, v in pairs(workspace:GetDescendants()) do
-        local isValidCoin = false
-        local isCandy = false
-
-        if v:IsA("BasePart") and v:FindFirstChild("TouchInterest") then
+        if v:IsA("BasePart") and not collectedCoins[v] and not v:GetAttribute("Collected") then
             local n = v.Name:lower()
-            if n == "coin_server" or n == "coin" or n == "candy_server" or n == "candy" or n == "candycorn" or n == "pumpkin" then
-                isValidCoin = true
-                if n:find("candy") or n:find("pumpkin") then
-                    isCandy = true
+            local isCoin = false
+
+            if n == "coin_server" or n == "coin" or n == "candy_server" or n == "candy" or n == "candycorn" or n == "pumpkin" or n == "snowflake" then
+                isCoin = true
+            elseif v:FindFirstChild("CoinVisual") or v:FindFirstChild("CandyVisual") or v:FindFirstChild("TouchInterest") then
+                local p = v.Parent
+                local pn = p and p.Name:lower() or ""
+                if pn:find("coin") or pn:find("candy") or pn == "normal" or pn:find("container") then
+                    isCoin = true
                 end
             end
-        end
 
-        if isValidCoin and not collectedCoins[v] and not v:GetAttribute("Collected") then
-            local shouldTarget = true
-            if mode == "Halloween (Candies)" then
-                shouldTarget = isCandy
-            elseif mode == "Standard (Coins)" then
-                shouldTarget = not isCandy
-            end
-
-            if shouldTarget then
-                local d = (root.Position - v.Position).Magnitude
-                if d < dist then
-                    dist = d
-                    nearest = v
+            -- If it has CoinVisual child, ensure it is still visible (not collected by another player)
+            if isCoin then
+                local vis = v:FindFirstChild("CoinVisual") or v:FindFirstChild("CandyVisual")
+                if vis and vis:IsA("BasePart") and vis.Transparency >= 0.9 then
+                    isCoin = false
                 end
             end
-        end
-    end
 
-    -- Fallback: If Halloween mode has no candies left, target standard coins to prevent idle
-    if not nearest and mode == "Halloween (Candies)" then
-        for _, v in pairs(workspace:GetDescendants()) do
-            if v:IsA("BasePart") and v.Name == "Coin_Server" and v:FindFirstChild("TouchInterest") and not collectedCoins[v] and not v:GetAttribute("Collected") then
+            if isCoin then
                 local d = (root.Position - v.Position).Magnitude
                 if d < dist then
                     dist = d
@@ -6487,20 +6474,7 @@ UIElements.SafeAutoFarm = CoinFarmTab:Toggle({
         end
     end,
 })
-
-if _G.CoinFarmMode == nil then _G.CoinFarmMode = "Halloween (Candies)" end
-
-UIElements.CoinFarmMode = CoinFarmTab:Dropdown({
-    Title = "Farm Mode",
-    Desc = "Choose target currency: Halloween Candies, Standard Coins, or Both",
-    Values = {"Halloween (Candies)", "Standard (Coins)", "Auto / All (Coins + Candies)"},
-    Value = _G.CoinFarmMode or "Halloween (Candies)",
-    Callback = function(val)
-        _G.CoinFarmMode = val
-        _G.BlacklistedCoins = {}
-        notify("Coin Farm", "Mode: " .. tostring(val), 2, "sparkles")
-    end
-})
+_G.CoinFarmMode = "All"
 
 UIElements.FlyMode = CoinFarmTab:Dropdown({
     Title = "Fly Mode",

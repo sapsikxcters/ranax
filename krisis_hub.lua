@@ -1578,14 +1578,36 @@ player.CharacterAdded:Connect(function(char)
 end)
 
 local function getNearestCoin(root)
-    local nearest
+    local nearest = nil
     local dist = math.huge
     for _, v in pairs(workspace:GetDescendants()) do
-        if v.Name == "Coin_Server" and v:IsA("BasePart") and v:FindFirstChild("TouchInterest") and v:FindFirstChild("CoinVisual") and not collectedCoins[v] and not v:GetAttribute("Collected") then
-            local d = (root.Position - v.Position).Magnitude
-            if d < dist then
-                dist = d
-                nearest = v
+        if v:IsA("BasePart") and not collectedCoins[v] and not v:GetAttribute("Collected") then
+            local n = v.Name:lower()
+            local isCoin = false
+
+            if n == "coin_server" or n == "coin" or n == "candy_server" or n == "candy" or n == "candycorn" or n == "pumpkin" or n == "snowflake" then
+                isCoin = true
+            elseif v:FindFirstChild("CoinVisual") or v:FindFirstChild("CandyVisual") or v:FindFirstChild("TouchInterest") then
+                local p = v.Parent
+                local pn = p and p.Name:lower() or ""
+                if pn:find("coin") or pn:find("candy") or pn == "normal" or pn:find("container") then
+                    isCoin = true
+                end
+            end
+
+            if isCoin then
+                local vis = v:FindFirstChild("CoinVisual") or v:FindFirstChild("CandyVisual")
+                if vis and vis:IsA("BasePart") and vis.Transparency >= 0.9 then
+                    isCoin = false
+                end
+            end
+
+            if isCoin then
+                local d = (root.Position - v.Position).Magnitude
+                if d < dist then
+                    dist = d
+                    nearest = v
+                end
             end
         end
     end
