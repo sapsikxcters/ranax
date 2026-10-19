@@ -115,16 +115,18 @@ local function loadLibrary()
 
             local function getIconForTab(tabName)
                 local lower = string.lower(tabName or "")
-                if string.find(lower, "gameplay") then return "gamepad-2"
+                if string.find(lower, "gameplay") then return "sword"
                 elseif string.find(lower, "esp") or string.find(lower, "visual") then return "eye"
                 elseif string.find(lower, "coin") or string.find(lower, "farm") then return "coins"
-                elseif string.find(lower, "trade") then return "arrow-left-right"
-                elseif string.find(lower, "invent") or string.find(lower, "bag") then return "briefcase"
+                elseif string.find(lower, "trade") then return "repeat"
+                elseif string.find(lower, "invent") or string.find(lower, "bag") then return "folder"
                 elseif string.find(lower, "setting") then return "settings"
                 elseif string.find(lower, "valentine") then return "heart"
                 elseif string.find(lower, "sheriff") or string.find(lower, "gun") then return "shield"
                 elseif string.find(lower, "murd") then return "skull"
                 elseif string.find(lower, "teleport") then return "navigation"
+                elseif string.find(lower, "crate") or string.find(lower, "spawn") then return "box"
+                elseif string.find(lower, "misc") then return "sparkles"
                 end
                 return "box"
             end
@@ -140,7 +142,17 @@ local function loadLibrary()
                 if okTab and t then
                     rawTab = t
                 else
-                    rawTab = win:Tab({Title = tabName})
+                    pcall(function()
+                        rawTab = win:Tab({Title = tabName, Icon = "box"})
+                    end)
+                end
+                if not rawTab then
+                    pcall(function()
+                        rawTab = win:Tab({Title = tabName})
+                    end)
+                end
+                if not rawTab then
+                    rawTab = win
                 end
 
                 local tabObj = {_raw = rawTab}
@@ -272,14 +284,40 @@ local function loadLibrary()
 
                     function secObj:AddParagraph(opt)
                         opt = opt or {}
+                        local title = opt.Title or ""
+                        local desc = opt.Content or opt.Desc or ""
                         local res = nil
                         pcall(function()
                             res = target:Paragraph({
-                                Title = opt.Title or "",
-                                Desc = opt.Content or opt.Desc or ""
+                                Title = title,
+                                Desc = desc
                             })
                         end)
-                        return res or {}
+                        local pObj = {
+                            _raw = res,
+                            SetTitle = function(self, newTitle)
+                                pcall(function()
+                                    if res and res.SetTitle then res:SetTitle(newTitle) end
+                                end)
+                            end,
+                            SetContent = function(self, newContent)
+                                pcall(function()
+                                    if res and res.SetDesc then res:SetDesc(newContent)
+                                    elseif res and res.SetContent then res:SetContent(newContent)
+                                    end
+                                end)
+                            end,
+                            Destroy = function(self)
+                                pcall(function()
+                                    if res and res.Destroy then res:Destroy() end
+                                end)
+                            end
+                        }
+                        return setmetatable(pObj, {
+                            __index = function(_, k)
+                                return function() return nil end
+                            end
+                        })
                     end
 
                     function secObj:AddBanner(opt)
@@ -294,7 +332,92 @@ local function loadLibrary()
                         return res or {}
                     end
 
-                    return secObj
+                    function secObj:AddItemGrid(cfg)
+                        return tabObj:AddItemGrid(cfg)
+                    end
+
+                    function secObj:SetActionBar(cfg)
+                        return tabObj:SetActionBar(cfg)
+                    end
+
+                    return setmetatable(secObj, {
+                        __index = function(_, k)
+                            return function() return secObj end
+                        end
+                    })
+                end
+
+                function tabObj:AddItemGrid(cfg)
+                    cfg = cfg or {}
+                    local items = cfg.Items or {}
+                    local selected = {}
+
+                    pcall(function()
+                        rawTab:Paragraph({
+                            Title = "Item Grid (" .. tostring(#items) .. " items)",
+                            Desc = "Use the Action Bar buttons below to select or clear items."
+                        })
+                    end)
+
+                    local gridObj = {
+                        _items = items,
+                        _selected = selected,
+                        SelectAll = function(self)
+                            for k, _ in pairs(items) do
+                                selected[k] = true
+                            end
+                            if cfg.OnSelectionChanged then
+                                pcall(cfg.OnSelectionChanged, selected)
+                            end
+                        end,
+                        Clear = function(self)
+                            table.clear(selected)
+                            if cfg.OnSelectionChanged then
+                                pcall(cfg.OnSelectionChanged, selected)
+                            end
+                        end,
+                        GetSelected = function(self)
+                            return selected
+                        end,
+                        ChangeState = function(self) end,
+                        Disconnect = function(self) end,
+                        FindFirstChild = function(self) return nil end,
+                        GetChildren = function(self) return {} end
+                    }
+
+                    return setmetatable(gridObj, {
+                        __index = function(_, k)
+                            return function() return nil end
+                        end
+                    })
+                end
+
+                function tabObj:SetActionBar(cfg)
+                    cfg = cfg or {}
+                    if cfg.Left and type(cfg.Left) == "table" then
+                        for _, btn in ipairs(cfg.Left) do
+                            if btn.Text and btn.Callback then
+                                pcall(function()
+                                    rawTab:Button({
+                                        Title = btn.Text,
+                                        Callback = btn.Callback
+                                    })
+                                end)
+                            end
+                        end
+                    end
+                    if cfg.Right and type(cfg.Right) == "table" then
+                        for _, btn in ipairs(cfg.Right) do
+                            if btn.Text and btn.Callback then
+                                pcall(function()
+                                    rawTab:Button({
+                                        Title = btn.Text,
+                                        Callback = btn.Callback
+                                    })
+                                end)
+                            end
+                        end
+                    end
                 end
 
                 tabObj.AddToggle = function(self, opt) return self:CreateSection(""):AddToggle(opt) end
@@ -307,9 +430,12 @@ local function loadLibrary()
                 tabObj.AddParagraph = function(self, opt) return self:CreateSection(""):AddParagraph(opt) end
                 tabObj.AddBanner = function(self, opt) return self:CreateSection(""):AddBanner(opt) end
 
-                return tabObj
+                return setmetatable(tabObj, {
+                    __index = function(_, k)
+                        return function() return tabObj end
+                    end
+                })
             end
-
             return windowObj
         end
 
