@@ -315,7 +315,34 @@ do
 end
 -- ==================== END MODE SELECTION ====================
 
-local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
+-- Multi-source WindUI Loader with Fallback
+local WindUI = nil
+local libUrls = {
+    "https://raw.githubusercontent.com/sapsikxcters/ranax/main/Library.luau",
+    "https://github.com/Footagesus/WindUI/releases/latest/download/main.lua",
+    "https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua",
+    "https://tree-hub.vercel.app/api/library/windui"
+}
+
+for _, url in ipairs(libUrls) do
+    local ok, res = pcall(function()
+        return game:HttpGet(url)
+    end)
+    if ok and res and #res > 500 then
+        local okLoad, loadedLib = pcall(function()
+            return loadstring(res)()
+        end)
+        if okLoad and loadedLib then
+            WindUI = loadedLib
+            break
+        end
+    end
+end
+
+if not WindUI then
+    warn("[Ranax] Failed to load WindUI from all endpoints!")
+    return
+end
 -------------------------------------------------------------------------------------------------------------------
 local Window = WindUI:CreateWindow({
 
@@ -2012,6 +2039,43 @@ SettingsTab:Button({
     Callback = function()
         refreshConfigDropdown()
         notify("Config", "Config list refreshed", 2, "refresh-cw")
+    end
+})
+
+SettingsTab:Section({ Title = "Community & Credits", TextSize = 15 })
+
+SettingsTab:Paragraph({
+    Title = "Developer & Credits",
+    Desc = "Created by xCters | Discord User: xcters_Real\nOfficial Community: discord.gg/ranax"
+})
+
+SettingsTab:Button({
+    Title = "Copy Discord Username (xcters_Real)",
+    Desc = "Click to copy developer Discord username to clipboard",
+    Locked = false,
+    Callback = function()
+        local setclip = setclipboard or toclipboard or (syn and syn.write_clipboard)
+        if setclip then
+            setclip("xcters_Real")
+            notify("Discord", "Copied 'xcters_Real' to clipboard!", 3, "check")
+        else
+            notify("Discord", "xcters_Real", 4, "info")
+        end
+    end
+})
+
+SettingsTab:Button({
+    Title = "Join Discord Community (discord.gg/ranax)",
+    Desc = "Click to copy official Discord invite link",
+    Locked = false,
+    Callback = function()
+        local setclip = setclipboard or toclipboard or (syn and syn.write_clipboard)
+        if setclip then
+            setclip("https://discord.gg/ranax")
+            notify("Discord", "Copied invite link: discord.gg/ranax", 3, "check")
+        else
+            notify("Discord", "discord.gg/ranax", 4, "info")
+        end
     end
 })
 
