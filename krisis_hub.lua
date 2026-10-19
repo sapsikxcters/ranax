@@ -1527,6 +1527,9 @@ local function restoreChar()
 end
 
 player.CharacterAdded:Connect(function(char)
+    collectedCoins = {}
+    startedCollecting = false
+    collectedCoinCount = 0
     if not flying then return end
     char:WaitForChild("HumanoidRootPart")
     char:WaitForChild("Humanoid")
@@ -1576,33 +1579,17 @@ local function isAlive(char)
     return true
 end
 
-local function checkIsBagFull()
-    if not startedCollecting then return false end
-    local pgui = player:FindFirstChild("PlayerGui")
-    if not pgui then return false end
-    local mg = pgui:FindFirstChild("MainGUI") or pgui:FindFirstChild("MainGui") or pgui:FindFirstChild("Gui")
-    if not mg then return false end
+local collectedCoinCount = 0
 
-    for _, desc in ipairs(mg:GetDescendants()) do
-        if desc:IsA("TextLabel") and desc.Visible then
-            local txt = desc.Text
-            if txt and txt ~= "" then
-                local cur, mx = txt:match("(%d+)%s*/%s*(%d+)")
-                if cur and mx then
-                    local cNum, mNum = tonumber(cur), tonumber(mx)
-                    if cNum and mNum and (mNum >= 30 and mNum <= 100) and (cNum >= mNum and cNum > 0) then
-                        return true
-                    end
-                end
-                local pName = (desc.Parent and desc.Parent.Name:lower()) or ""
-                local dName = desc.Name:lower()
-                if (pName:find("coin") or dName:find("coin") or pName:find("candy") or dName:find("bag")) and txt:match("^[Ff][Uu][Ll][Ll]!*$") then
-                    return true
-                end
-            end
+local function checkIsBagFull()
+    local maxBag = 40
+    pcall(function()
+        local MarketplaceService = game:GetService("MarketplaceService")
+        if MarketplaceService:UserOwnsGamePassAsync(player.UserId, 151528) then
+            maxBag = 50
         end
-    end
-    return false
+    end)
+    return collectedCoinCount >= maxBag
 end
 
 local function executeBagFullAction()
@@ -1706,6 +1693,7 @@ local function flyToCoin(targetPart)
     end
     collectedCoins[targetPart] = true
     startedCollecting = true
+    collectedCoinCount = collectedCoinCount + 1
 end
 
 MapTab:Toggle({
@@ -1715,6 +1703,7 @@ MapTab:Toggle({
         flying = state
         collectedCoins = {}
         startedCollecting = false
+        collectedCoinCount = 0
         local char = getChar()
         if not state then restoreChar() return end
         noclipLoop(char)

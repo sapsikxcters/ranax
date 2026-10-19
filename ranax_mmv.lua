@@ -6120,43 +6120,14 @@ end
 _G.getCoinBagLive = getCoinBagLive
 
 local function IsCoinBagFull()
-    if not startedCollecting then return false end
     local defaultMax = 40
     pcall(function()
         if MarketplaceService:UserOwnsGamePassAsync(LocalPlayer.UserId, 151528) then
             defaultMax = 50
         end
     end)
-    if (_G.RanaxCoinsCollected or 0) >= defaultMax then
-        return true
-    end
-    local pgui = LocalPlayer:FindFirstChild("PlayerGui")
-    if pgui then
-        local mg = pgui:FindFirstChild("MainGUI") or pgui:FindFirstChild("MainGui") or pgui:FindFirstChild("Gui")
-        if mg then
-            for _, desc in ipairs(mg:GetDescendants()) do
-                if desc:IsA("TextLabel") and desc.Visible then
-                    local pName = (desc.Parent and desc.Parent.Name:lower()) or ""
-                    local dName = desc.Name:lower()
-                    if pName:find("coin") or dName:find("coin") or pName:find("bag") or dName:find("bag") then
-                        local txt = desc.Text or ""
-                        local cur, mx = txt:match("(%d+)%s*/%s*(%d+)")
-                        if cur and mx then
-                            local cNum, mNum = tonumber(cur), tonumber(mx)
-                            if cNum and mNum and (mNum == 40 or mNum == 50) and cNum >= mNum and cNum > 0 then
-                                return true
-                            end
-                        elseif txt:lower():find("full") then
-                            return true
-                        end
-                    end
-                end
-            end
-        end
-    end
-    return false
+    return (_G.RanaxCoinsCollected or 0) >= defaultMax
 end
-_G.IsCoinBagFull = IsCoinBagFull
 
 local function executeBagFullAction()
     local role = "INNOCENT"
