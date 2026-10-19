@@ -54,17 +54,107 @@ if not lib then
     return
 end
 
--- GameId validation: 66654135 is MM2 Universe/GameId, 142823291 is MM2 PlaceId
-if game.GameId == 66654135 or game.PlaceId == 142823291 or game.PlaceId == 335132778 or game.GameId == 142823291 then
-    if not genv.mm2VisualLibraryLoaded then
-        local Players, ReplicatedStorage, RunService, Workspace, TweenService, TeleportService, localPlayer, fn, fn2, v, tbl, fn3, fn4, fn5, fn6, fn7, v2, fn8, flag, fn9
-        local vector2, v3
+-- Universal Game Support (All Games Supported - No PlaceId/GameId Lock)
+if genv.mm2VisualLibraryLoaded then
+    lib:Notify({
+        Title = "Already loaded",
+        Content = "Project Reverse is already loaded in this session.",
+        Type = "Warning",
+        Duration = 4,
+    })
+    return
+end
 
-        do
+local Players, ReplicatedStorage, RunService, Workspace, TweenService, TeleportService, localPlayer, fn, fn2, v, tbl, fn3, fn4, fn5, fn6, fn7, v2, fn8, flag, fn9
+local vector2, v3
+
+do
             genv.mm2VisualLibraryLoaded = true
             local HttpService = game:GetService("HttpService")
             Players = game:GetService("Players")
-            ReplicatedStorage = game:GetService("ReplicatedStorage")
+            local realRS = game:GetService("ReplicatedStorage")
+
+            -- Universal Mock Hierarchy for non-MM2 games
+            local function createMockRemote(name)
+                local dummyEvent = {
+                    Connect = function(self, fn)
+                        return {
+                            Disconnect = function() end,
+                            disconnect = function() end,
+                            Connected = true
+                        }
+                    end,
+                    connect = function(self, fn)
+                        return {
+                            Disconnect = function() end,
+                            disconnect = function() end,
+                            Connected = true
+                        }
+                    end,
+                    Wait = function() task.wait(999999) end,
+                    wait = function() task.wait(999999) end,
+                    Once = function() return { Disconnect = function() end } end
+                }
+
+                local mock = {}
+                local meta = {}
+
+                meta.__index = function(tbl, key)
+                    if key == "OnClientEvent" or key == "onClientEvent" or key == "Event" or key == "Changed" then
+                        return dummyEvent
+                    elseif key == "FireServer" or key == "fireServer" or key == "Fire" or key == "fire" then
+                        return function() end
+                    elseif key == "InvokeServer" or key == "invokeServer" then
+                        return function() return {} end
+                    elseif key == "FindFirstChild" or key == "findFirstChild" or key == "WaitForChild" or key == "waitForChild" then
+                        return function(self, childName)
+                            return tbl[childName]
+                        end
+                    elseif key == "Name" then
+                        return name or "Mock"
+                    elseif key == "ClassName" then
+                        return "RemoteEvent"
+                    elseif key == "IsA" or key == "isA" then
+                        return function(self, cls) return true end
+                    end
+                    local child = createMockRemote(tostring(key))
+                    rawset(tbl, key, child)
+                    return child
+                end
+
+                meta.__call = function()
+                    return {}
+                end
+
+                return setmetatable(mock, meta)
+            end
+
+            local function wrapInstance(inst)
+                if typeof(inst) ~= "Instance" then
+                    return inst
+                end
+                local proxy = {}
+                local meta = {}
+                meta.__index = function(_, key)
+                    local child = inst:FindFirstChild(key)
+                    if child then
+                        return wrapInstance(child)
+                    end
+                    local ok, val = pcall(function() return inst[key] end)
+                    if ok and val ~= nil then
+                        if typeof(val) == "function" then
+                            return function(_, ...)
+                                return val(inst, ...)
+                            end
+                        end
+                        return val
+                    end
+                    return createMockRemote(tostring(key))
+                end
+                return setmetatable(proxy, meta)
+            end
+
+            ReplicatedStorage = wrapInstance(realRS)
             RunService = game:GetService("RunService")
             Workspace = game:GetService("Workspace")
             TweenService = game:GetService("TweenService")
@@ -1760,7 +1850,10 @@ if game.GameId == 66654135 or game.PlaceId == 142823291 or game.PlaceId == 33513
 
                 local tbl7 = {}
                 local tbl8 = {}
-                local Item = require(ReplicatedStorage.Database.Sync.Item)
+                local Item = {}
+                pcall(function()
+                    Item = require(ReplicatedStorage.Database.Sync.Item) or {}
+                end)
 
                 for k, v8 in pairs(Item) do
                     if v8.Rarity == "Unique" or v8.Rarity == "Godly" or v8.Rarity == "Ancient" or v8.Rarity == "Classic" or v8.Rarity == "Legendary" then
@@ -4680,7 +4773,7 @@ if game.GameId == 66654135 or game.PlaceId == 142823291 or game.PlaceId == 33513
 
         v22:AddBanner({
             Type = "Info",
-            Text = "Murder Mystery 2 only (GameId 66654135). Other games are not supported by this script.",
+            Text = "Universal Mode Active - Works in all games.",
         })
 
         if genv.MM2LibraryWindow then
@@ -4702,23 +4795,6 @@ if game.GameId == 66654135 or game.PlaceId == 142823291 or game.PlaceId == 33513
             notify(lib, tbl4)
         end)
 
-        print("[MM2] UI ready. Toggle with RightControl.")
+        print("[Universal] UI ready. Toggle with RightControl.")
         return
     end
-
-    lib:Notify({
-        Title = "Already loaded",
-        Content = "MM2 is already loaded in this session.",
-        Type = "Warning",
-        Duration = 4,
-    })
-
-    return
-end
-
-lib:Notify({
-    Title = "Wrong game",
-    Content = "This script only works in Murder Mystery 2 (GameId 66654135).",
-    Type = "Danger",
-    Duration = 6,
-})
