@@ -1810,6 +1810,7 @@ end
 EnsureConfigDir()
 
 task.wait()
+do -- begin tab scope
 local SettingsTab = Window:Tab({
     Title = "Settings",
     Icon = "cog",
@@ -2080,6 +2081,9 @@ SettingsTab:Button({
 })
 
 task.wait()
+end -- end previous tab scope
+
+do -- begin tab scope
 local ESPTab = Window:Tab({
     Title = "ESP",
     Icon = "hat-glasses",
@@ -2764,6 +2768,9 @@ UIElements.ESPCoinToggle = ESPTab:Toggle({
 })
 -------------------------------------------------------------------------------------------------------------------
 task.wait()
+end -- end previous tab scope
+
+do -- begin tab scope
 local MiscTab = Window:Tab({
     Title = "Miscellaneous",
     Icon = "server",
@@ -4780,6 +4787,9 @@ end
 
 -- ==================== RANAX SKIN CHANGER SYSTEM (GODLY & CHROMA WEAPONS) ====================
 task.wait()
+end -- end previous tab scope
+
+do -- begin tab scope
 local SkinChangerTab = Window:Tab({
     Title = "Skin Changer",
     Icon = "sparkles",
@@ -5808,6 +5818,9 @@ SkinChangerTab:Button({
 end
 -------------------------------------------------------------------------------------------------------------------
 task.wait()
+end -- end previous tab scope
+
+do -- begin tab scope
 local CoinFarmTab = Window:Tab({
     Title = "Coin Farm",
     Icon = "coins",
@@ -6266,7 +6279,7 @@ task.spawn(function()
         task.wait(0.01)
     end
 end)
-end -- end: Coin Farm engine scope
+-- removed unclosed end
 
 
 -- ==================== COIN STATS & TRACKER ====================
@@ -7759,6 +7772,9 @@ _G.triggerCinematicKill = triggerCinematicKill
 
 -- ==================== SHERIFF TAB UI ====================
 task.wait()
+end -- end previous tab scope
+
+do -- begin tab scope
 local SheriffTab = Window:Tab({
     Title = "Sheriff",
     Icon = "crosshair",
@@ -8101,6 +8117,9 @@ UIElements.ShootV2FlickTurnTime = SheriffTab:Slider({
 
 -------------------------------------------------------------------------------------------------------------------
 task.wait()
+end -- end previous tab scope
+
+do -- begin tab scope
 local MurdererTab = Window:Tab({
     Title = "Murderer",
     Icon = "target",
@@ -8380,6 +8399,9 @@ UIElements.KillEveryoneKeybind = KillEveryoneKeybind
 -------------------------------------------------------------------------------------------------------------------
 do
     task.wait()
+end -- end previous tab scope
+
+do -- begin tab scope
 local MapTab = Window:Tab({
         Title = "Map",
         Icon = "map",
@@ -8483,6 +8505,9 @@ local MapTab = Window:Tab({
 end
 -------------------------------------------------------------------------------------------------------------------
 task.wait()
+end -- end previous tab scope
+
+do -- begin tab scope
 local AdminTab = Window:Tab({
     Title = "Admin",
     Icon = "sparkles",
@@ -9523,6 +9548,9 @@ do local function _initFlingTab()
     end
 
     task.wait()
+end -- end previous tab scope
+
+do -- begin tab scope
 local FlingTab = Window:Tab({
         Title = "Fling",
         Icon = "zap",
@@ -10269,3 +10297,5 @@ task.delay(1.5, function()
         end
     end)
 end)
+
+end -- end last tab scope
