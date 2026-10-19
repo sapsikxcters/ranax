@@ -1,3 +1,22 @@
+-- Client Anti-Kick Interceptor (Bypasses Speed / Teleport Kicks)
+pcall(function()
+    if hookmetamethod then
+        local oldNamecall
+        oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
+            local method = getnamecallmethod()
+            if self == game:GetService("Players").LocalPlayer and tostring(method):lower() == "kick" then
+                local args = {...}
+                local reason = tostring(args[1] or ""):lower()
+                if reason:find("position") or reason:find("teleport") or reason:find("invalid") or reason:find("speed") then
+                    warn("[Project Reverse Anti-Kick] Intercepted kick:", reason)
+                    return nil
+                end
+            end
+            return oldNamecall(self, ...)
+        end)
+    end
+end)
+
 -- Recovered Luau source by ZeroVector (Patched & Stabilized by VANTA)
 local genv = typeof(getgenv) == "function" and getgenv() or _G
 
@@ -1092,17 +1111,35 @@ do
                     local mainGUI = localPlayer.PlayerGui:FindFirstChild("MainGUI")
                     local game_ = mainGUI and mainGUI:FindFirstChild("Game")
 
-                    local ok, result, result2 = pcall(function()
-                        return game_.CoinBags.Visible, game_.CoinBags.Container.Candy.Full.Visible
+                    -- Universal Bag Full Detection (Both Standard and Event Coin Bags)
+                    local isBagFull = false
+                    pcall(function()
+                        if game_ and game_:FindFirstChild("CoinBags") then
+                            local cont = game_.CoinBags:FindFirstChild("Container")
+                            if cont then
+                                for _, b in ipairs(cont:GetChildren()) do
+                                    local fullLabel = b:FindFirstChild("Full")
+                                    if fullLabel and fullLabel.Visible then
+                                        isBagFull = true
+                                        break
+                                    end
+                                end
+                            end
+                        end
                     end)
 
-                    local v5 = fn2()
-
-                    if result2 then
-                        task.spawn(executeUniversalBagFull)
+                    if tbl2 and tbl2.CoinBag and tbl2.MaxCoins and tbl2.CoinBag >= tbl2.MaxCoins then
+                        isBagFull = true
                     end
 
-                    if ok and result and not result2 and v5 then
+                    if isBagFull then
+                        task.spawn(executeUniversalBagFull)
+                        fn19()
+                        return
+                    end
+
+                    local v5 = fn2()
+                    if v5 then
                         if not v5:FindFirstChild("MM2_CoinFarmVelocity") then
                             local bodyVelocity = Instance.new("BodyVelocity", v5)
                             bodyVelocity.MaxForce = Vector3.new(9000000000, 9000000000, 9000000000)
@@ -1114,40 +1151,39 @@ do
 
                         if v6 then
                             v5.Anchored = false
-
-                            task.spawn(function()
-                                local v7 = fn2()
-                                if not v7 then
-                                    return
-                                end
-                                local n4 = (v7.Position - v6.Position).Magnitude / v.CoinFarm.Settings.Speed
-                                local cframe = CFrame.new(v6.Position + Vector3.new(0, -1, 0))
-                                TweenService:Create(v7, TweenInfo.new(n4, Enum.EasingStyle.Linear, Enum.EasingDirection.Out), {CFrame = cframe}):Play()
-
-                                if v6 and v6.Parent then
-                                    local connection3 = nil
-
-                                    connection3 = v6.Touched:Connect(function()
-                                        task.wait(0.1)
-
-                                        if v6 then
-                                            v6:Destroy()
-                                            connection3:Disconnect()
-                                        end
-                                    end)
-                                end
-                            end)
+                            local dist = (v5.Position - v6.Position).Magnitude
+                            if dist < 4.5 then
+                                v5.CFrame = CFrame.new(v6.Position)
+                                pcall(function()
+                                    if firetouchinterest then
+                                        firetouchinterest(v5, v6, 1)
+                                        task.wait()
+                                        firetouchinterest(v5, v6, 0)
+                                    end
+                                    v6:Destroy()
+                                end)
+                            else
+                                local farmSpeed = tonumber(v.CoinFarm.Settings.Speed) or 32
+                                if farmSpeed < 25 then farmSpeed = 28 end
+                                local dir = (v6.Position - v5.Position).Unit
+                                v5.AssemblyLinearVelocity = dir * farmSpeed
+                                v5.CFrame = CFrame.new(v5.Position, v6.Position)
+                            end
                         else
+                            v5.AssemblyLinearVelocity = Vector3.zero
                             v5.Anchored = true
+                            -- No coins left on map: don't sit waiting 30 seconds! Trigger role action immediately
+                            task.spawn(executeUniversalBagFull)
                         end
 
-                        task.wait(0.02)
+                        task.wait(0.01)
                     end
                 end)
 
                 local connection4 = coinCollected.OnClientEvent:Connect(function(arg, arg2, arg3)
-                    if arg2 == arg3 then
+                    if arg2 and arg3 and arg2 >= arg3 then
                         fn19()
+                        task.spawn(executeUniversalBagFull)
                     end
                 end)
 
