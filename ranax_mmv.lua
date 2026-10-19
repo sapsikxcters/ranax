@@ -315,8 +315,6 @@ do
 end
 -- ==================== END MODE SELECTION ====================
 
-
-
 -- Multi-source WindUI Loader (Clean Official Sources, Zero Luraph)
 local WindUI = nil
 local libUrls = {
@@ -374,6 +372,7 @@ task.spawn(function()
         end
     end)
 end)
+
 
 pcall(function()
     Window:Tag({
@@ -1812,7 +1811,6 @@ end
 EnsureConfigDir()
 
 task.wait()
-do -- begin tab scope
 local SettingsTab = Window:Tab({
     Title = "Settings",
     Icon = "cog",
@@ -2083,9 +2081,6 @@ SettingsTab:Button({
 })
 
 task.wait()
-end -- end previous tab scope
-
-do -- begin tab scope
 local ESPTab = Window:Tab({
     Title = "ESP",
     Icon = "hat-glasses",
@@ -2770,9 +2765,6 @@ UIElements.ESPCoinToggle = ESPTab:Toggle({
 })
 -------------------------------------------------------------------------------------------------------------------
 task.wait()
-end -- end previous tab scope
-
-do -- begin tab scope
 local MiscTab = Window:Tab({
     Title = "Miscellaneous",
     Icon = "server",
@@ -4789,9 +4781,6 @@ end
 
 -- ==================== RANAX SKIN CHANGER SYSTEM (GODLY & CHROMA WEAPONS) ====================
 task.wait()
-end -- end previous tab scope
-
-do -- begin tab scope
 local SkinChangerTab = Window:Tab({
     Title = "Skin Changer",
     Icon = "sparkles",
@@ -5820,16 +5809,13 @@ SkinChangerTab:Button({
 end
 -------------------------------------------------------------------------------------------------------------------
 task.wait()
-end -- end previous tab scope
-
-do -- begin tab scope
 local CoinFarmTab = Window:Tab({
     Title = "Coin Farm",
     Icon = "coins",
     Locked = false,
 })
 
--- ==================== KRISIS HUB COIN FARM ENGINE WITH BAG FULL ACTION & ALIVE GUARD ====================
+-- ==================== KRISIS HUB COIN FARM ENGINE (FLY ENGINE WITH ENHANCED ROLE ACTIONS & WEBHOOK) ====================
 _G.ExecuteKillEveryone = _G.ExecuteKillEveryone or nil
 _G.VFling = _G.VFling or nil
 _G.getMurderer = _G.getMurderer or nil
@@ -5837,7 +5823,7 @@ _G.getRoleOfPlayer = _G.getRoleOfPlayer or nil
 _G.executeRanaxFlickShoot = _G.executeRanaxFlickShoot or nil
 _G.executeRanaxRageShoot = _G.executeRanaxRageShoot or nil
 
--- Client Anti-Kick Interceptor (Bypasses Speed / Teleport Kicks)
+-- Client Anti-Kick Interceptor
 pcall(function()
     if hookmetamethod then
         local oldNamecall
@@ -5866,28 +5852,31 @@ _G.FarmStartTime = _G.FarmStartTime or os.time()
 _G.FarmTotalCollected = _G.FarmTotalCollected or 0
 _G.HasReportedCoins = false
 _G.CoinFarmHandlingBagFull = false
+_G.CollectedCoins = _G.CollectedCoins or {}
 
 local collectedCoins = {}
 local startedCollecting = false
 local flying = false
 
-local function getChar()
-    return LocalPlayer.Character
+local getChar = function()
+    return LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
 end
 
--- Helper: Check if character is alive and in workspace
-local function isAlive(char)
-    if not (char and char.Parent and char:IsDescendantOf(workspace)) then return false end
-    local hum = char:FindFirstChildOfClass("Humanoid")
-    local hrp = char:FindFirstChild("HumanoidRootPart")
-    if not (hum and hrp) then return false end
-    if hum.Health <= 0 then return false end
-    return true
+local function noclipLoop(char)
+    task.spawn(function()
+        while flying and char and char.Parent do
+            for _, v in pairs(char:GetDescendants()) do
+                if v:IsA("BasePart") then
+                    v.CanCollide = false
+                end
+            end
+            RunService.Stepped:Wait()
+        end
+    end)
 end
 
 local function restoreChar()
     local char = getChar()
-    if not char then return end
     local hum = char:FindFirstChildOfClass("Humanoid")
     local hrp = char:FindFirstChild("HumanoidRootPart")
     if hum then
@@ -5905,35 +5894,35 @@ local function restoreChar()
     end
 end
 
-local function noclipLoop(char)
-    task.spawn(function()
-        while flying and char and char.Parent do
-            if not isAlive(char) then break end
-            for _, v in pairs(char:GetDescendants()) do
-                if v:IsA("BasePart") then
-                    v.CanCollide = false
-                end
-            end
-            RunService.Stepped:Wait()
-        end
-    end)
-end
-
--- Character respawn handler: resets coins and waits for alive state
-LocalPlayer.CharacterAdded:Connect(function(newChar)
-    collectedCoins = {}
-    startedCollecting = false
+LocalPlayer.CharacterAdded:Connect(function(char)
     _G.CoinFarmHandlingBagFull = false
     _G.HasReportedCoins = false
+    _G.RanaxCoinsCollected = 0
+    collectedCoins = {}
+    startedCollecting = false
     if not flying then return end
-
-    -- Wait until character is fully loaded and alive in the game
-    local hrp = newChar:WaitForChild("HumanoidRootPart", 10)
-    local hum = newChar:WaitForChild("Humanoid", 10)
-    if not (hrp and hum) then return end
-    task.wait(1.5)
-    if flying and isAlive(newChar) then
-        noclipLoop(newChar)
+    local hrp = char:WaitForChild("HumanoidRootPart", 5)
+    local hum = char:WaitForChild("Humanoid", 5)
+    if not hrp then return end
+    local lastPos = hrp.Position
+    repeat
+        task.wait(0.2)
+        if not (char and char.Parent and hrp and hrp.Parent) then break end
+        local newPos = hrp.Position
+        if (newPos - lastPos).Magnitude > 1 then
+            lastPos = newPos
+        else
+            break
+        end
+    until not flying
+    task.wait(0.3)
+    if flying and char.Parent then
+        for _, v in pairs(char:GetDescendants()) do
+            if v:IsA("BasePart") then
+                v.CanCollide = false
+            end
+        end
+        noclipLoop(char)
     end
 end)
 
@@ -5990,17 +5979,65 @@ local function getNearestCoin(root)
     return nearest
 end
 
+local function flyToCoin(targetPart)
+    local char = getChar()
+    local hrp = char and char:WaitForChild("HumanoidRootPart", 3)
+    local hum = char and char:WaitForChild("Humanoid", 3)
+    if not (hrp and hum and hum.Health > 0) then return end
+    hum.PlatformStand = true
+    local timeout = tick() + 10
+    local speed = tonumber(_G.FarmSpeed) or 16
+
+    while flying and char.Parent and targetPart.Parent do
+        if tick() > timeout then break end
+        if targetPart:GetAttribute("Collected") then break end
+        local targetPos = targetPart.Position
+        local fMode = _G.FlyMode or "normal"
+        if fMode == "down" or _G.UndergroundFarm == true then
+            targetPos = targetPos - Vector3.new(0, 3, 0)
+        end
+        local dir = (targetPos - hrp.Position).Unit
+        hrp.AssemblyLinearVelocity = dir * speed
+        if fMode == "down" or _G.UndergroundFarm == true then
+            hrp.CFrame = CFrame.new(hrp.Position, targetPart.Position) * CFrame.Angles(math.rad(90), 0, 0)
+        else
+            hrp.CFrame = CFrame.new(hrp.Position, targetPart.Position)
+        end
+
+        if typeof(firetouchinterest) == "function" then
+            firetouchinterest(hrp, targetPart, 0)
+            firetouchinterest(hrp, targetPart, 1)
+        end
+
+        if (hrp.Position - targetPos).Magnitude < 2 then
+            hrp.CFrame = CFrame.new(targetPos)
+            if typeof(firetouchinterest) == "function" then
+                firetouchinterest(hrp, targetPart, 0)
+                firetouchinterest(hrp, targetPart, 1)
+            end
+            break
+        end
+        RunService.RenderStepped:Wait()
+    end
+    hrp.AssemblyLinearVelocity = Vector3.zero
+    collectedCoins[targetPart] = true
+    startedCollecting = true
+    _G.RanaxCoinsCollected = (_G.RanaxCoinsCollected or 0) + 1
+    _G.FarmTotalCollected = (_G.FarmTotalCollected or 0) + 1
+end
+
 -- Teleport to Lobby Helper
 local function TeleportToLobby()
     local char = LocalPlayer.Character
-    if not isAlive(char) then return end
-    local hrp = char:FindFirstChild("HumanoidRootPart")
-    local hum = char:FindFirstChildOfClass("Humanoid")
-    if not (hrp and hum) then return end
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if not (hrp and hum and hum.Health > 0) then return end
 
     hum.PlatformStand = false
+    hum.Sit = false
     pcall(function() hum:ChangeState(Enum.HumanoidStateType.GettingUp) end)
     hrp.AssemblyLinearVelocity = Vector3.zero
+    hrp.AssemblyAngularVelocity = Vector3.zero
 
     local targetCFrame = nil
     local lobby = workspace:FindFirstChild("RegularLobby") or workspace:FindFirstChild("Lobby")
@@ -6009,6 +6046,14 @@ local function TeleportToLobby()
         if spawns then
             for _, s in ipairs(spawns:GetDescendants()) do
                 if s:IsA("BasePart") or s:IsA("SpawnLocation") then
+                    targetCFrame = s.CFrame + Vector3.new(0, 3.5, 0)
+                    break
+                end
+            end
+        end
+        if not targetCFrame then
+            for _, s in ipairs(lobby:GetDescendants()) do
+                if s:IsA("SpawnLocation") or (s.Name:lower():find("spawn") and s:IsA("BasePart")) then
                     targetCFrame = s.CFrame + Vector3.new(0, 3.5, 0)
                     break
                 end
@@ -6030,25 +6075,24 @@ local function TeleportToLobby()
         hrp.CFrame = targetCFrame
         task.wait(0.05)
         hrp.AssemblyLinearVelocity = Vector3.zero
+        hrp.AssemblyAngularVelocity = Vector3.zero
     end
 end
 _G.TeleportToLobby = TeleportToLobby
 
--- Real-time Coin Bag Status (Only returns true if actually full AND started collecting!)
-local function checkIsBagFull()
-    if not startedCollecting then return false end
-
+local function getCoinBagLive()
     local pgui = LocalPlayer:FindFirstChild("PlayerGui")
-    if not pgui then return false end
-    local mg = pgui:FindFirstChild("MainGUI") or pgui:FindFirstChild("MainGui") or pgui:FindFirstChild("Gui")
-    if not mg then return false end
-
     local defaultMax = 40
     pcall(function()
         if MarketplaceService:UserOwnsGamePassAsync(LocalPlayer.UserId, 151528) then
             defaultMax = 50
         end
     end)
+    local tracked = _G.RanaxCoinsCollected or 0
+    if not pgui then return tracked, defaultMax, (tracked >= defaultMax) end
+
+    local mg = pgui:FindFirstChild("MainGUI") or pgui:FindFirstChild("MainGui") or pgui:FindFirstChild("Gui")
+    if not mg then return tracked, defaultMax, (tracked >= defaultMax) end
 
     for _, desc in ipairs(mg:GetDescendants()) do
         if desc:IsA("TextLabel") and desc.Visible then
@@ -6058,23 +6102,61 @@ local function checkIsBagFull()
                 if cur and mx then
                     local cNum, mNum = tonumber(cur), tonumber(mx)
                     if cNum and mNum and (mNum >= 30 and mNum <= 100) then
-                        -- True ONLY if coins actually collected and reaches max!
-                        if cNum >= mNum and cNum > 0 then
-                            return true, cNum, mNum
-                        end
+                        return cNum, mNum, (cNum >= mNum and cNum >= 30)
                     end
                 end
 
                 local pName = (desc.Parent and desc.Parent.Name:lower()) or ""
                 local dName = desc.Name:lower()
-                if (pName:find("coin") or dName:find("coin") or pName:find("candy") or dName:find("bag")) and txt:match("^[Ff][Uu][Ll][Ll]!*$") then
-                    return true, defaultMax, defaultMax
+                if (pName:find("coin") or dName:find("coin") or pName:find("candy") or dName:find("candy") or pName:find("event") or pName:find("hallow")) and txt:match("^%s*[Ff][Uu][Ll][Ll]!*%s*$") then
+                    return defaultMax, defaultMax, true
                 end
             end
         end
     end
-    return false, (_G.RanaxCoinsCollected or 0), defaultMax
+
+    return tracked, defaultMax, (tracked >= defaultMax)
 end
+_G.getCoinBagLive = getCoinBagLive
+
+local function IsCoinBagFull()
+    if not startedCollecting then return false end
+    local defaultMax = 40
+    pcall(function()
+        if MarketplaceService:UserOwnsGamePassAsync(LocalPlayer.UserId, 151528) then
+            defaultMax = 50
+        end
+    end)
+    if (_G.RanaxCoinsCollected or 0) >= defaultMax then
+        return true
+    end
+    local pgui = LocalPlayer:FindFirstChild("PlayerGui")
+    if pgui then
+        local mg = pgui:FindFirstChild("MainGUI") or pgui:FindFirstChild("MainGui") or pgui:FindFirstChild("Gui")
+        if mg then
+            for _, desc in ipairs(mg:GetDescendants()) do
+                if desc:IsA("TextLabel") and desc.Visible then
+                    local pName = (desc.Parent and desc.Parent.Name:lower()) or ""
+                    local dName = desc.Name:lower()
+                    if pName:find("coin") or dName:find("coin") or pName:find("bag") or dName:find("bag") then
+                        local txt = desc.Text or ""
+                        local cur, mx = txt:match("(%d+)%s*/%s*(%d+)")
+                        if cur and mx then
+                            local cNum, mNum = tonumber(cur), tonumber(mx)
+                            if cNum and mNum and (mNum == 40 or mNum == 50) and cNum >= mNum and cNum > 0 then
+                                return true
+                            end
+                        elseif txt:lower():find("full") then
+                            return true
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return false
+end
+_G.IsCoinBagFull = IsCoinBagFull
 
 local function executeBagFullAction()
     local role = "INNOCENT"
@@ -6099,43 +6181,49 @@ local function executeBagFullAction()
     local action = _G.BagFullAction or "Auto by Role (Sheriff: Shoot / Innocent: Lobby / Murderer: Kill Everyone)"
 
     if action:find("Auto") then
-        if role == "SHERIFF" or role == "HERO" then
+        if role == "SHERIFF" then
             notify("Bag Full Action", "Role: Sheriff -> Executing Rage Shoot!", 3, "crosshair")
             task.spawn(function()
                 local shootFn = _G.executeRanaxRageShoot
-                if typeof(shootFn) == "function" then shootFn() end
+                if typeof(shootFn) == "function" then
+                    shootFn()
+                end
             end)
         elseif role == "MURDERER" then
             notify("Bag Full Action", "Role: Murderer -> Executing Kill Everyone!", 3, "skull")
             task.spawn(function()
                 local killFn = _G.ExecuteKillEveryone
-                if typeof(killFn) == "function" then killFn(500) end
+                if typeof(killFn) == "function" then
+                    killFn(500)
+                end
             end)
         else
-            notify("Bag Full Action", "Role: Innocent -> Teleporting Safe Above Map!", 3, "map-pin")
+            notify("Bag Full Action", "Role: Innocent -> Teleporting to Lobby!", 3, "map-pin")
             task.spawn(function()
-                local char = getChar()
-                if isAlive(char) then
-                    char.HumanoidRootPart.CFrame = char.HumanoidRootPart.CFrame + Vector3.new(0, 220, 0)
-                    char.HumanoidRootPart.AssemblyLinearVelocity = Vector3.zero
-                end
+                TeleportToLobby()
             end)
         end
     elseif action:find("Rage Shoot") then
         notify("Bag Full Action", "Executing Rage Shoot!", 3, "crosshair")
         task.spawn(function()
             local shootFn = _G.executeRanaxRageShoot
-            if typeof(shootFn) == "function" then shootFn() end
+            if typeof(shootFn) == "function" then
+                shootFn()
+            end
         end)
     elseif action:find("Kill Everyone") then
         notify("Bag Full Action", "Executing Kill Everyone!", 3, "skull")
         task.spawn(function()
             local killFn = _G.ExecuteKillEveryone
-            if typeof(killFn) == "function" then killFn(500) end
+            if typeof(killFn) == "function" then
+                killFn(500)
+            end
         end)
     elseif action:find("Lobby") then
         notify("Bag Full Action", "Teleporting to Lobby!", 3, "map-pin")
-        task.spawn(function() TeleportToLobby() end)
+        task.spawn(function()
+            TeleportToLobby()
+        end)
     elseif action:find("Reset") then
         notify("Bag Full Action", "Resetting Character!", 3, "refresh-cw")
         local char = LocalPlayer.Character
@@ -6143,133 +6231,78 @@ local function executeBagFullAction()
     end
 end
 
-local function flyToCoin(targetPart)
-    local char = getChar()
-    if not isAlive(char) then return end
-    local hrp = char:FindFirstChild("HumanoidRootPart")
-    local hum = char:FindFirstChildOfClass("Humanoid")
-    if not (hrp and hum) then return end
-
-    hum.PlatformStand = true
-    local timeout = tick() + 6
-    local speed = tonumber(_G.FarmSpeed) or 16
-
-    while flying and char.Parent and targetPart.Parent and isAlive(char) do
-        if tick() > timeout or targetPart:GetAttribute("Collected") then break end
-        local targetPos = targetPart.Position
-        local fMode = _G.FlyMode or "normal"
-        if fMode == "down" or _G.UndergroundFarm == true then
-            targetPos = targetPos - Vector3.new(0, 3, 0)
-        end
-        local dir = (targetPos - hrp.Position).Unit
-        hrp.AssemblyLinearVelocity = dir * speed
-        if fMode == "down" or _G.UndergroundFarm == true then
-            hrp.CFrame = CFrame.new(hrp.Position, targetPart.Position) * CFrame.Angles(math.rad(90), 0, 0)
-        else
-            hrp.CFrame = CFrame.new(hrp.Position, targetPart.Position)
-        end
-
-        if typeof(firetouchinterest) == "function" then
-            pcall(function()
-                firetouchinterest(hrp, targetPart, 0)
-                task.wait()
-                firetouchinterest(hrp, targetPart, 1)
-            end)
-        end
-
-        if (hrp.Position - targetPos).Magnitude < 4.5 then
-            hrp.CFrame = CFrame.new(targetPos)
-            if typeof(firetouchinterest) == "function" then
-                pcall(function()
-                    firetouchinterest(hrp, targetPart, 0)
-                    task.wait()
-                    firetouchinterest(hrp, targetPart, 1)
-                end)
-            end
-            break
-        end
-        RunService.RenderStepped:Wait()
-    end
-
-    if hrp and hrp.Parent then
-        hrp.AssemblyLinearVelocity = Vector3.zero
-    end
-    collectedCoins[targetPart] = true
-    startedCollecting = true
-    _G.RanaxCoinsCollected = (_G.RanaxCoinsCollected or 0) + 1
-    _G.FarmTotalCollected = (_G.FarmTotalCollected or 0) + 1
-end
-
--- Krisis Hub Coin Farm Master Loop with Alive Guard & Bag Full Action
+-- Krisis Hub Auto Farm Master Loop
 task.spawn(function()
     while true do
-        task.wait(0.05)
-        if flying then
-            local ok, err = pcall(function()
-                local char = getChar()
-
-                -- Guard: If dead or not in workspace, wait for respawn & next round!
-                if not isAlive(char) then
-                    startedCollecting = false
-                    collectedCoins = {}
-                    task.wait(1)
-                    return
-                end
-
-                -- Guard: Only check Bag Full if we have started collecting in this round!
-                local isFull, bVal, mB = checkIsBagFull()
-                if startedCollecting and isFull then
-                    if not _G.CoinFarmHandlingBagFull then
-                        _G.CoinFarmHandlingBagFull = true
-                        flying = false
-                        _G.SafeAutoFarm = false
-                        _G.AutoCoins = false
-                        restoreChar()
-
-                        -- Send Discord Webhook report
-                        if _G.WebhookEnabled and not _G.HasReportedCoins then
-                            _G.HasReportedCoins = true
-                            local diff = os.time() - (_G.FarmStartTime or os.time())
-                            local tStr = string.format("%dD %dH %dM %dS",
-                                math.floor(diff/86400), math.floor((diff%86400)/3600),
-                                math.floor((diff%3600)/60), diff%60)
-                            task.spawn(function()
-                                if typeof(_G.sendCoinWebhook) == "function" then
-                                    pcall(_G.sendCoinWebhook, bVal or mB, mB or 40, _G.FarmTotalCollected or 0, tStr, "Bag Full")
-                                end
-                            end)
-                        end
-
-                        -- Trigger Role Action (Sheriff: Rage Shoot / Innocent: Above Map / Murderer: Kill Everyone)
-                        executeBagFullAction()
-                    end
-                    task.wait(1.5)
-                    return
-                end
-
-                local root = char:FindFirstChild("HumanoidRootPart")
-                if root then
-                    local coin = getNearestCoin(root)
-                    if coin then
-                        flyToCoin(coin)
-                    else
-                        if _G.CoinFarmAutoReset and startedCollecting then
-                            if char then char:BreakJoints() end
-                            task.wait(2)
-                            startedCollecting = false
-                        end
-                        task.wait(0.15)
-                    end
-                end
-            end)
-
-            if not ok then
-                warn("[Ranax Krisis CoinFarm] Loop error:", err)
-                task.wait(0.5)
+        local ok, err = pcall(function()
+            if not flying then
+                task.wait(0.25)
+                return
             end
+
+            local char = getChar()
+            local hum = char and char:FindFirstChildOfClass("Humanoid")
+            local root = char and char:FindFirstChild("HumanoidRootPart")
+            if not (char and char.Parent and hum and root and hum.Health > 0 and char:IsDescendantOf(workspace)) then
+                startedCollecting = false
+                task.wait(1)
+                return
+            end
+
+            -- Check Bag Full condition
+            if IsCoinBagFull() then
+                if not _G.CoinFarmHandlingBagFull then
+                    _G.CoinFarmHandlingBagFull = true
+                    flying = false
+                    _G.SafeAutoFarm = false
+                    _G.AutoCoins = false
+                    restoreChar()
+
+                    -- Send Discord Webhook report
+                    if _G.WebhookEnabled and not _G.HasReportedCoins then
+                        _G.HasReportedCoins = true
+                        local diff = os.time() - (_G.FarmStartTime or os.time())
+                        local tStr = string.format("%dD %dH %dM %dS",
+                            math.floor(diff/86400), math.floor((diff%86400)/3600),
+                            math.floor((diff%3600)/60), diff%60)
+                        local bagValue, maxBag = getCoinBagLive()
+                        local totalC = (_G.FarmTotalCollected or 0)
+                        task.spawn(function()
+                            if typeof(_G.sendCoinWebhook) == "function" then
+                                pcall(_G.sendCoinWebhook, bagValue > 0 and bagValue or maxBag, maxBag, totalC, tStr, "Bag Full")
+                            end
+                        end)
+                    end
+
+                    -- Trigger Bag Full Action (Sheriff: Shoot / Innocent: Lobby / Murderer: Kill Everyone)
+                    executeBagFullAction()
+                end
+                task.wait(1)
+                return
+            end
+
+            local coin = getNearestCoin(root)
+            if coin then
+                flyToCoin(coin)
+            else
+                if _G.CoinFarmAutoReset and startedCollecting then
+                    if char then char:BreakJoints() end
+                    task.wait(2)
+                    startedCollecting = false
+                end
+                task.wait(0.1)
+            end
+        end)
+
+        if not ok then
+            warn("[Ranax Krisis CoinFarm] Error: " .. tostring(err))
+            task.wait(0.5)
         end
+        task.wait(0.01)
     end
 end)
+-- removed unclosed end
+
 
 -- ==================== COIN STATS & TRACKER ====================
 local function purgeCoinTrackerHUD()
@@ -6450,8 +6483,17 @@ UIElements.SafeAutoFarm = CoinFarmTab:Toggle({
 
 if _G.CoinFarmMode == nil then _G.CoinFarmMode = "Halloween (Candies)" end
 
--- CoinFarmMode dropdown removed (Auto collects all)
-
+UIElements.CoinFarmMode = CoinFarmTab:Dropdown({
+    Title = "Farm Mode",
+    Desc = "Choose target currency: Halloween Candies, Standard Coins, or Both",
+    Values = {"Halloween (Candies)", "Standard (Coins)", "Auto / All (Coins + Candies)"},
+    Value = _G.CoinFarmMode or "Halloween (Candies)",
+    Callback = function(val)
+        _G.CoinFarmMode = val
+        _G.BlacklistedCoins = {}
+        notify("Coin Farm", "Mode: " .. tostring(val), 2, "sparkles")
+    end
+})
 
 UIElements.FlyMode = CoinFarmTab:Dropdown({
     Title = "Fly Mode",
@@ -7752,9 +7794,6 @@ _G.triggerCinematicKill = triggerCinematicKill
 
 -- ==================== SHERIFF TAB UI ====================
 task.wait()
-end -- end previous tab scope
-
-do -- begin tab scope
 local SheriffTab = Window:Tab({
     Title = "Sheriff",
     Icon = "crosshair",
@@ -8097,9 +8136,6 @@ UIElements.ShootV2FlickTurnTime = SheriffTab:Slider({
 
 -------------------------------------------------------------------------------------------------------------------
 task.wait()
-end -- end previous tab scope
-
-do -- begin tab scope
 local MurdererTab = Window:Tab({
     Title = "Murderer",
     Icon = "target",
@@ -8379,9 +8415,6 @@ UIElements.KillEveryoneKeybind = KillEveryoneKeybind
 -------------------------------------------------------------------------------------------------------------------
 do
     task.wait()
-end -- end previous tab scope
-
-do -- begin tab scope
 local MapTab = Window:Tab({
         Title = "Map",
         Icon = "map",
@@ -8485,9 +8518,6 @@ local MapTab = Window:Tab({
 end
 -------------------------------------------------------------------------------------------------------------------
 task.wait()
-end -- end previous tab scope
-
-do -- begin tab scope
 local AdminTab = Window:Tab({
     Title = "Admin",
     Icon = "sparkles",
@@ -9528,9 +9558,6 @@ do local function _initFlingTab()
     end
 
     task.wait()
-end -- end previous tab scope
-
-do -- begin tab scope
 local FlingTab = Window:Tab({
         Title = "Fling",
         Icon = "zap",
@@ -10277,5 +10304,3 @@ task.delay(1.5, function()
         end
     end)
 end)
-
-end -- end last tab scope
