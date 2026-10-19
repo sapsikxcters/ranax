@@ -1,40 +1,333 @@
 -- Recovered Luau source by ZeroVector (Patched & Stabilized by VANTA)
 local genv = typeof(getgenv) == "function" and getgenv() or _G
 
--- Secure UI Library Loader with fallbacks and custom headers
-local function loadLibrary()
-    local cdnUrl = "https://cdn.project-reverse.org/Library.luau"
-    local rawCode = nil
-
-    local reqFunc = (syn and syn.request) or (http and http.request) or http_request or (fluxus and fluxus.request) or request
-    if reqFunc then
-        local ok, resp = pcall(function()
-            return reqFunc({
-                Url = cdnUrl,
-                Method = "GET",
-                Headers = {["User-Agent"] = "Roblox/WinInet"}
-            })
-        end)
-        if ok and resp and resp.Body and #resp.Body > 500 then
-            rawCode = resp.Body
-        end
+-- Krisis Hub Custom Avatar
+local KrisisAvatar = "rbxassetid://140205476256463"
+pcall(function()
+    local avatarPath = "KrisisAvatar.jpeg"
+    local assetLoader = getcustomasset or getsynasset
+    if type(assetLoader) == "function" and isfile and isfile(avatarPath) then
+        KrisisAvatar = assetLoader(avatarPath)
     end
+end)
 
-    if not rawCode then
+-- Krisis Hub UI Library (WindUI Engine with Project Reverse API Layer)
+local function loadLibrary()
+    local WindUI = nil
+    local urls = {
+        "https://github.com/Footagesus/WindUI/releases/latest/download/main.lua",
+        "https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua",
+        "https://tree-hub.vercel.app/api/library/windui"
+    }
+
+    for _, url in ipairs(urls) do
         local ok, res = pcall(function()
-            return game:HttpGet(cdnUrl)
+            return game:HttpGet(url)
         end)
         if ok and res and #res > 500 then
-            rawCode = res
+            local okLoad, loadedLib = pcall(function()
+                return loadstring(res)()
+            end)
+            if okLoad and loadedLib then
+                WindUI = loadedLib
+                break
+            end
         end
     end
 
-    if rawCode then
-        local ok, libInstance = pcall(function()
+    if WindUI then
+        local lib = {
+            Version = "Krisis Edition (WindUI)",
+            _windUI = WindUI
+        }
+
+        function lib:Notify(opts)
+            opts = opts or {}
+            pcall(function()
+                WindUI:Notify({
+                    Title = opts.Title or "Project Reverse",
+                    Content = opts.Content or opts.Text or "",
+                    Duration = opts.Duration or 4
+                })
+            end)
+        end
+
+        function lib:SetTheme(theme)
+            pcall(function()
+                if type(theme) == "string" then
+                    WindUI:SetTheme(theme)
+                end
+            end)
+        end
+
+        function lib:SetDensity(density) end
+
+        function lib:CreateWindow(cfg)
+            cfg = cfg or {}
+            local win = nil
+            local ok, w = pcall(function()
+                return WindUI:CreateWindow({
+                    Icon = KrisisAvatar,
+                    IconThemed = false,
+                    Title = cfg.Title or "Project Reverse | MM2",
+                    Author = cfg.SubTitle or "by Krisis & Project Reverse",
+                    Folder = "ProjectReverse",
+                    Size = UDim2.fromOffset(580, 420),
+                    MinSize = Vector2.new(500, 320),
+                    MaxSize = Vector2.new(850, 560),
+                    Transparent = true,
+                    Theme = "Dark",
+                    Resizable = true,
+                    SideBarWidth = 190,
+                    BackgroundImageTransparency = 0.42,
+                    HideSearchBar = false,
+                    ScrollBarEnabled = false,
+                    OpenButton = {
+                        Title = "Reverse Hub",
+                        CornerRadius = UDim.new(1, 0),
+                        StrokeThickness = 1,
+                        Enabled = true,
+                        Draggable = true,
+                        OnlyMobile = false
+                    }
+                })
+            end)
+
+            if ok and w then
+                win = w
+            else
+                win = WindUI:CreateWindow({
+                    Title = cfg.Title or "Project Reverse",
+                    Theme = "Dark"
+                })
+            end
+
+            local windowObj = {
+                _raw = win,
+                Destroy = function(self)
+                    pcall(function()
+                        if win and win.Destroy then
+                            win:Destroy()
+                        end
+                    end)
+                end
+            }
+
+            local function getIconForTab(tabName)
+                local lower = string.lower(tabName or "")
+                if string.find(lower, "gameplay") then return "gamepad-2"
+                elseif string.find(lower, "esp") or string.find(lower, "visual") then return "eye"
+                elseif string.find(lower, "coin") or string.find(lower, "farm") then return "coins"
+                elseif string.find(lower, "trade") then return "arrow-left-right"
+                elseif string.find(lower, "invent") or string.find(lower, "bag") then return "briefcase"
+                elseif string.find(lower, "setting") then return "settings"
+                elseif string.find(lower, "valentine") then return "heart"
+                elseif string.find(lower, "sheriff") or string.find(lower, "gun") then return "shield"
+                elseif string.find(lower, "murd") then return "skull"
+                elseif string.find(lower, "teleport") then return "navigation"
+                end
+                return "box"
+            end
+
+            function windowObj:CreateTab(tabCfg)
+                local tabName = (type(tabCfg) == "table" and (tabCfg.Name or tabCfg.Title)) or tostring(tabCfg or "Tab")
+                local icon = getIconForTab(tabName)
+
+                local rawTab = nil
+                local okTab, t = pcall(function()
+                    return win:Tab({Title = tabName, Icon = icon})
+                end)
+                if okTab and t then
+                    rawTab = t
+                else
+                    rawTab = win:Tab({Title = tabName})
+                end
+
+                local tabObj = {_raw = rawTab}
+
+                function tabObj:CreateSection(secCfg)
+                    local secName = (type(secCfg) == "table" and (secCfg.Name or secCfg.Title)) or tostring(secCfg or "")
+                    local rawSec = nil
+                    if secName and #secName > 0 then
+                        pcall(function()
+                            rawSec = rawTab:Section({Title = secName})
+                        end)
+                    end
+                    local target = rawSec or rawTab
+                    local secObj = {_raw = target}
+
+                    function secObj:AddToggle(opt)
+                        opt = opt or {}
+                        local title = opt.Text or opt.Title or "Toggle"
+                        local defaultVal = opt.Default or false
+                        local cb = opt.Callback
+                        local res = nil
+                        pcall(function()
+                            res = target:Toggle({
+                                Title = title,
+                                Desc = opt.Tooltip or "",
+                                Default = defaultVal,
+                                Callback = function(val)
+                                    if cb then cb(val) end
+                                end
+                            })
+                        end)
+                        return res or {}
+                    end
+
+                    function secObj:AddButton(opt)
+                        opt = opt or {}
+                        local title = opt.Text or opt.Title or "Button"
+                        local cb = opt.Callback
+                        local res = nil
+                        pcall(function()
+                            res = target:Button({
+                                Title = title,
+                                Desc = opt.Tooltip or "",
+                                Callback = function()
+                                    if cb then cb() end
+                                end
+                            })
+                        end)
+                        return res or {}
+                    end
+
+                    function secObj:AddSlider(opt)
+                        opt = opt or {}
+                        local title = opt.Text or opt.Title or "Slider"
+                        local cb = opt.Callback
+                        local res = nil
+                        pcall(function()
+                            res = target:Slider({
+                                Title = title,
+                                Desc = opt.Tooltip or "",
+                                Min = opt.Min or 0,
+                                Max = opt.Max or 100,
+                                Default = opt.Default or opt.Min or 0,
+                                Step = opt.Increment or 1,
+                                Callback = function(val)
+                                    if cb then cb(val) end
+                                end
+                            })
+                        end)
+                        return res or {}
+                    end
+
+                    function secObj:AddDropdown(opt)
+                        opt = opt or {}
+                        local title = opt.Text or opt.Title or "Dropdown"
+                        local options = opt.Options or {}
+                        local defaultVal = opt.Default or options[1]
+                        local cb = opt.Callback
+                        local res = nil
+                        pcall(function()
+                            res = target:Dropdown({
+                                Title = title,
+                                Values = options,
+                                Default = defaultVal,
+                                Callback = function(val)
+                                    if cb then cb(val) end
+                                end
+                            })
+                        end)
+                        return res or {}
+                    end
+
+                    function secObj:AddColorPicker(opt)
+                        opt = opt or {}
+                        local title = opt.Text or opt.Title or "Color Picker"
+                        local defaultVal = opt.Default or Color3.fromRGB(255, 255, 255)
+                        local cb = opt.Callback
+                        local res = nil
+                        pcall(function()
+                            res = target:Colorpicker({
+                                Title = title,
+                                Default = defaultVal,
+                                Callback = function(val)
+                                    if cb then cb(val) end
+                                end
+                            })
+                        end)
+                        return res or {}
+                    end
+                    secObj.AddColorpicker = secObj.AddColorPicker
+
+                    function secObj:AddKeybind(opt)
+                        opt = opt or {}
+                        local title = opt.Text or opt.Title or "Keybind"
+                        local defaultVal = opt.Default or "None"
+                        local cb = opt.Callback
+                        local res = nil
+                        pcall(function()
+                            res = target:Keybind({
+                                Title = title,
+                                Default = defaultVal,
+                                Callback = function(val)
+                                    if cb then cb(val) end
+                                end
+                            })
+                        end)
+                        return res or {}
+                    end
+
+                    function secObj:AddParagraph(opt)
+                        opt = opt or {}
+                        local res = nil
+                        pcall(function()
+                            res = target:Paragraph({
+                                Title = opt.Title or "",
+                                Desc = opt.Content or opt.Desc or ""
+                            })
+                        end)
+                        return res or {}
+                    end
+
+                    function secObj:AddBanner(opt)
+                        opt = opt or {}
+                        local res = nil
+                        pcall(function()
+                            res = target:Paragraph({
+                                Title = opt.Type or "Info",
+                                Desc = opt.Text or ""
+                            })
+                        end)
+                        return res or {}
+                    end
+
+                    return secObj
+                end
+
+                tabObj.AddToggle = function(self, opt) return self:CreateSection(""):AddToggle(opt) end
+                tabObj.AddButton = function(self, opt) return self:CreateSection(""):AddButton(opt) end
+                tabObj.AddSlider = function(self, opt) return self:CreateSection(""):AddSlider(opt) end
+                tabObj.AddDropdown = function(self, opt) return self:CreateSection(""):AddDropdown(opt) end
+                tabObj.AddColorPicker = function(self, opt) return self:CreateSection(""):AddColorPicker(opt) end
+                tabObj.AddColorpicker = tabObj.AddColorPicker
+                tabObj.AddKeybind = function(self, opt) return self:CreateSection(""):AddKeybind(opt) end
+                tabObj.AddParagraph = function(self, opt) return self:CreateSection(""):AddParagraph(opt) end
+                tabObj.AddBanner = function(self, opt) return self:CreateSection(""):AddBanner(opt) end
+
+                return tabObj
+            end
+
+            return windowObj
+        end
+
+        return lib
+    end
+
+    -- Fallback: GitHub Raw hosted Library.luau
+    local githubRawUrl = "https://raw.githubusercontent.com/sapsikxcters/ranax/main/Library.luau"
+    local rawCode = nil
+    pcall(function()
+        rawCode = game:HttpGet(githubRawUrl)
+    end)
+    if rawCode and #rawCode > 500 then
+        local ok, fallbackLib = pcall(function()
             return loadstring(rawCode)()
         end)
-        if ok and libInstance then
-            return libInstance
+        if ok and fallbackLib then
+            return fallbackLib
         end
     end
 
@@ -43,11 +336,11 @@ end
 
 local lib = loadLibrary()
 if not lib then
-    warn("[Project Reverse] Failed to load UI Library from CDN. Please check executor network access.")
+    warn("[Project Reverse] Failed to load UI Library. Please check internet connection.")
     pcall(function()
         game:GetService("StarterGui"):SetCore("SendNotification", {
-            Title = "Project Reverse",
-            Text = "UI Library failed to load. Check your connection or executor.",
+            Title = "Krisis Hub / Reverse",
+            Text = "UI Library failed to load. Please check your connection.",
             Duration = 6
         })
     end)
