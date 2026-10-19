@@ -315,10 +315,9 @@ do
 end
 -- ==================== END MODE SELECTION ====================
 
--- Multi-source WindUI Loader with Fallback
+-- Multi-source WindUI Loader (Clean Official Sources, Zero Luraph)
 local WindUI = nil
 local libUrls = {
-    "https://raw.githubusercontent.com/sapsikxcters/ranax/main/Library.luau",
     "https://github.com/Footagesus/WindUI/releases/latest/download/main.lua",
     "https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua",
     "https://tree-hub.vercel.app/api/library/windui"
@@ -374,13 +373,14 @@ task.spawn(function()
     end)
 end)
 
-
-Window:Tag({
-    Title = "V.1.7",
-    Icon = "book-marked",
-    Color = Color3.fromHex("#30ff6a"),
-    Radius = 30,
-})
+pcall(function()
+    Window:Tag({
+        Title = "V.1.7",
+        Icon = "book-marked",
+        Color = Color3.fromHex("#30ff6a"),
+        Radius = 30,
+    })
+end)
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")

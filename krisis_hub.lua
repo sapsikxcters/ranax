@@ -55,10 +55,9 @@ pcall(function()
 end)
 
 
--- Multi-source WindUI Loader with Fallback
+-- Multi-source WindUI Loader (Clean Official Sources, Zero Luraph)
 local WindUI = nil
 local libUrls = {
-    "https://raw.githubusercontent.com/sapsikxcters/ranax/main/Library.luau",
     "https://github.com/Footagesus/WindUI/releases/latest/download/main.lua",
     "https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua",
     "https://tree-hub.vercel.app/api/library/windui"
