@@ -5,6 +5,28 @@ local UserInputService = game:GetService("UserInputService")
 local workspace = game:GetService("Workspace")
 
 local player = Players.LocalPlayer
+
+-- ==================== 24/7 AFK & ANTI-DISCONNECT ENGINE ====================
+pcall(function()
+    local VirtualUser = game:GetService("VirtualUser")
+    player.Idled:Connect(function()
+        VirtualUser:Button2Down(Vector2.new(0, 0), workspace.CurrentCamera.CFrame)
+        task.wait(1)
+        VirtualUser:Button2Up(Vector2.new(0, 0), workspace.CurrentCamera.CFrame)
+    end)
+
+    local CoreGui = game:GetService("CoreGui")
+    local promptOverlay = CoreGui:WaitForChild("RobloxPromptGui", 5) and CoreGui.RobloxPromptGui:WaitForChild("promptOverlay", 5)
+    if promptOverlay then
+        promptOverlay.ChildAdded:Connect(function(child)
+            if child.Name == "ErrorPrompt" then
+                task.wait(2)
+                game:GetService("TeleportService"):Teleport(game.PlaceId, player)
+            end
+        end)
+    end
+end)
+
 local camera = workspace.CurrentCamera
 
 
@@ -1696,6 +1718,20 @@ local function flyToCoin(targetPart)
     collectedCoinCount = collectedCoinCount + 1
 end
 
+local bagFullWaiting = false
+
+player.CharacterAdded:Connect(function(char)
+    collectedCoins = {}
+    startedCollecting = false
+    collectedCoinCount = 0
+    bagFullWaiting = false
+    if not flying then return end
+    task.wait(1.5)
+    if flying and isAlive(char) then
+        noclipLoop(char)
+    end
+end)
+
 MapTab:Toggle({
     Title = "Enable Auto Farm Coins",
     Default = false,
@@ -1704,6 +1740,7 @@ MapTab:Toggle({
         collectedCoins = {}
         startedCollecting = false
         collectedCoinCount = 0
+        bagFullWaiting = false
         local char = getChar()
         if not state then restoreChar() return end
         noclipLoop(char)
@@ -1712,7 +1749,7 @@ MapTab:Toggle({
                 local ok, err = pcall(function()
                     local char = getChar()
 
-                    -- Guard: If dead, wait for respawn!
+                    -- 1. Guard: If dead, wait until respawn and alive in new round!
                     if not isAlive(char) then
                         startedCollecting = false
                         collectedCoins = {}
@@ -1720,27 +1757,38 @@ MapTab:Toggle({
                         return
                     end
 
-                    -- Guard: Bag Full Action (triggers only after coins collected)
-                    if startedCollecting and checkIsBagFull() then
-                        flying = false
-                        restoreChar()
-                        executeBagFullAction()
-                        task.wait(2)
+                    -- 2. Guard: If bag full, trigger action ONCE, then rest safely until next round!
+                    if checkIsBagFull() then
+                        if not bagFullWaiting then
+                            bagFullWaiting = true
+                            restoreChar()
+                            executeBagFullAction()
+                        end
+                        task.wait(1.5)
                         return
                     end
 
+                    -- 3. If new round started and coins are back, clear bagFullWaiting!
                     local root = char:FindFirstChild("HumanoidRootPart")
                     if not root then return end
                     local coin = getNearestCoin(root)
                     if coin then
+                        if bagFullWaiting then
+                            bagFullWaiting = false
+                            collectedCoinCount = 0
+                            startedCollecting = false
+                            collectedCoins = {}
+                        end
                         flyToCoin(coin)
                     else
-                        if autoReset and startedCollecting then
+                        -- No coins on map: wait for next round without freezing
+                        if autoReset and startedCollecting and not bagFullWaiting then
                             if char then char:BreakJoints() end
                             task.wait(2)
                             startedCollecting = false
+                            collectedCoinCount = 0
                         end
-                        task.wait(0.15)
+                        task.wait(0.5)
                     end
                 end)
                 if not ok then

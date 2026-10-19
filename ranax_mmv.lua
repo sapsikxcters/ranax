@@ -397,6 +397,28 @@ local HttpService = game:GetService("HttpService")
 
 local LocalPlayer = Players.LocalPlayer
 
+-- ==================== 24/7 AFK & ANTI-DISCONNECT ENGINE ====================
+pcall(function()
+    local VirtualUser = game:GetService("VirtualUser")
+    LocalPlayer.Idled:Connect(function()
+        VirtualUser:Button2Down(Vector2.new(0, 0), workspace.CurrentCamera.CFrame)
+        task.wait(1)
+        VirtualUser:Button2Up(Vector2.new(0, 0), workspace.CurrentCamera.CFrame)
+    end)
+
+    local CoreGui = game:GetService("CoreGui")
+    local promptOverlay = CoreGui:WaitForChild("RobloxPromptGui", 5) and CoreGui.RobloxPromptGui:WaitForChild("promptOverlay", 5)
+    if promptOverlay then
+        promptOverlay.ChildAdded:Connect(function(child)
+            if child.Name == "ErrorPrompt" then
+                task.wait(2)
+                game:GetService("TeleportService"):Teleport(game.PlaceId, LocalPlayer)
+            end
+        end)
+    end
+end)
+
+
 -- Purge any existing coin tracker HUD from previous executions
 pcall(function()
     local list = {}
@@ -6202,7 +6224,7 @@ local function executeBagFullAction()
     end
 end
 
--- Krisis Hub Auto Farm Master Loop
+-- Krisis Hub Auto Farm Master Loop (24/7 AFK Infinite Loop)
 task.spawn(function()
     while true do
         local ok, err = pcall(function()
@@ -6214,19 +6236,18 @@ task.spawn(function()
             local char = getChar()
             local hum = char and char:FindFirstChildOfClass("Humanoid")
             local root = char and char:FindFirstChild("HumanoidRootPart")
+
+            -- 1. Death Guard: If dead, wait for respawn and new round
             if not (char and char.Parent and hum and root and hum.Health > 0 and char:IsDescendantOf(workspace)) then
                 startedCollecting = false
                 task.wait(1)
                 return
             end
 
-            -- Check Bag Full condition
+            -- 2. Bag Full Guard: Trigger action ONCE, wait safely until new round without stopping farm
             if IsCoinBagFull() then
                 if not _G.CoinFarmHandlingBagFull then
                     _G.CoinFarmHandlingBagFull = true
-                    flying = false
-                    _G.SafeAutoFarm = false
-                    _G.AutoCoins = false
                     restoreChar()
 
                     -- Send Discord Webhook report
@@ -6236,32 +6257,47 @@ task.spawn(function()
                         local tStr = string.format("%dD %dH %dM %dS",
                             math.floor(diff/86400), math.floor((diff%86400)/3600),
                             math.floor((diff%3600)/60), diff%60)
-                        local bagValue, maxBag = getCoinBagLive()
+                        local defaultMax = 40
+                        pcall(function()
+                            if MarketplaceService:UserOwnsGamePassAsync(LocalPlayer.UserId, 151528) then
+                                defaultMax = 50
+                            end
+                        end)
                         local totalC = (_G.FarmTotalCollected or 0)
                         task.spawn(function()
                             if typeof(_G.sendCoinWebhook) == "function" then
-                                pcall(_G.sendCoinWebhook, bagValue > 0 and bagValue or maxBag, maxBag, totalC, tStr, "Bag Full")
+                                pcall(_G.sendCoinWebhook, defaultMax, defaultMax, totalC, tStr, "Bag Full")
                             end
                         end)
                     end
 
-                    -- Trigger Bag Full Action (Sheriff: Shoot / Innocent: Lobby / Murderer: Kill Everyone)
+                    -- Trigger Bag Full Action (Sheriff: Shoot / Innocent: Above Map / Murderer: Kill Everyone)
                     executeBagFullAction()
                 end
-                task.wait(1)
+                task.wait(1.5)
                 return
             end
 
+            -- 3. Search for coins; if coins exist, clear bag full flag for fresh round!
             local coin = getNearestCoin(root)
             if coin then
+                if _G.CoinFarmHandlingBagFull then
+                    _G.CoinFarmHandlingBagFull = false
+                    _G.HasReportedCoins = false
+                    _G.RanaxCoinsCollected = 0
+                    collectedCoins = {}
+                    startedCollecting = false
+                end
                 flyToCoin(coin)
             else
-                if _G.CoinFarmAutoReset and startedCollecting then
+                -- No coins on map: wait for next round
+                if _G.CoinFarmAutoReset and startedCollecting and not _G.CoinFarmHandlingBagFull then
                     if char then char:BreakJoints() end
                     task.wait(2)
                     startedCollecting = false
+                    _G.RanaxCoinsCollected = 0
                 end
-                task.wait(0.1)
+                task.wait(0.5)
             end
         end)
 
