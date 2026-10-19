@@ -4797,4 +4797,3 @@ do
 
         print("[Universal] UI ready. Toggle with RightControl.")
         return
-    end
