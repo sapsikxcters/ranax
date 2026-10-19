@@ -88,9 +88,9 @@ local function loadLibrary()
                 return WindUI:CreateWindow({
                     Icon = KrisisAvatar,
                     IconThemed = false,
-                    Title = cfg.Title or "Project Reverse | MM2",
-                    Author = cfg.SubTitle or "by Krisis & Project Reverse",
-                    Folder = "ProjectReverse",
+                    Title = cfg.Title or "Project Reverse | by xCters",
+                    Author = "by xCters",
+                    Folder = "xCtersHub",
                     Size = UDim2.fromOffset(580, 420),
                     MinSize = Vector2.new(500, 320),
                     MaxSize = Vector2.new(850, 560),
@@ -102,7 +102,7 @@ local function loadLibrary()
                     HideSearchBar = false,
                     ScrollBarEnabled = true,
                     OpenButton = {
-                        Title = "Reverse Hub",
+                        Title = "xCters Hub",
                         CornerRadius = UDim.new(1, 0),
                         StrokeThickness = 1,
                         Enabled = true,
@@ -5403,18 +5403,54 @@ do
             end,
         })
 
-        local v22 = v20:CreateSection({Name = "About", Side = "Right"})
+        local v22 = v20:CreateSection({Name = "About & Credits", Side = "Right"})
         local addParagraph = v22.AddParagraph
-        local tbl3 = {Title = "Project Reverse [MM2]"}
+        local tbl3 = {Title = "Project Reverse | by xCters"}
         local version = lib.Version
         local str = version or "?"
-        tbl3.Content = "Murder Mystery 2 executor package ported to the new UI Library v" .. str .. ". Drag the header to move the window, resize from the bottom-right corner. Toggle: RightControl."
+        tbl3.Content = "Developed & Maintained by xCters.\nDiscord User: xcters_Real\nToggle UI: RightControl or Middle Mouse Click."
         addParagraph(v22, tbl3)
-        v22:AddParagraph({Title = "Credits", Content = "discord.gg/project-reverse"})
+
+        v22:AddParagraph({
+            Title = "Discord Community",
+            Content = "Discord Server: discord.gg/ranax\nDiscord Owner: xcters_Real"
+        })
+
+        v22:AddButton({
+            Text = "Copy Discord Server Link",
+            Callback = function()
+                pcall(function()
+                    if setclipboard then
+                        setclipboard("https://discord.gg/ranax")
+                    end
+                end)
+                lib:Notify({
+                    Title = "Discord Copied",
+                    Content = "Copied discord.gg/ranax to clipboard!",
+                    Duration = 3
+                })
+            end
+        })
+
+        v22:AddButton({
+            Text = "Copy Discord User (xcters_Real)",
+            Callback = function()
+                pcall(function()
+                    if setclipboard then
+                        setclipboard("xcters_Real")
+                    end
+                end)
+                lib:Notify({
+                    Title = "User Copied",
+                    Content = "Copied 'xcters_Real' to clipboard!",
+                    Duration = 3
+                })
+            end
+        })
 
         v22:AddBanner({
             Type = "Info",
-            Text = "Universal Mode Active - Works in all games.",
+            Text = "Official Release by xCters | Discord: xcters_Real",
         })
 
         if genv.MM2LibraryWindow then
@@ -5427,14 +5463,14 @@ do
 
         task.delay(0.4, function()
             local notify = lib.Notify
-            local tbl4 = {Title = "Project Reverse [MM2] Loaded"}
+            local tbl4 = {Title = "xCters Hub [Project Reverse]"}
             local version2 = lib.Version
             local str2 = version2 or "?"
-            tbl4.Content = "Version " .. str2 .. ". Toggle UI: RightControl."
+            tbl4.Content = "by xCters | Discord: xcters_Real | Toggle: RightControl"
             tbl4.Type = "Success"
             tbl4.Duration = 5
             notify(lib, tbl4)
         end)
 
-        print("[Universal] UI ready. Toggle with RightControl.")
+        print("[xCters Hub] UI ready by xCters (Discord: xcters_Real). Toggle with RightControl or MiddleClick.")
         return
