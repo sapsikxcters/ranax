@@ -551,17 +551,19 @@ do
                 EmoteSpamSpeed = 1,
             }
 
-            v = (function(arg)
+            local function deepClone(arg)
                 local v4 = table.clone(arg)
 
                 for k, v5 in pairs(v4) do
                     if type(v5) == "table" then
-                        v4[k] = tbl3(v5)
+                        v4[k] = deepClone(v5)
                     end
                 end
 
                 return v4
-            end)({
+            end
+
+            v = deepClone({
                 AutoRevealRoles = false,
                 CoinFarm = {
                     StatsOverlay = false,
