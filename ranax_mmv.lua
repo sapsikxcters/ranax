@@ -5865,18 +5865,19 @@ local function removeCoinFarmPlatform()
     end)
 end
 
-local function ensureCoinFarmPlatform(pos)
+local function ensureCoinFarmPlatform(pos, canCollide)
     if not _RanaxFarmPlatform or not _RanaxFarmPlatform.Parent then
         local p = Instance.new("Part")
         p.Name = "RanaxFarmPlatform"
         p.Size = Vector3.new(4, 0.5, 4)
         p.Anchored = true
-        p.CanCollide = true
+        p.CanCollide = (canCollide == true)
         p.Transparency = 1
         p.Material = Enum.Material.SmoothPlastic
         p.Parent = workspace
         _RanaxFarmPlatform = p
     end
+    _RanaxFarmPlatform.CanCollide = (canCollide == true)
     _RanaxFarmPlatform.CFrame = CFrame.new(pos.X, pos.Y, pos.Z)
     return _RanaxFarmPlatform
 end
@@ -6198,7 +6199,7 @@ TeleportAboveMap = function()
     hrp.AssemblyAngularVelocity = Vector3.zero
 
     -- Create safe solid platform under character
-    ensureCoinFarmPlatform(safeAboveCF.Position)
+    ensureCoinFarmPlatform(safeAboveCF.Position, true)
 
     -- Restore physics & walking
     hum.PlatformStand = false
@@ -6786,40 +6787,30 @@ do
             return
         end
         local now = os.clock()
-        if now - _lastNoclipTick < 0.08 then return end
+        if now - _lastNoclipTick < 0.06 then return end
         _lastNoclipTick = now
 
         local char = LocalPlayer.Character
         local hrp = char and char:FindFirstChild("HumanoidRootPart")
         if not (char and hrp) then return end
 
-        local hum = char and char:FindFirstChildOfClass("Humanoid")
-        local hipHeight = (hum and hum.HipHeight) or 2
-        local groundBuffer = 2
-        local groundLevel = (hrp.Position.Y - hipHeight - (hrp.Size.Y / 2)) + groundBuffer
-
-        -- Only track platform if user explicitly chose Underground mode (Direct mode needs no platform!)
-        if (_G.SafeAutoFarm or _G.AutoCoins) and not _G.CoinFarmHandlingBagFull and (_G.UndergroundFarm ~= false) then
+        -- SIFIR TEPME / SIFIR FIRLAMA: Ucarken altina ASLA carpisan parca koyma
+        if (_G.SafeAutoFarm or _G.AutoCoins) and not _G.CoinFarmHandlingBagFull then
             if _RanaxFarmPlatform and _RanaxFarmPlatform.Parent then
-                _RanaxFarmPlatform.CFrame = CFrame.new(hrp.Position.X, hrp.Position.Y - 0.8, hrp.Position.Z)
-                _RanaxFarmPlatform.CanCollide = true
+                _RanaxFarmPlatform.CanCollide = false
             end
             hrp.AssemblyLinearVelocity = Vector3.zero
             hrp.AssemblyAngularVelocity = Vector3.zero
         end
 
-        -- Noclip parts within radius 6 of player
-        local nearby = workspace:GetPartBoundsInRadius(hrp.Position, 6)
-        _noclipCleanup(8)
+        -- Tum cevre engellerini (zemin, duvar, merdiven) gecirgen yap
+        local nearby = workspace:GetPartBoundsInRadius(hrp.Position, 7)
+        _noclipCleanup(9)
 
         for _, part in ipairs(nearby) do
             if not part:IsDescendantOf(char) and part.Name ~= "RanaxFarmPlatform" and part.CanCollide and not _noclipParts[part] then
-                local partTop = part.Position.Y + (part.Size.Y / 2)
-                -- AlSploit exact ground protection: NEVER disable ground/floor collision!
-                if partTop > (groundLevel + groundBuffer) then
-                    _noclipParts[part] = part.CanCollide
-                    pcall(function() part.CanCollide = false end)
-                end
+                _noclipParts[part] = part.CanCollide
+                pcall(function() part.CanCollide = false end)
             end
         end
     end)
@@ -6838,6 +6829,16 @@ RunService.Stepped:Connect(function()
                     part.CanCollide = false
                 end
             end
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            if hrp then
+                hrp.AssemblyLinearVelocity = Vector3.zero
+                hrp.AssemblyAngularVelocity = Vector3.zero
+            end
+            if hum and not hum.PlatformStand then
+                hum.PlatformStand = true
+                hum.AutoRotate = false
+            end
         end
     end
 end)
@@ -6849,8 +6850,12 @@ local function ensureFarmFloat(hrp)
         bv = Instance.new("BodyVelocity")
         bv.Name = "RanaxFarmFloat"
         bv.Velocity = Vector3.zero
-        bv.MaxForce = Vector3.new(0, math.huge, 0) -- Anti-gravity on Y only, zero horizontal resistance
+        bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge) -- Full 3D kinetic impulse suppression
+        bv.P = 1500
         bv.Parent = hrp
+    else
+        bv.Velocity = Vector3.zero
+        bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
     end
     pcall(function()
         hrp.AssemblyLinearVelocity = Vector3.zero
@@ -7072,12 +7077,17 @@ task.spawn(function()
                                 local isUnderground = (_G.UndergroundFarm ~= false)
                                 local targetCFrame
 
+                                -- Direk ve dumduz rota: Yatayda hedefe bakis, dik ve stabil pozisyon (SIFIR TAKLA / SIFIR TEPME)
+                                local dir = (coinPos - hrp.Position)
+                                local flatDir = Vector3.new(dir.X, 0, dir.Z)
+                                local lookRot = (flatDir.Magnitude > 0.15) and CFrame.lookAt(Vector3.zero, flatDir.Unit) or hrp.CFrame.Rotation
+
                                 if isUnderground then
-                                    targetCFrame = CFrame.new(coinPos.X, coinPos.Y - 2.5, coinPos.Z) * CFrame.Angles(math.rad(-90), 0, 0)
+                                    targetCFrame = CFrame.new(coinPos.X, coinPos.Y - 2.2, coinPos.Z) * lookRot
                                     ensureFarmFloat(hrp)
                                 else
                                     pcall(function() removeFarmFloat(char) end)
-                                    targetCFrame = CFrame.new(coinPos.X, coinPos.Y + 1.2, coinPos.Z)
+                                    targetCFrame = CFrame.new(coinPos.X, coinPos.Y + 0.8, coinPos.Z) * lookRot
                                 end
 
                                 local dist = (hrp.Position - targetCFrame.Position).Magnitude
@@ -7085,6 +7095,9 @@ task.spawn(function()
                                 local tweenTime = math.clamp(dist / speed, 0.05, 3.5)
 
                                 if _G.CoinTween then _G.CoinTween:Cancel(); _G.CoinTween = nil end
+                                hrp.AssemblyLinearVelocity = Vector3.zero
+                                hrp.AssemblyAngularVelocity = Vector3.zero
+
                                 local tweenInfo = TweenInfo.new(tweenTime, Enum.EasingStyle.Linear)
                                 _G.CoinTween = TweenService:Create(hrp, tweenInfo, { CFrame = targetCFrame })
                                 _G.CoinTween:Play()
@@ -7094,6 +7107,12 @@ task.spawn(function()
                                 local coinWasCollected = false
 
                                 while _G.CoinTween and closestCoin and closestCoin.Parent and (tick() - startWait < tweenTime + 0.15) do
+                                    -- SIFIR TEPME / SIFIR FIRLAMA: Ucus esnasinda kinetik kuvvet birikimini aninda sfirla
+                                    if hrp then
+                                        hrp.AssemblyLinearVelocity = Vector3.zero
+                                        hrp.AssemblyAngularVelocity = Vector3.zero
+                                    end
+
                                     -- Continuous touch trigger during flight
                                     if typeof(firetouchinterest) == "function" then
                                         if closestCoin:IsA("BasePart") then
@@ -7125,6 +7144,10 @@ task.spawn(function()
                                 end
 
                                 if _G.CoinTween then _G.CoinTween:Cancel(); _G.CoinTween = nil end
+                                if hrp then
+                                    hrp.AssemblyLinearVelocity = Vector3.zero
+                                    hrp.AssemblyAngularVelocity = Vector3.zero
+                                end
 
                                 -- ACTIVE COLLECTION VERIFICATION: Stay at coin and touch until coin disappears or bag increments
                                 if not coinWasCollected and closestCoin and closestCoin.Parent then
@@ -7366,11 +7389,7 @@ UIElements.SafeAutoFarm = CoinFarmTab:Toggle({
             local hrp = char and char:FindFirstChild("HumanoidRootPart")
             if hrp then
                 ensureFarmFloat(hrp)
-                if (_G.UndergroundFarm ~= false) then
-                    ensureCoinFarmPlatform(hrp.Position)
-                else
-                    removeCoinFarmPlatform()
-                end
+                removeCoinFarmPlatform()
             end
             _G.CoinFarmNoclipActive = true
             notify("Coin Farm", "Safe Coin Farm Enabled (Active)", 2, "coins")
