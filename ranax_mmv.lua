@@ -6254,7 +6254,7 @@ getCoinBagLive = function()
     local mg = pgui:FindFirstChild("MainGUI") or pgui:FindFirstChild("MainGui") or pgui:FindFirstChild("Gui")
     if not mg then return tracked, defaultMax, (tracked >= defaultMax) end
 
-    -- 1. Scan MainGUI for standard "xx / xx" (e.g. "0 / 40", "25 / 40", "40 / 40")
+    -- 1. Scan MainGUI for standard or Halloween event "xx / xx" (e.g. "0 / 40", "25 / 40", "40 / 40", "0 / 50")
     for _, desc in ipairs(mg:GetDescendants()) do
         if desc:IsA("TextLabel") and isGuiActuallyVisible(desc) then
             local txt = desc.Text
@@ -6262,15 +6262,15 @@ getCoinBagLive = function()
                 local cur, mx = txt:match("(%d+)%s*/%s*(%d+)")
                 if cur and mx then
                     local cNum, mNum = tonumber(cur), tonumber(mx)
-                    if cNum and mNum and (mNum >= 40 and mNum <= 60) then
-                        return cNum, mNum, (cNum >= mNum and cNum >= 40)
+                    if cNum and mNum and (mNum >= 30 and mNum <= 100) then
+                        return cNum, mNum, (cNum >= mNum and cNum >= 30)
                     end
                 end
 
-                -- Exact word "FULL" only if in a coin-related container
+                -- Exact word "FULL" only if in a coin or candy related container
                 local pName = (desc.Parent and desc.Parent.Name:lower()) or ""
                 local dName = desc.Name:lower()
-                if (pName:find("coin") or dName:find("coin")) and txt:match("^%s*[Ff][Uu][Ll][Ll]!*%s*$") then
+                if (pName:find("coin") or dName:find("coin") or pName:find("candy") or dName:find("candy") or pName:find("event") or pName:find("hallow")) and txt:match("^%s*[Ff][Uu][Ll][Ll]!*%s*$") then
                     return defaultMax, defaultMax, true
                 end
             end
@@ -6507,7 +6507,12 @@ end
 
 local function getCoinTargetPosition(coin)
     if not coin or not coin.Parent then return nil end
-    local visual = coin:FindFirstChild("CoinVisual") or coin:FindFirstChild("Visual")
+    local visual = coin:FindFirstChild("CoinVisual") 
+        or coin:FindFirstChild("Visual") 
+        or coin:FindFirstChild("CandyVisual") 
+        or coin:FindFirstChild("Candy")
+        or coin:FindFirstChild("Coin")
+        or coin:FindFirstChild("Pumpkin")
     if visual and visual.Parent then
         if visual:IsA("BasePart") then
             return visual.Position
@@ -6526,23 +6531,85 @@ end
 local function getMapCoins()
     local coins = {}
     local bl = _G.BlacklistedCoins or {}
+    local mode = _G.CoinFarmMode or "Halloween (Candies)"
 
-    -- Direct MM2 Coin Scanner (Identifies all Coin_Server parts on the map)
+    local allowHalloween = (mode == "Halloween (Candies)" or mode:find("Halloween") or mode:find("All") or mode:find("Auto"))
+    local allowStandard = (mode == "Standard (Coins)" or mode:find("Standard") or mode:find("All") or mode:find("Auto"))
+
+    local function checkAndAdd(item)
+        if not item or not item.Parent then return end
+        if bl[item] and bl[item] > tick() then return end
+        if table.find(coins, item) then return end
+
+        local cv = item:FindFirstChild("CoinVisual") 
+            or item:FindFirstChild("CandyVisual") 
+            or item:FindFirstChild("Visual")
+            or item:FindFirstChild("Candy")
+            or item:FindFirstChild("Coin")
+            or item:FindFirstChild("Pumpkin")
+
+        local isCollected = false
+        if cv and cv:IsA("BasePart") and cv.Transparency >= 0.95 then
+            isCollected = true
+        elseif item:IsA("BasePart") and item.Transparency >= 0.95 then
+            isCollected = true
+        end
+
+        if not isCollected then
+            table.insert(coins, item)
+        end
+    end
+
+    -- 1. Scan CoinContainer first (fastest MM2 map container for Coins & Candies)
+    local coinContainer = workspace:FindFirstChild("CoinContainer")
+    if coinContainer then
+        for _, child in ipairs(coinContainer:GetChildren()) do
+            local name = child.Name:lower()
+            local isHallow = name:find("candy") or name:find("pumpkin") or name:find("corn") or name:find("event")
+            local isStd = name:find("coin") or name == "coin_server"
+
+            if (isHallow and allowHalloween) or (isStd and allowStandard) or (not isHallow and not isStd) then
+                checkAndAdd(child)
+            end
+        end
+    end
+
+    -- 2. Scan Workspace Descendants for Coin_Server, Candy_Server, Candies, Pumpkins
     for _, desc in ipairs(workspace:GetDescendants()) do
-        if desc.Name == "Coin_Server" and (desc:IsA("BasePart") or desc:FindFirstChild("TouchInterest")) then
-            if not bl[desc] or bl[desc] <= tick() then
-                local cv = desc:FindFirstChild("CoinVisual")
-                local isCollected = cv and cv:IsA("BasePart") and cv.Transparency >= 0.95
-                if not isCollected then
-                    table.insert(coins, desc)
+        local dName = desc.Name:lower()
+
+        -- Halloween event targets:
+        if allowHalloween then
+            if desc.Name == "Candy_Server" 
+                or desc.Name == "Candy" 
+                or desc.Name == "Candies" 
+                or desc.Name == "CandyCorn" 
+                or desc.Name == "Pumpkin" 
+                or dName:find("candycorn") 
+                or (dName:find("candy") and (desc:IsA("BasePart") or desc:FindFirstChild("TouchInterest"))) then
+                checkAndAdd(desc)
+            end
+        end
+
+        -- Standard MM2 targets:
+        if allowStandard then
+            if desc.Name == "Coin_Server" and (desc:IsA("BasePart") or desc:FindFirstChild("TouchInterest")) then
+                checkAndAdd(desc)
+            elseif desc.Name == "CoinVisual" and desc:IsA("BasePart") and desc.Transparency < 0.95 then
+                local parent = desc.Parent
+                if parent then
+                    checkAndAdd(parent)
                 end
             end
-        elseif desc.Name == "CoinVisual" and desc:IsA("BasePart") and desc.Transparency < 0.95 then
-            local parent = desc.Parent
-            if parent and (not bl[parent] or bl[parent] <= tick()) then
-                if not table.find(coins, parent) then
-                    table.insert(coins, parent)
-                end
+        end
+    end
+
+    -- Fallback: If Halloween mode was selected but no specific candies were found on this specific map,
+    -- fallback to whatever Coin_Server exists so the user never gets stuck idle!
+    if #coins == 0 and mode == "Halloween (Candies)" then
+        for _, desc in ipairs(workspace:GetDescendants()) do
+            if desc.Name == "Coin_Server" and (desc:IsA("BasePart") or desc:FindFirstChild("TouchInterest")) then
+                checkAndAdd(desc)
             end
         end
     end
@@ -7083,11 +7150,12 @@ task.spawn(function()
                                 local lookRot = (flatDir.Magnitude > 0.15) and CFrame.lookAt(Vector3.zero, flatDir.Unit) or hrp.CFrame.Rotation
 
                                 if isUnderground then
-                                    targetCFrame = CFrame.new(coinPos.X, coinPos.Y - 2.2, coinPos.Z) * lookRot
+                                    targetCFrame = CFrame.new(coinPos.X, coinPos.Y - 1.6, coinPos.Z) * lookRot
                                     ensureFarmFloat(hrp)
                                 else
                                     pcall(function() removeFarmFloat(char) end)
-                                    targetCFrame = CFrame.new(coinPos.X, coinPos.Y + 0.8, coinPos.Z) * lookRot
+                                    -- TAM COININ UZERI: coinPos.X, coinPos.Y + 0.1, coinPos.Z (Sifir sapma, tam merkez)
+                                    targetCFrame = CFrame.new(coinPos.X, coinPos.Y + 0.1, coinPos.Z) * lookRot
                                 end
 
                                 local dist = (hrp.Position - targetCFrame.Position).Magnitude
@@ -7113,25 +7181,27 @@ task.spawn(function()
                                         hrp.AssemblyAngularVelocity = Vector3.zero
                                     end
 
-                                    -- Continuous touch trigger during flight
+                                    -- Continuous touch trigger during flight (both standard coins and Halloween candies)
                                     if typeof(firetouchinterest) == "function" then
                                         if closestCoin:IsA("BasePart") then
                                             firetouchinterest(hrp, closestCoin, 0)
                                             firetouchinterest(hrp, closestCoin, 1)
                                         end
-                                        local cv = closestCoin:FindFirstChild("CoinVisual")
-                                        if cv and cv:IsA("BasePart") then
-                                            firetouchinterest(hrp, cv, 0)
-                                            firetouchinterest(hrp, cv, 1)
-                                            if cv.Transparency >= 0.95 then
-                                                coinWasCollected = true
-                                                break
+                                        for _, child in ipairs(closestCoin:GetDescendants()) do
+                                            if child:IsA("BasePart") then
+                                                firetouchinterest(hrp, child, 0)
+                                                firetouchinterest(hrp, child, 1)
+                                                if child.Transparency >= 0.95 and (child.Name:find("Visual") or child.Name:find("Candy") or child.Name:find("Coin") or child.Name:find("Pumpkin")) then
+                                                    coinWasCollected = true
+                                                    break
+                                                end
                                             end
                                         end
                                     end
 
                                     local nowDist = (hrp.Position - coinPos).Magnitude
-                                    if nowDist <= 3.0 then
+                                    -- TAM UZERINE GELENE KADAR DURMA (0.6 stud hassasiyet)
+                                    if nowDist <= 0.6 or coinWasCollected then
                                         break
                                     end
 
@@ -7158,16 +7228,28 @@ task.spawn(function()
                                                 firetouchinterest(hrp, closestCoin, 0)
                                                 firetouchinterest(hrp, closestCoin, 1)
                                             end
-                                            local cv = closestCoin and closestCoin.Parent and closestCoin:FindFirstChild("CoinVisual")
-                                            if cv and cv:IsA("BasePart") then
-                                                firetouchinterest(hrp, cv, 0)
-                                                firetouchinterest(hrp, cv, 1)
+                                            if closestCoin and closestCoin.Parent then
+                                                for _, child in ipairs(closestCoin:GetDescendants()) do
+                                                    if child:IsA("BasePart") then
+                                                        firetouchinterest(hrp, child, 0)
+                                                        firetouchinterest(hrp, child, 1)
+                                                    end
+                                                end
                                             end
                                         end
 
                                         -- Check 1: Did coin or its visual disappear/turn transparent?
-                                        local cv = closestCoin and closestCoin.Parent and closestCoin:FindFirstChild("CoinVisual")
-                                        if not closestCoin or not closestCoin.Parent or not cv or (cv:IsA("BasePart") and cv.Transparency >= 0.95) then
+                                        if not closestCoin or not closestCoin.Parent then
+                                            coinWasCollected = true
+                                            break
+                                        end
+                                        local cv = closestCoin:FindFirstChild("CoinVisual") 
+                                            or closestCoin:FindFirstChild("CandyVisual") 
+                                            or closestCoin:FindFirstChild("Visual")
+                                            or closestCoin:FindFirstChild("Candy")
+                                            or closestCoin:FindFirstChild("Coin")
+                                            or closestCoin:FindFirstChild("Pumpkin")
+                                        if cv and cv:IsA("BasePart") and cv.Transparency >= 0.95 then
                                             coinWasCollected = true
                                             break
                                         end
@@ -7362,7 +7444,8 @@ CoinFarmTab:Section({
     TextSize = 15
 })
 
-if _G.UndergroundFarm == nil then _G.UndergroundFarm = true end
+if _G.UndergroundFarm == nil then _G.UndergroundFarm = false end
+if _G.CoinFarmMode == nil then _G.CoinFarmMode = "Halloween (Candies)" end
 
 UIElements.SafeAutoFarm = CoinFarmTab:Toggle({
     Title = "Enable Safe Coin Farm",
@@ -7401,15 +7484,29 @@ UIElements.SafeAutoFarm = CoinFarmTab:Toggle({
     end,
 })
 
+if _G.CoinFarmMode == nil then _G.CoinFarmMode = "Halloween (Candies)" end
+
+UIElements.CoinFarmMode = CoinFarmTab:Dropdown({
+    Title = "Farm Mode",
+    Desc = "Choose target currency: Halloween Candies, Standard Coins, or Both",
+    Values = {"Halloween (Candies)", "Standard (Coins)", "Auto / All (Coins + Candies)"},
+    Value = _G.CoinFarmMode or "Halloween (Candies)",
+    Callback = function(val)
+        _G.CoinFarmMode = val
+        _G.BlacklistedCoins = {}
+        notify("Coin Farm", "Mode: " .. tostring(val), 2, "sparkles")
+    end
+})
+
 UIElements.UndergroundFarm = CoinFarmTab:Toggle({
     Title = "Underground",
-    Desc = "When ON: farms 3 studs underground lying down. When OFF: farms above coin",
+    Desc = "When ON: farms under coin. When OFF: lands directly on top of coin center",
     Icon = "arrow-down",
     Type = "Checkbox",
-    Value = _G.UndergroundFarm ~= nil and _G.UndergroundFarm or true,
+    Value = _G.UndergroundFarm ~= nil and _G.UndergroundFarm or false,
     Callback = function(val)
         _G.UndergroundFarm = val
-        notify("Coin Farm", "Underground: " .. (val and "ON (3 Studs Lying Down)" or "OFF (Above Coin)"), 2, "arrow-down")
+        notify("Coin Farm", "Underground: " .. (val and "ON (Under Coin)" or "OFF (Directly On Top)"), 2, "arrow-down")
     end
 })
 
