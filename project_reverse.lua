@@ -1,8 +1,61 @@
--- Recovered Luau source by ZeroVector
-local lib = loadstring(game:HttpGet("https://cdn.project-reverse.org/Library.luau"))()
+-- Recovered Luau source by ZeroVector (Patched & Stabilized by VANTA)
 local genv = typeof(getgenv) == "function" and getgenv() or _G
 
-if game.GameId == 66654135 then
+-- Secure UI Library Loader with fallbacks and custom headers
+local function loadLibrary()
+    local cdnUrl = "https://cdn.project-reverse.org/Library.luau"
+    local rawCode = nil
+
+    local reqFunc = (syn and syn.request) or (http and http.request) or http_request or (fluxus and fluxus.request) or request
+    if reqFunc then
+        local ok, resp = pcall(function()
+            return reqFunc({
+                Url = cdnUrl,
+                Method = "GET",
+                Headers = {["User-Agent"] = "Roblox/WinInet"}
+            })
+        end)
+        if ok and resp and resp.Body and #resp.Body > 500 then
+            rawCode = resp.Body
+        end
+    end
+
+    if not rawCode then
+        local ok, res = pcall(function()
+            return game:HttpGet(cdnUrl)
+        end)
+        if ok and res and #res > 500 then
+            rawCode = res
+        end
+    end
+
+    if rawCode then
+        local ok, libInstance = pcall(function()
+            return loadstring(rawCode)()
+        end)
+        if ok and libInstance then
+            return libInstance
+        end
+    end
+
+    return nil
+end
+
+local lib = loadLibrary()
+if not lib then
+    warn("[Project Reverse] Failed to load UI Library from CDN. Please check executor network access.")
+    pcall(function()
+        game:GetService("StarterGui"):SetCore("SendNotification", {
+            Title = "Project Reverse",
+            Text = "UI Library failed to load. Check your connection or executor.",
+            Duration = 6
+        })
+    end)
+    return
+end
+
+-- GameId validation: 66654135 is MM2 Universe/GameId, 142823291 is MM2 PlaceId
+if game.GameId == 66654135 or game.PlaceId == 142823291 or game.PlaceId == 335132778 or game.GameId == 142823291 then
     if not genv.mm2VisualLibraryLoaded then
         local Players, ReplicatedStorage, RunService, Workspace, TweenService, TeleportService, localPlayer, fn, fn2, v, tbl, fn3, fn4, fn5, fn6, fn7, v2, fn8, flag, fn9
         local vector2, v3
@@ -1519,18 +1572,45 @@ if game.GameId == 66654135 then
                     end
                 end
 
-                local ok, result = pcall(game.HttpGet, game, "https://api.project-reverse.org/valuables/get-game-valuables?game=mm2")
+                local reqFunc = (syn and syn.request) or (http and http.request) or http_request or (fluxus and fluxus.request) or request
+                local ok, result = false, nil
+
+                if reqFunc then
+                    local resOk, resp = pcall(function()
+                        return reqFunc({
+                            Url = "https://api.project-reverse.org/valuables/get-game-valuables?game=mm2",
+                            Method = "GET",
+                            Headers = {["User-Agent"] = "Roblox/WinInet"}
+                        })
+                    end)
+                    if resOk and resp and (resp.StatusCode == 200 or resp.Status == 200) and resp.Body then
+                        ok = true
+                        result = resp.Body
+                    end
+                end
 
                 if not ok then
+                    ok, result = pcall(game.HttpGet, game, "https://api.project-reverse.org/valuables/get-game-valuables?game=mm2")
+                end
+
+                if not ok or not result or result == "" then
                     local ok2, result2 = pcall(function()
                         return HttpService:JSONDecode(readfile("ValueData/mm2_values.json"))
                     end)
-
                     local data = ok2 and result2 and result2.data or {}
                     return data
                 end
 
-                local data = HttpService:JSONDecode(result)
+                local decOk, data = pcall(function()
+                    return HttpService:JSONDecode(result)
+                end)
+
+                if not decOk or not data or not data.data then
+                    local ok2, result2 = pcall(function()
+                        return HttpService:JSONDecode(readfile("ValueData/mm2_values.json"))
+                    end)
+                    return (ok2 and result2 and result2.data) or {}
+                end
 
                 pcall(function()
                     writefile("ValueData/mm2_values.json", HttpService:JSONEncode({data = data.data, _time = tick()}))
@@ -1560,15 +1640,29 @@ if game.GameId == 66654135 then
 
                     task.spawn(function()
                         if not genv[arg] then
-                            local ok, result = pcall(game.HttpGet, game, arg2)
-                            local str2 = result
-
+                            local ok, result = false, nil
+                            local reqFunc = (syn and syn.request) or (http and http.request) or http_request or (fluxus and fluxus.request) or request
+                            if reqFunc then
+                                local rOk, resp = pcall(function()
+                                    return reqFunc({
+                                        Url = arg2,
+                                        Method = "GET",
+                                        Headers = {["User-Agent"] = "Roblox/WinInet"}
+                                    })
+                                end)
+                                if rOk and resp and resp.Body then
+                                    ok = true
+                                    result = resp.Body
+                                end
+                            end
                             if not ok then
-                                str2 = ""
+                                ok, result = pcall(game.HttpGet, game, arg2)
                             end
 
-                            if arg3 then
-                                str2 = str2:split(arg3)[1]
+                            local str2 = (ok and result) or ""
+
+                            if arg3 and str2 ~= "" then
+                                str2 = str2:split(arg3)[1] or str2
                             end
 
                             genv[arg] = str2
