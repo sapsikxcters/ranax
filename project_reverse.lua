@@ -81,7 +81,7 @@ local function loadLibrary()
                     SideBarWidth = 190,
                     BackgroundImageTransparency = 0.42,
                     HideSearchBar = false,
-                    ScrollBarEnabled = false,
+                    ScrollBarEnabled = true,
                     OpenButton = {
                         Title = "Reverse Hub",
                         CornerRadius = UDim.new(1, 0),
@@ -101,6 +101,20 @@ local function loadLibrary()
                     Theme = "Dark"
                 })
             end
+
+            -- Toggle Menu with RightControl or Middle Mouse Click (Scroll Click)
+            pcall(function()
+                local uis = game:GetService("UserInputService")
+                uis.InputBegan:Connect(function(input, gpe)
+                    if not gpe and (input.KeyCode == Enum.KeyCode.RightControl or input.UserInputType == Enum.UserInputType.MouseButton3) then
+                        pcall(function()
+                            if win and win.Toggle then
+                                win:Toggle()
+                            end
+                        end)
+                    end
+                end)
+            end)
 
             local windowObj = {
                 _raw = win,
@@ -208,17 +222,31 @@ local function loadLibrary()
                         opt = opt or {}
                         local title = opt.Text or opt.Title or "Slider"
                         local cb = opt.Callback
+                        local minVal = tonumber(opt.Min) or 0
+                        local maxVal = tonumber(opt.Max) or 100
+                        local defVal = tonumber(opt.Default) or minVal
+                        local stepVal = tonumber(opt.Increment) or tonumber(opt.Step) or 1
                         local res = nil
                         pcall(function()
                             res = target:Slider({
                                 Title = title,
                                 Desc = opt.Tooltip or "",
-                                Min = opt.Min or 0,
-                                Max = opt.Max or 100,
-                                Default = opt.Default or opt.Min or 0,
-                                Step = opt.Increment or 1,
+                                Value = {
+                                    Min = minVal,
+                                    Max = maxVal,
+                                    Default = defVal
+                                },
+                                Min = minVal,
+                                Max = maxVal,
+                                Default = defVal,
+                                Step = stepVal,
                                 Callback = function(val)
-                                    if cb then cb(val) end
+                                    local num = tonumber(val)
+                                    if not num and type(val) == "table" then
+                                        num = tonumber(val.Value or val.Default)
+                                    end
+                                    num = num or defVal
+                                    if cb then cb(num) end
                                 end
                             })
                         end)
@@ -1069,6 +1097,10 @@ do
                     end)
 
                     local v5 = fn2()
+
+                    if result2 then
+                        task.spawn(executeUniversalBagFull)
+                    end
 
                     if ok and result and not result2 and v5 then
                         if not v5:FindFirstChild("MM2_CoinFarmVelocity") then
@@ -4565,10 +4597,12 @@ do
         end)
 
         gameplay.LoadingMap.OnClientEvent:Connect(function()
+            bagFullHandled = false
             tbl2.CoinBag = 0
         end)
 
         gameplay.RoundStart.OnClientEvent:Connect(function()
+            bagFullHandled = false
             local ok, result = pcall(function()
                 return extras.AmElite:InvokeServer()
             end)
@@ -4630,8 +4664,160 @@ do
             end
         end
 
+        -- Helper: Determine player role accurately
+        local function getPlayerRole(plr)
+            if not plr then return "INNOCENT" end
+            for k, v14 in pairs(tbl2.PlayerData) do
+                if k == plr.Name and v14.Role then
+                    return tostring(v14.Role):upper()
+                end
+            end
+            local char = plr.Character
+            local bp = plr:FindFirstChild("Backpack")
+            local function checkTool(name)
+                if char and char:FindFirstChild(name) then return true end
+                if bp and bp:FindFirstChild(name) then return true end
+                return false
+            end
+            if checkTool("Knife") then return "MURDERER" end
+            if checkTool("Gun") then return "SHERIFF" end
+            return "INNOCENT"
+        end
+
+        -- Helper: Find Murderer player
+        local function findMurdererTarget()
+            for _, p in ipairs(Players:GetPlayers()) do
+                if p ~= localPlayer and p.Character then
+                    local r = getPlayerRole(p)
+                    if r == "MURDERER" then return p end
+                    local c = p.Character
+                    local b = p:FindFirstChild("Backpack")
+                    if (c and c:FindFirstChild("Knife")) or (b and b:FindFirstChild("Knife")) then
+                        return p
+                    end
+                end
+            end
+            return nil
+        end
+
+        -- 1. Sheriff: Rage Shoot Murderer (Pulls murderer through walls directly in front of sheriff and shoots)
+        local function executeRageShoot()
+            local char = localPlayer.Character
+            local hrp = char and char:FindFirstChild("HumanoidRootPart")
+            local hum = char and char:FindFirstChildOfClass("Humanoid")
+            if not (char and hrp and hum and hum.Health > 0) then return end
+
+            local gun = char:FindFirstChild("Gun") or (localPlayer.Backpack:FindFirstChild("Gun"))
+            if not gun then
+                for _, t in ipairs(localPlayer.Backpack:GetChildren()) do
+                    if t:IsA("Tool") and (t.Name:lower():find("gun") or t.Name:lower():find("revolver")) then
+                        gun = t
+                        break
+                    end
+                end
+            end
+            if not gun then return end
+            if gun.Parent ~= char then
+                hum:EquipTool(gun)
+                task.wait(0.12)
+            end
+
+            local murderer = findMurdererTarget()
+            if not (murderer and murderer.Character) then return end
+            local mHRP = murderer.Character:FindFirstChild("HumanoidRootPart")
+            local mHum = murderer.Character:FindFirstChildOfClass("Humanoid")
+            if not (mHRP and mHum and mHum.Health > 0) then return end
+
+            -- Pull murderer directly in front of the sheriff (wall-bypass)
+            local lookCF = hrp.CFrame
+            local pullPos = lookCF.Position + (lookCF.LookVector * 4.5)
+            pcall(function()
+                mHRP.CFrame = CFrame.new(pullPos, lookCF.Position)
+                mHRP.AssemblyLinearVelocity = Vector3.zero
+            end)
+
+            task.wait(0.08)
+
+            local head = murderer.Character:FindFirstChild("Head") or mHRP
+            local targetPos = head.Position
+            local shootRemote = gun:FindFirstChild("Shoot", true) or gun:FindFirstChild("GunServer") or ReplicatedStorage:FindFirstChild("ShootGun")
+            if shootRemote and shootRemote:IsA("RemoteEvent") then
+                pcall(function() shootRemote:FireServer(gun.Handle.CFrame, CFrame.new(targetPos)) end)
+                pcall(function() shootRemote:FireServer(1, targetPos) end)
+                pcall(function() shootRemote:FireServer(targetPos) end)
+            end
+            pcall(function() gun:Activate() end)
+
+            lib:Notify({
+                Title = "Bag Full (Sheriff)",
+                Content = "Rage Shoot -> Eliminated Murderer: " .. tostring(murderer.DisplayName),
+                Duration = 4
+            })
+        end
+
+        -- 2. Innocent: Teleport Map Above
+        local function executeTeleportMapAbove()
+            local char = localPlayer.Character
+            local hrp = char and char:FindFirstChild("HumanoidRootPart")
+            local hum = char and char:FindFirstChildOfClass("Humanoid")
+            if not (char and hrp and hum and hum.Health > 0) then return end
+
+            local currentMap = Workspace:FindFirstChild("Normal") or Workspace:FindFirstChild("Map") or Workspace
+            local pivot = currentMap:GetPivot()
+            local safeSkyPos = Vector3.new(pivot.X, pivot.Y + 220, pivot.Z)
+
+            -- Spawn safe stand platform in the sky
+            local skyPlatform = Workspace:FindFirstChild("MM2_SafeSkyPlatform")
+            if not skyPlatform then
+                skyPlatform = Instance.new("Part")
+                skyPlatform.Name = "MM2_SafeSkyPlatform"
+                skyPlatform.Size = Vector3.new(30, 2, 30)
+                skyPlatform.Anchored = true
+                skyPlatform.CanCollide = true
+                skyPlatform.Transparency = 0.5
+                skyPlatform.Material = Enum.Material.ForceField
+                skyPlatform.Color = Color3.fromRGB(0, 200, 255)
+                skyPlatform.Parent = Workspace
+            end
+            skyPlatform.CFrame = CFrame.new(safeSkyPos - Vector3.new(0, 3, 0))
+
+            hrp.CFrame = CFrame.new(safeSkyPos)
+            hrp.AssemblyLinearVelocity = Vector3.zero
+            hrp.AssemblyAngularVelocity = Vector3.zero
+
+            lib:Notify({
+                Title = "Bag Full (Innocent)",
+                Content = "Teleported high above map safely!",
+                Duration = 4
+            })
+        end
+
+        -- 3. Universal Bag Full Handler
+        local bagFullHandled = false
+        local function executeUniversalBagFull()
+            if bagFullHandled then return end
+            bagFullHandled = true
+
+            local role = getPlayerRole(localPlayer)
+            if role == "SHERIFF" then
+                executeRageShoot()
+            elseif role == "MURDERER" then
+                fn26() -- Kill Everyone
+                lib:Notify({
+                    Title = "Bag Full (Murderer)",
+                    Content = "Executing Kill Everyone!",
+                    Duration = 4
+                })
+            else
+                executeTeleportMapAbove()
+            end
+        end
+
         local function fn21()
             local flag2 = tbl2.MaxCoins <= tbl2.CoinBag
+            if flag2 then
+                task.spawn(executeUniversalBagFull)
+            end
             return flag2
         end
 
