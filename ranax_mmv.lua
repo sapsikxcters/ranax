@@ -1002,6 +1002,7 @@ if RoundEndEvent then
             _G.RanaxRoundInProgress = false
             _G.CoinFarmHandlingBagFull = false
             _G.DiedThisRound = false
+            _G.WaitingForNewRound = true
             _G.MurdererDiedThisRound = false
             _currentTrackedMurderer = nil
             _G.HasReportedCoins = false
@@ -1024,6 +1025,7 @@ if RoundStartEvent then
             _G.RanaxRoundStartTime = os.time()
             _G.CoinFarmHandlingBagFull = false
             _G.DiedThisRound = false
+            _G.WaitingForNewRound = false
             _G.MurdererDiedThisRound = false
             _currentTrackedMurderer = nil
             _G.HasTeleportedAboveFirst = false
@@ -1036,6 +1038,7 @@ if RoundStartEvent then
             currentRoundToken = currentRoundToken + 1
             lastNotifiedRole = nil
             checkAndNotifyMyRole()
+            if typeof(removeCoinFarmPlatform) == "function" then pcall(removeCoinFarmPlatform) end
             task.delay(0.5, function()
                 if typeof(_rebuildCoinCache) == "function" then
                     pcall(_rebuildCoinCache)
@@ -5916,124 +5919,43 @@ local function restoreChar()
     end
 end
 
-LocalPlayer.CharacterAdded:Connect(function(char)
-    _G.CoinFarmHandlingBagFull = false
-    _G.HasReportedCoins = false
-    _G.RanaxCoinsCollected = 0
-    collectedCoins = {}
-    startedCollecting = false
-    if not flying then return end
-    local hrp = char:WaitForChild("HumanoidRootPart", 5)
-    local hum = char:WaitForChild("Humanoid", 5)
-    if not hrp then return end
-    local lastPos = hrp.Position
-    repeat
-        task.wait(0.2)
-        if not (char and char.Parent and hrp and hrp.Parent) then break end
-        local newPos = hrp.Position
-        if (newPos - lastPos).Magnitude > 1 then
-            lastPos = newPos
-        else
-            break
+_G.DiedThisRound = _G.DiedThisRound or false
+_G.WaitingForNewRound = _G.WaitingForNewRound or false
+
+-- Helper to check if any part or position is inside the Lobby
+local function isPartInLobby(part)
+    if not part then return false end
+    local pos = part.Position
+
+    -- 1. Check parent hierarchy for any lobby container
+    local current = part.Parent
+    while current and current ~= workspace and current ~= game do
+        local cName = current.Name:lower()
+        if cName:find("lobby") then
+            return true
         end
-    until not flying
-    task.wait(0.3)
-    if flying and char.Parent then
-        for _, v in pairs(char:GetDescendants()) do
-            if v:IsA("BasePart") then
-                v.CanCollide = false
-            end
-        end
-        noclipLoop(char)
+        current = current.Parent
     end
-end)
 
-local function getNearestCoin(root)
-    local nearest = nil
-    local dist = math.huge
-
-    for _, v in pairs(workspace:GetDescendants()) do
-        if v:IsA("BasePart") and not collectedCoins[v] and not v:GetAttribute("Collected") then
-            local n = v.Name:lower()
-            local isCoin = false
-
-            if n == "coin_server" or n == "coin" or n == "candy_server" or n == "candy" or n == "candycorn" or n == "pumpkin" or n == "snowflake" then
-                isCoin = true
-            elseif v:FindFirstChild("CoinVisual") or v:FindFirstChild("CandyVisual") or v:FindFirstChild("TouchInterest") then
-                local p = v.Parent
-                local pn = p and p.Name:lower() or ""
-                if pn:find("coin") or pn:find("candy") or pn == "normal" or pn:find("container") then
-                    isCoin = true
-                end
-            end
-
-            -- If it has CoinVisual child, ensure it is still visible (not collected by another player)
-            if isCoin then
-                local vis = v:FindFirstChild("CoinVisual") or v:FindFirstChild("CandyVisual")
-                if vis and vis:IsA("BasePart") and vis.Transparency >= 0.9 then
-                    isCoin = false
-                end
-            end
-
-            if isCoin then
-                local d = (root.Position - v.Position).Magnitude
-                if d < dist then
-                    dist = d
-                    nearest = v
-                end
-            end
+    -- 2. Direct check of known lobby containers in workspace
+    local lobbyNames = {"RegularLobby", "Lobby", "HalloweenLobby", "HolidayLobby", "LobbyHoliday"}
+    for _, lName in ipairs(lobbyNames) do
+        local lObj = workspace:FindFirstChild(lName)
+        if lObj and part:IsDescendantOf(lObj) then
+            return true
         end
     end
 
-    return nearest
+    -- 3. Coordinate-based fallback for MM2 lobby (around X: -108.5, Z: -11.5, Y > 95)
+    local lobbyCenter = Vector3.new(-108.5, 140, -11.5)
+    local xzDist = (Vector3.new(pos.X, 0, pos.Z) - Vector3.new(lobbyCenter.X, 0, lobbyCenter.Z)).Magnitude
+    if xzDist < 190 and pos.Y > 95 then
+        return true
+    end
+
+    return false
 end
-
-local function flyToCoin(targetPart)
-    local char = getChar()
-    local hrp = char and char:WaitForChild("HumanoidRootPart", 3)
-    local hum = char and char:WaitForChild("Humanoid", 3)
-    if not (hrp and hum and hum.Health > 0) then return end
-    hum.PlatformStand = true
-    local timeout = tick() + 10
-    local speed = tonumber(_G.FarmSpeed) or 16
-
-    while flying and char.Parent and targetPart.Parent do
-        if tick() > timeout then break end
-        if targetPart:GetAttribute("Collected") then break end
-        local targetPos = targetPart.Position
-        local fMode = _G.FlyMode or "normal"
-        if fMode == "down" or _G.UndergroundFarm == true then
-            targetPos = targetPos - Vector3.new(0, 3, 0)
-        end
-        local dir = (targetPos - hrp.Position).Unit
-        hrp.AssemblyLinearVelocity = dir * speed
-        if fMode == "down" or _G.UndergroundFarm == true then
-            hrp.CFrame = CFrame.new(hrp.Position, targetPart.Position) * CFrame.Angles(math.rad(90), 0, 0)
-        else
-            hrp.CFrame = CFrame.new(hrp.Position, targetPart.Position)
-        end
-
-        if typeof(firetouchinterest) == "function" then
-            firetouchinterest(hrp, targetPart, 0)
-            firetouchinterest(hrp, targetPart, 1)
-        end
-
-        if (hrp.Position - targetPos).Magnitude < 2 then
-            hrp.CFrame = CFrame.new(targetPos)
-            if typeof(firetouchinterest) == "function" then
-                firetouchinterest(hrp, targetPart, 0)
-                firetouchinterest(hrp, targetPart, 1)
-            end
-            break
-        end
-        RunService.RenderStepped:Wait()
-    end
-    hrp.AssemblyLinearVelocity = Vector3.zero
-    collectedCoins[targetPart] = true
-    startedCollecting = true
-    _G.RanaxCoinsCollected = (_G.RanaxCoinsCollected or 0) + 1
-    _G.FarmTotalCollected = (_G.FarmTotalCollected or 0) + 1
-end
+_G.isPartInLobby = isPartInLobby
 
 -- Teleport to Lobby Helper
 local function TeleportToLobby()
@@ -6049,7 +5971,7 @@ local function TeleportToLobby()
     hrp.AssemblyAngularVelocity = Vector3.zero
 
     local targetCFrame = nil
-    local lobby = workspace:FindFirstChild("RegularLobby") or workspace:FindFirstChild("Lobby")
+    local lobby = workspace:FindFirstChild("RegularLobby") or workspace:FindFirstChild("Lobby") or workspace:FindFirstChild("HalloweenLobby")
     if lobby then
         local spawns = lobby:FindFirstChild("Spawns") or lobby:FindFirstChild("Spawn")
         if spawns then
@@ -6088,6 +6010,235 @@ local function TeleportToLobby()
     end
 end
 _G.TeleportToLobby = TeleportToLobby
+
+-- Above Map Platform and Teleport Helper
+local aboveMapPlatform = nil
+local function removeCoinFarmPlatform()
+    if aboveMapPlatform and aboveMapPlatform.Parent then
+        pcall(function() aboveMapPlatform:Destroy() end)
+    end
+    aboveMapPlatform = nil
+end
+_G.removeCoinFarmPlatform = removeCoinFarmPlatform
+
+local function teleportAboveMap()
+    local char = LocalPlayer.Character
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if not (hrp and hum and hum.Health > 0) then return end
+
+    hum.PlatformStand = false
+    hum.Sit = false
+    pcall(function() hum:ChangeState(Enum.HumanoidStateType.GettingUp) end)
+    hrp.AssemblyLinearVelocity = Vector3.zero
+    hrp.AssemblyAngularVelocity = Vector3.zero
+
+    local curPos = hrp.Position
+    local targetX = curPos.X
+    local targetZ = curPos.Z
+    local targetY = math.max(curPos.Y + 70, 130)
+
+    -- Try detecting the active map model in workspace to position right above it
+    for _, obj in ipairs(workspace:GetChildren()) do
+        if obj:IsA("Model") and not obj.Name:lower():find("lobby") and not Players:GetPlayerFromCharacter(obj) then
+            if obj:FindFirstChild("CoinContainer") or obj:FindFirstChild("Coin_Server", true) or obj:FindFirstChild("Spawns") then
+                local cf, sz = obj:GetBoundingBox()
+                targetX = cf.Position.X
+                targetZ = cf.Position.Z
+                targetY = cf.Position.Y + (sz.Y / 2) + 60
+                break
+            end
+        end
+    end
+
+    removeCoinFarmPlatform()
+    local plat = Instance.new("Part")
+    plat.Name = "RanaxAboveMapPlatform"
+    plat.Size = Vector3.new(22, 2, 22)
+    plat.CFrame = CFrame.new(targetX, targetY - 2, targetZ)
+    plat.Anchored = true
+    plat.CanCollide = true
+    plat.Transparency = 0.5
+    plat.Material = Enum.Material.ForceField
+    plat.Color = Color3.fromRGB(0, 200, 255)
+    plat.Parent = workspace
+    aboveMapPlatform = plat
+
+    hrp.CFrame = CFrame.new(targetX, targetY + 2.5, targetZ)
+    task.wait(0.05)
+    hrp.AssemblyLinearVelocity = Vector3.zero
+    hrp.AssemblyAngularVelocity = Vector3.zero
+
+    notify("Coin Farm", "Teleported Above Map (Safe Platform)", 2, "arrow-up-circle")
+end
+_G.teleportAboveMap = teleportAboveMap
+
+local function hookDeathGuard(char)
+    if not char then return end
+    local hum = char:WaitForChild("Humanoid", 5)
+    if hum then
+        hum.Died:Connect(function()
+            _G.DiedThisRound = true
+            _G.WaitingForNewRound = true
+            startedCollecting = false
+            if _G.CoinTween then _G.CoinTween:Cancel(); _G.CoinTween = nil end
+            if typeof(removeCoinFarmPlatform) == "function" then pcall(removeCoinFarmPlatform) end
+            restoreChar()
+            notify("Coin Farm", "Died this match -> Returning to Lobby until next match!", 3, "skull")
+            task.delay(0.5, function()
+                TeleportToLobby()
+            end)
+        end)
+    end
+end
+
+LocalPlayer.CharacterAdded:Connect(function(char)
+    hookDeathGuard(char)
+
+    -- If died in the ongoing match, teleport to lobby immediately and stay idle until new round!
+    if _G.DiedThisRound or _G.WaitingForNewRound then
+        task.wait(0.4)
+        TeleportToLobby()
+        return
+    end
+
+    _G.CoinFarmHandlingBagFull = false
+    _G.HasReportedCoins = false
+    _G.RanaxCoinsCollected = 0
+    collectedCoins = {}
+    startedCollecting = false
+    if not flying then return end
+    local hrp = char:WaitForChild("HumanoidRootPart", 5)
+    local hum = char:WaitForChild("Humanoid", 5)
+    if not hrp then return end
+    local lastPos = hrp.Position
+    repeat
+        task.wait(0.2)
+        if not (char and char.Parent and hrp and hrp.Parent) then break end
+        local newPos = hrp.Position
+        if (newPos - lastPos).Magnitude > 1 then
+            lastPos = newPos
+        else
+            break
+        end
+    until not flying
+    task.wait(0.3)
+    if flying and char.Parent then
+        for _, v in pairs(char:GetDescendants()) do
+            if v:IsA("BasePart") then
+                v.CanCollide = false
+            end
+        end
+        noclipLoop(char)
+    end
+end)
+if LocalPlayer.Character then
+    hookDeathGuard(LocalPlayer.Character)
+end
+
+-- Strictly targets actual coins, NEVER lobby items and NEVER Halloween pumpkins/candies
+local function getNearestCoin(root)
+    local nearest = nil
+    local dist = math.huge
+
+    for _, v in pairs(workspace:GetDescendants()) do
+        if v:IsA("BasePart") and not collectedCoins[v] and not v:GetAttribute("Collected") then
+            -- 1. Completely ignore ANY item located in the Lobby
+            if not isPartInLobby(v) then
+                local n = v.Name:lower()
+
+                -- 2. Strictly filter out all Halloween / event pumpkins, candies, and lobby props
+                local isEventItem = n:find("pumpkin") or n:find("candy") or n:find("corn") or n:find("snowflake")
+                    or n:find("karpuz") or n:find("melon") or n:find("balkabag")
+
+                if not isEventItem then
+                    local isCoin = false
+
+                    -- True coin detection
+                    if n == "coin_server" or n == "coin" then
+                        isCoin = true
+                    elseif v:FindFirstChild("CoinVisual") then
+                        isCoin = true
+                    elseif v:FindFirstChild("TouchInterest") then
+                        local p = v.Parent
+                        local pn = p and p.Name:lower() or ""
+                        if (pn:find("coin") or pn == "normal" or pn:find("container"))
+                            and not (pn:find("candy") or pn:find("pumpkin") or pn:find("lobby")) then
+                            isCoin = true
+                        end
+                    end
+
+                    -- If it has CoinVisual child, ensure it is still visible (not already collected)
+                    if isCoin then
+                        local vis = v:FindFirstChild("CoinVisual")
+                        if vis and vis:IsA("BasePart") and vis.Transparency >= 0.9 then
+                            isCoin = false
+                        end
+                    end
+
+                    if isCoin then
+                        local d = (root.Position - v.Position).Magnitude
+                        if d < dist then
+                            dist = d
+                            nearest = v
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    return nearest
+end
+
+local function flyToCoin(targetPart)
+    local char = getChar()
+    local hrp = char and char:WaitForChild("HumanoidRootPart", 3)
+    local hum = char and char:WaitForChild("Humanoid", 3)
+    if not (hrp and hum and hum.Health > 0) then return end
+    hum.PlatformStand = true
+    local timeout = tick() + 10
+    local speed = tonumber(_G.FarmSpeed) or 16
+
+    while flying and char.Parent and targetPart.Parent do
+        if tick() > timeout then break end
+        if targetPart:GetAttribute("Collected") then break end
+        if _G.DiedThisRound or _G.WaitingForNewRound or hum.Health <= 0 then break end
+
+        local targetPos = targetPart.Position
+        local fMode = _G.FlyMode or "normal"
+        if fMode == "down" or _G.UndergroundFarm == true then
+            targetPos = targetPos - Vector3.new(0, 3, 0)
+        end
+        local dir = (targetPos - hrp.Position).Unit
+        hrp.AssemblyLinearVelocity = dir * speed
+        if fMode == "down" or _G.UndergroundFarm == true then
+            hrp.CFrame = CFrame.new(hrp.Position, targetPart.Position) * CFrame.Angles(math.rad(90), 0, 0)
+        else
+            hrp.CFrame = CFrame.new(hrp.Position, targetPart.Position)
+        end
+
+        if typeof(firetouchinterest) == "function" then
+            firetouchinterest(hrp, targetPart, 0)
+            firetouchinterest(hrp, targetPart, 1)
+        end
+
+        if (hrp.Position - targetPos).Magnitude < 2 then
+            hrp.CFrame = CFrame.new(targetPos)
+            if typeof(firetouchinterest) == "function" then
+                firetouchinterest(hrp, targetPart, 0)
+                firetouchinterest(hrp, targetPart, 1)
+            end
+            break
+        end
+        RunService.RenderStepped:Wait()
+    end
+    hrp.AssemblyLinearVelocity = Vector3.zero
+    collectedCoins[targetPart] = true
+    startedCollecting = true
+    _G.RanaxCoinsCollected = (_G.RanaxCoinsCollected or 0) + 1
+    _G.FarmTotalCollected = (_G.FarmTotalCollected or 0) + 1
+end
 
 local function getCoinBagLive()
     local pgui = LocalPlayer:FindFirstChild("PlayerGui")
@@ -6178,15 +6329,13 @@ local function executeBagFullAction()
                 end
             end)
         else
-            notify("Bag Full Action", "Role: Innocent -> Teleporting to Lobby!", 3, "map-pin")
-            task.spawn(function()
-                TeleportToLobby()
-            end)
+            notify("Bag Full Action", "Role: Innocent -> Safe Above Map!", 3, "shield")
+            -- Innocent is safely perched on the above-map platform out of reach
         end
     elseif action:find("Rage Shoot") then
         notify("Bag Full Action", "Executing Rage Shoot!", 3, "crosshair")
         task.spawn(function()
-            local shootFn = _G.executeRanaxRageShoot
+            local shootFn = _G.executeRanaxRageShoot or _G.executeRanaxFlickShoot
             if typeof(shootFn) == "function" then
                 shootFn()
             end
@@ -6224,20 +6373,46 @@ task.spawn(function()
             local hum = char and char:FindFirstChildOfClass("Humanoid")
             local root = char and char:FindFirstChild("HumanoidRootPart")
 
-            -- 1. Death Guard: If dead, wait for respawn and new round
+            -- 1. Death / Match Wait Guard: If died in current match, stay in Lobby until new round starts!
+            if _G.DiedThisRound or _G.WaitingForNewRound then
+                startedCollecting = false
+                if char and hum and hum.Health > 0 and root then
+                    if not isPartInLobby(root) then
+                        TeleportToLobby()
+                    end
+                end
+
+                -- Dynamic round start recovery: if game teleports player into active map
+                if root and not isPartInLobby(root) and _G.RanaxRoundInProgress then
+                    _G.DiedThisRound = false
+                    _G.WaitingForNewRound = false
+                    _G.CoinFarmHandlingBagFull = false
+                    _G.RanaxCoinsCollected = 0
+                    collectedCoins = {}
+                    startedCollecting = false
+                    if typeof(removeCoinFarmPlatform) == "function" then pcall(removeCoinFarmPlatform) end
+                end
+                task.wait(1)
+                return
+            end
+
+            -- 2. General Alive Guard
             if not (char and char.Parent and hum and root and hum.Health > 0 and char:IsDescendantOf(workspace)) then
                 startedCollecting = false
                 task.wait(1)
                 return
             end
 
-            -- 2. Bag Full Guard: Trigger action ONCE, wait safely until new round without stopping farm
+            -- 3. Bag Full Guard: Teleport above map FIRST, then execute bag full action!
             if IsCoinBagFull() then
                 if not _G.CoinFarmHandlingBagFull then
                     _G.CoinFarmHandlingBagFull = true
                     restoreChar()
 
-                    -- Send Discord Webhook report
+                    -- STEP 1: Teleport above map onto safety platform
+                    teleportAboveMap()
+
+                    -- STEP 2: Send Discord Webhook report
                     if _G.WebhookEnabled and not _G.HasReportedCoins then
                         _G.HasReportedCoins = true
                         local diff = os.time() - (_G.FarmStartTime or os.time())
@@ -6258,14 +6433,15 @@ task.spawn(function()
                         end)
                     end
 
-                    -- Trigger Bag Full Action (Sheriff: Shoot / Innocent: Above Map / Murderer: Kill Everyone)
+                    -- STEP 3: Switch to action
+                    task.wait(0.6)
                     executeBagFullAction()
                 end
                 task.wait(1.5)
                 return
             end
 
-            -- 3. Search for coins; if coins exist, clear bag full flag for fresh round!
+            -- 4. Search for coins; if coins exist, clear bag full flag for fresh round!
             local coin = getNearestCoin(root)
             if coin then
                 if _G.CoinFarmHandlingBagFull then
@@ -6274,6 +6450,7 @@ task.spawn(function()
                     _G.RanaxCoinsCollected = 0
                     collectedCoins = {}
                     startedCollecting = false
+                    if typeof(removeCoinFarmPlatform) == "function" then pcall(removeCoinFarmPlatform) end
                 end
                 flyToCoin(coin)
             else
