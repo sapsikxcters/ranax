@@ -1870,7 +1870,9 @@ local function flyToCoin(targetPart)
     local hum = char:FindFirstChildOfClass("Humanoid")
     if not (hrp and hum) then return end
 
-    hum.PlatformStand = true
+    if not hum.PlatformStand then
+        hum.PlatformStand = true
+    end
     local timeout = tick() + 6
     while flying and char.Parent and targetPart.Parent and isAlive(char) do
         if tick() > timeout or targetPart:GetAttribute("Collected") then break end
@@ -1892,7 +1894,6 @@ local function flyToCoin(targetPart)
         end
 
         if mag < 4.5 then
-            hrp.CFrame = CFrame.new(targetPos)
             if typeof(firetouchinterest) == "function" then
                 pcall(function()
                     firetouchinterest(hrp, targetPart, 0)
@@ -1901,13 +1902,7 @@ local function flyToCoin(targetPart)
             end
             break
         end
-        RunService.RenderStepped:Wait()
-    end
-    if hrp and hrp.Parent then
-        hrp.AssemblyLinearVelocity = Vector3.zero
-    end
-    if hum and hum.Parent then
-        hum.PlatformStand = false
+        RunService.Heartbeat:Wait()
     end
     collectedCoins[targetPart] = true
     startedCollecting = true

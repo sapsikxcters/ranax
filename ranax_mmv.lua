@@ -6138,18 +6138,31 @@ if LocalPlayer.Character then
     hookDeathGuard(LocalPlayer.Character)
 end
 
--- Ultra-Fast Coin Container Finder (Eliminates Workspace:GetDescendants Lag)
+-- Ultra-Fast Coin Container Finder (Eliminates Workspace:GetDescendants Lag & Caches Container)
 local function getMapCoinContainer()
+    if _G._RanaxCoinContainer and _G._RanaxCoinContainer.Parent and #_G._RanaxCoinContainer:GetChildren() > 0 then
+        return _G._RanaxCoinContainer
+    end
     local c = workspace:FindFirstChild("CoinContainer")
-    if c then return c end
+    if c and #c:GetChildren() > 0 then
+        _G._RanaxCoinContainer = c
+        return c
+    end
     local norm = workspace:FindFirstChild("Normal")
     if norm and norm:FindFirstChild("CoinContainer") then
-        return norm.CoinContainer
+        local c2 = norm.CoinContainer
+        if #c2:GetChildren() > 0 then
+            _G._RanaxCoinContainer = c2
+            return c2
+        end
     end
     for _, obj in ipairs(workspace:GetChildren()) do
         if obj:IsA("Model") and not isPartInLobby(obj) then
             local cc = obj:FindFirstChild("CoinContainer")
-            if cc then return cc end
+            if cc and #cc:GetChildren() > 0 then
+                _G._RanaxCoinContainer = cc
+                return cc
+            end
         end
     end
     return nil
@@ -6168,19 +6181,17 @@ local function getNearestCoin(root)
         -- Fast path: Scan only coins inside CoinContainer (30-50 parts instead of 25,000!)
         for _, v in ipairs(targets) do
             if v:IsA("BasePart") and not collectedCoins[v] and not v:GetAttribute("Collected") then
-                if not isPartInLobby(v) then
-                    local n = v.Name:lower()
-                    local isEvent = n:find("pumpkin") or n:find("candy") or n:find("corn") or n:find("snowflake")
-                        or n:find("karpuz") or n:find("melon") or n:find("balkabag")
+                local n = v.Name:lower()
+                local isEvent = n:find("pumpkin") or n:find("candy") or n:find("corn") or n:find("snowflake")
+                    or n:find("karpuz") or n:find("melon") or n:find("balkabag")
 
-                    if not isEvent then
-                        local vis = v:FindFirstChild("CoinVisual")
-                        if not (vis and vis:IsA("BasePart") and vis.Transparency >= 0.9) then
-                            local d = (root.Position - v.Position).Magnitude
-                            if d < dist then
-                                dist = d
-                                nearest = v
-                            end
+                if not isEvent then
+                    local vis = v:FindFirstChild("CoinVisual")
+                    if not (vis and vis:IsA("BasePart") and vis.Transparency >= 0.9) then
+                        local d = (root.Position - v.Position).Magnitude
+                        if d < dist then
+                            dist = d
+                            nearest = v
                         end
                     end
                 end
@@ -6235,8 +6246,10 @@ local function flyToCoin(targetPart)
     local hrp = char and char:WaitForChild("HumanoidRootPart", 3)
     local hum = char and char:WaitForChild("Humanoid", 3)
     if not (hrp and hum and hum.Health > 0) then return end
-    hum.PlatformStand = true
-    local timeout = tick() + 8
+    if not hum.PlatformStand then
+        hum.PlatformStand = true
+    end
+    local timeout = tick() + 6
     local speed = tonumber(_G.FarmSpeed) or 16
 
     while flying and char.Parent and targetPart.Parent do
@@ -6260,23 +6273,19 @@ local function flyToCoin(targetPart)
             hrp.CFrame = CFrame.new(hrp.Position, targetPart.Position)
         end
 
-        -- Smooth collection: only fire touch interest once when close, avoiding 120 FPS remote flooding!
+        -- Smooth collection: trigger touch when in range without teleport stutter or FPS drops
         if mag < 4.5 then
-            hrp.CFrame = CFrame.new(targetPos)
             if typeof(firetouchinterest) == "function" then
-                firetouchinterest(hrp, targetPart, 0)
-                firetouchinterest(hrp, targetPart, 1)
+                pcall(function()
+                    firetouchinterest(hrp, targetPart, 0)
+                    firetouchinterest(hrp, targetPart, 1)
+                end)
             end
             break
         end
-        RunService.RenderStepped:Wait()
+        RunService.Heartbeat:Wait()
     end
-    if hrp and hrp.Parent then
-        hrp.AssemblyLinearVelocity = Vector3.zero
-    end
-    if hum and hum.Parent then
-        hum.PlatformStand = false
-    end
+    -- Keep PlatformStand on while flying so physics engine doesn't rebuild joints & cause micro-freezes!
     if targetPart and targetPart.Parent then
         collectedCoins[targetPart] = true
         startedCollecting = true
@@ -6286,7 +6295,6 @@ local function flyToCoin(targetPart)
 end
 
 local function getCoinBagLive()
-    local pgui = LocalPlayer:FindFirstChild("PlayerGui")
     local defaultMax = 40
     pcall(function()
         if MarketplaceService:UserOwnsGamePassAsync(LocalPlayer.UserId, 151528) then
@@ -6294,6 +6302,24 @@ local function getCoinBagLive()
         end
     end)
     local tracked = _G.RanaxCoinsCollected or 0
+
+    if _G._RanaxCoinLabel and _G._RanaxCoinLabel.Parent and _G._RanaxCoinLabel.Visible then
+        local txt = _G._RanaxCoinLabel.Text
+        if txt and txt ~= "" then
+            local cur, mx = txt:match("(%d+)%s*/%s*(%d+)")
+            if cur and mx then
+                local cNum, mNum = tonumber(cur), tonumber(mx)
+                if cNum and mNum and (mNum >= 30 and mNum <= 100) then
+                    return cNum, mNum, (cNum >= mNum and cNum >= 30)
+                end
+            end
+            if txt:match("^%s*[Ff][Uu][Ll][Ll]!*%s*$") then
+                return defaultMax, defaultMax, true
+            end
+        end
+    end
+
+    local pgui = LocalPlayer:FindFirstChild("PlayerGui")
     if not pgui then return tracked, defaultMax, (tracked >= defaultMax) end
 
     local mg = pgui:FindFirstChild("MainGUI") or pgui:FindFirstChild("MainGui") or pgui:FindFirstChild("Gui")
@@ -6307,6 +6333,7 @@ local function getCoinBagLive()
                 if cur and mx then
                     local cNum, mNum = tonumber(cur), tonumber(mx)
                     if cNum and mNum and (mNum >= 30 and mNum <= 100) then
+                        _G._RanaxCoinLabel = desc
                         return cNum, mNum, (cNum >= mNum and cNum >= 30)
                     end
                 end
@@ -6314,6 +6341,7 @@ local function getCoinBagLive()
                 local pName = (desc.Parent and desc.Parent.Name:lower()) or ""
                 local dName = desc.Name:lower()
                 if (pName:find("coin") or dName:find("coin") or pName:find("candy") or dName:find("candy") or pName:find("event") or pName:find("hallow")) and txt:match("^%s*[Ff][Uu][Ll][Ll]!*%s*$") then
+                    _G._RanaxCoinLabel = desc
                     return defaultMax, defaultMax, true
                 end
             end
