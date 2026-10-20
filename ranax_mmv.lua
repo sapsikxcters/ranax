@@ -7361,7 +7361,7 @@ CoinFarmTab:Button({
     end
 })
 -------------------------------------------------------------------------------------------------------------------
--- ==================== RANAX TRADE HELPER & AUTO TRADE TAB ====================
+-- ==================== RANAX ADVANCED TRADE ENGINE & HELPER ====================
 do
     local TradeTab = Window:Tab({
         Title = "Trade",
@@ -7370,9 +7370,14 @@ do
     })
 
     local _tradePriceType = "Supreme"
-    local _showTradeValues = false
+    local _showTradeValues = true
     local _autoOfferEnabled = false
     local _minProfitPct = 6
+    local _autoAcceptOnWin = false
+    local _autoDeclineOnLose = false
+    local _antiSharkEnabled = true
+    local _tradeWebhookEnabled = true
+
     local _supremeValues = {}
     local _usdValues = {}
     local _activeValues = {}
@@ -7380,11 +7385,12 @@ do
     local _yourOfferData = {}
     local _theirTotalVal = 0
     local _yourTotalVal = 0
-    local _tradeUpdateConn = nil
-    local _tradeStartConn = nil
-    local _tradeEndConn = nil
-    local _tradeAcceptConn = nil
+    local _lastTheirTotalVal = 0
+    local _lastTheirItemCount = 0
+    local _currentTradingPartner = nil
     local _analyzingInv = false
+    local _spyingPartner = false
+    local _lastAcceptedTradeData = nil
 
     local _supremeMap = {
         ["Red Luger"] = "RedLuger", ["Hallow's Blade"] = "HallowsBlade", ["Flowerwood Gun"] = "FlowerwoodGun",
@@ -7463,9 +7469,7 @@ do
                 if decOk and dec and dec.data then
                     items = dec.data
                     pcall(function()
-                        if writefile then
-                            writefile("ValueData_mm2_values.json", body)
-                        end
+                        if writefile then writefile("ValueData_mm2_values.json", body) end
                     end)
                 end
             end
@@ -7506,25 +7510,19 @@ do
             local bigHTML = ""
             for _, u in ipairs(urls) do
                 local ok, html = pcall(game.HttpGet, game, u)
-                if ok and html then
-                    bigHTML = bigHTML .. "\n" .. html
-                end
+                if ok and html then bigHTML = bigHTML .. "\n" .. html end
             end
 
             if bigHTML == "" then return end
 
             local rawItems = {}
-            -- Regex pattern parser: captures .itemhead and .itemvalue
             for head, body in bigHTML:gmatch('<div class="itemhead">([^<]+)</div>.-<div class="itemvalue">([%d,]+)</div>') do
                 local cleanName = head:gsub("%s+", " "):gsub("^%s+", ""):gsub("%s+$", "")
                 local cleanVal = tonumber((body:gsub(",", ""):gsub("%s+", ""))) or 0
                 if cleanName:find("jdrbx") then cleanName = "JD" end
-                if cleanName ~= "" and cleanVal > 0 then
-                    rawItems[cleanName] = cleanVal
-                end
+                if cleanName ~= "" and cleanVal > 0 then rawItems[cleanName] = cleanVal end
             end
 
-            -- Match to internal MM2 Item database names
             local itemDb = {}
             pcall(function()
                 local db = ReplicatedStorage:FindFirstChild("Database")
@@ -7552,7 +7550,6 @@ do
         end)
     end
 
-    -- Initial values load
     fetchUSDValues()
     fetchSupremeValues()
 
@@ -7581,6 +7578,96 @@ do
         return lbl
     end
 
+    local function getOrCreateWFLBanner(trade)
+        if not trade then return nil end
+        local banner = trade:FindFirstChild("RanaxWFLBanner")
+        if not banner then
+            banner = Instance.new("Frame")
+            banner.Name = "RanaxWFLBanner"
+            banner.Size = UDim2.new(0.96, 0, 0, 30)
+            banner.Position = UDim2.new(0.02, 0, 0, -36)
+            banner.BackgroundColor3 = Color3.fromRGB(13, 15, 24)
+            banner.BackgroundTransparency = 0.12
+            banner.BorderSizePixel = 0
+            banner.ZIndex = 25
+            banner.Parent = trade
+
+            local corner = Instance.new("UICorner")
+            corner.CornerRadius = UDim.new(0, 8)
+            corner.Parent = banner
+
+            local stroke = Instance.new("UIStroke")
+            stroke.Name = "Stroke"
+            stroke.Color = Color3.fromRGB(88, 101, 242)
+            stroke.Thickness = 1.5
+            stroke.Parent = banner
+
+            local lbl = Instance.new("TextLabel")
+            lbl.Name = "Text"
+            lbl.Size = UDim2.new(1, -12, 1, 0)
+            lbl.Position = UDim2.new(0, 6, 0, 0)
+            lbl.BackgroundTransparency = 1
+            lbl.Font = Enum.Font.GothamBold
+            lbl.TextSize = 12
+            lbl.TextColor3 = Color3.fromRGB(255, 255, 255)
+            lbl.Text = "⚖️  RANAX TRADE HELPER  •  Waiting for items..."
+            lbl.ZIndex = 26
+            lbl.Parent = banner
+        end
+        return banner
+    end
+
+    local function updateWFLBanner(theirVal, yourVal)
+        local trade = getTradeGUI()
+        if not trade then return end
+        local banner = getOrCreateWFLBanner(trade)
+        if not banner then return end
+
+        local stroke = banner:FindFirstChild("Stroke")
+        local lbl = banner:FindFirstChild("Text")
+        if not lbl then return end
+
+        local diff = theirVal - yourVal
+        local curSym = (_tradePriceType == "USD") and "$" or ""
+
+        if theirVal == 0 and yourVal == 0 then
+            lbl.Text = "⚖️  RANAX TRADE HELPER  •  Ready"
+            lbl.TextColor3 = Color3.fromRGB(180, 190, 220)
+            if stroke then stroke.Color = Color3.fromRGB(88, 101, 242) end
+        elseif theirVal > 0 and yourVal == 0 then
+            lbl.Text = string.format("🎁  FREE OFFER!  •  Receiving +%s%d", curSym, theirVal)
+            lbl.TextColor3 = Color3.fromRGB(48, 255, 106)
+            if stroke then stroke.Color = Color3.fromRGB(48, 255, 106) end
+        elseif theirVal == 0 and yourVal > 0 then
+            lbl.Text = string.format("⚠️  EMPTY COUNTER-OFFER!  •  Giving %s%d", curSym, yourVal)
+            lbl.TextColor3 = Color3.fromRGB(255, 160, 50)
+            if stroke then stroke.Color = Color3.fromRGB(255, 160, 50) end
+        else
+            local pct = yourVal > 0 and math.floor(((diff) / yourVal) * 100) or 0
+            if diff >= 60 then
+                lbl.Text = string.format("🔥  MASSIVE WIN!  •  +%s%d (+%d%%)", curSym, diff, pct)
+                lbl.TextColor3 = Color3.fromRGB(48, 255, 106)
+                if stroke then stroke.Color = Color3.fromRGB(48, 255, 106) end
+            elseif diff > 0 then
+                lbl.Text = string.format("✅  WIN!  •  +%s%d (+%d%%)", curSym, diff, pct)
+                lbl.TextColor3 = Color3.fromRGB(80, 240, 140)
+                if stroke then stroke.Color = Color3.fromRGB(80, 240, 140) end
+            elseif diff == 0 then
+                lbl.Text = "⚖️  FAIR TRADE  •  Equal Values"
+                lbl.TextColor3 = Color3.fromRGB(255, 215, 0)
+                if stroke then stroke.Color = Color3.fromRGB(255, 215, 0) end
+            elseif diff >= -30 then
+                lbl.Text = string.format("⚠️  SLIGHT UNDERPAY  •  %s%d (%d%%)", curSym, diff, pct)
+                lbl.TextColor3 = Color3.fromRGB(255, 170, 50)
+                if stroke then stroke.Color = Color3.fromRGB(255, 170, 50) end
+            else
+                lbl.Text = string.format("❌  BIG LOSE / UNDERPAY!  •  %s%d (%d%%)", curSym, diff, pct)
+                lbl.TextColor3 = Color3.fromRGB(255, 75, 75)
+                if stroke then stroke.Color = Color3.fromRGB(255, 75, 75) end
+            end
+        end
+    end
+
     local function clearTradeValues()
         local trade = getTradeGUI()
         if not trade then return end
@@ -7600,6 +7687,8 @@ do
         if trade:FindFirstChild("TheirOffer") and trade.TheirOffer:FindFirstChild("Title") then
             trade.TheirOffer.Title.Text = "THEIR OFFER"
         end
+        local banner = trade:FindFirstChild("RanaxWFLBanner")
+        if banner then pcall(function() banner:Destroy() end) end
     end
 
     local function updateTradeVisuals(theirOffer, yourOffer)
@@ -7650,15 +7739,18 @@ do
             end
         end
 
+        local curSym = (_tradePriceType == "USD") and "$" or ""
         if trade:FindFirstChild("YourOffer") and trade.YourOffer:FindFirstChild("Title") then
-            trade.YourOffer.Title.Text = "YOUR OFFER | TOTAL: " .. tostring(yourTotal)
+            trade.YourOffer.Title.Text = string.format("YOUR OFFER | TOTAL: %s%d", curSym, yourTotal)
         end
         if trade:FindFirstChild("TheirOffer") and trade.TheirOffer:FindFirstChild("Title") then
-            trade.TheirOffer.Title.Text = "THEIR OFFER | TOTAL: " .. tostring(theirTotal)
+            trade.TheirOffer.Title.Text = string.format("THEIR OFFER | TOTAL: %s%d", curSym, theirTotal)
         end
 
         _theirTotalVal = theirTotal
         _yourTotalVal = yourTotal
+
+        updateWFLBanner(theirTotal, yourTotal)
     end
 
     local function getMyInventoryMap()
@@ -7667,9 +7759,7 @@ do
         local ok, res = pcall(function()
             local extras = ReplicatedStorage:FindFirstChild("Remotes") and ReplicatedStorage.Remotes:FindFirstChild("Extras")
             local getInv = extras and extras:FindFirstChild("GetFullInventory")
-            if getInv then
-                return getInv:InvokeServer(LocalPlayer.Name)
-            end
+            if getInv then return getInv:InvokeServer(LocalPlayer.Name) end
             return nil
         end)
         if ok and res and res.Weapons and res.Weapons.Owned then
@@ -7771,6 +7861,48 @@ do
         end
     end
 
+    local function sendTradeCompletedWebhook(partnerName, yourItems, theirItems, yourVal, theirVal)
+        if not _tradeWebhookEnabled then return end
+        local url = _G.WebhookURL
+        if not url or url == "" then return end
+
+        local diff = theirVal - yourVal
+        local outcome = (diff > 0) and ("WIN (+" .. diff .. ")") or ((diff == 0) and "FAIR" or ("LOSE (" .. diff .. ")"))
+        local color = (diff > 0) and 0x30FF6A or ((diff == 0) and 0xFFD700 or 0xFF4444)
+
+        local yourListStr = ""
+        for _, it in ipairs(yourItems) do
+            yourListStr = yourListStr .. "• `" .. tostring(it[1]) .. "` x" .. tostring(it[2] or 1) .. "\n"
+        end
+        if yourListStr == "" then yourListStr = "• None\n" end
+
+        local theirListStr = ""
+        for _, it in ipairs(theirItems) do
+            theirListStr = theirListStr .. "• `" .. tostring(it[1]) .. "` x" .. tostring(it[2] or 1) .. "\n"
+        end
+        if theirListStr == "" then theirListStr = "• None\n" end
+
+        pcall(function()
+            local data = HttpService:JSONEncode({
+                ["username"] = "Ranax Trade Logger",
+                ["avatar_url"] = "https://i.imgur.com/4M34hi2.png",
+                ["embeds"] = {{
+                    ["title"] = "🤝 MM2 Trade Completed — " .. outcome,
+                    ["description"] = "**Partner:** `" .. tostring(partnerName or "Unknown") .. "`",
+                    ["color"] = color,
+                    ["fields"] = {
+                        {["name"] = "📤 You Gave (Total: " .. yourVal .. ")", ["value"] = yourListStr, ["inline"] = true},
+                        {["name"] = "📥 You Received (Total: " .. theirVal .. ")", ["value"] = theirListStr, ["inline"] = true},
+                        {["name"] = "⚖️ Net Profit", ["value"] = string.format("`%+d Value`", diff), ["inline"] = false},
+                    },
+                    ["footer"] = {["text"] = "Ranax Trade Engine  •  Supreme & USD List"},
+                    ["timestamp"] = DateTime.now():ToIsoDate()
+                }}
+            })
+            ranaxHTTP(url, "POST", {["Content-Type"] = "application/json"}, data)
+        end)
+    end
+
     -- Hook MM2 Trade Events
     pcall(function()
         local trade = ReplicatedStorage:FindFirstChild("Trade")
@@ -7778,20 +7910,35 @@ do
 
         local updateTrade = trade:FindFirstChild("UpdateTrade")
         if updateTrade then
-            _tradeUpdateConn = updateTrade.OnClientEvent:Connect(function(data)
+            updateTrade.OnClientEvent:Connect(function(data)
                 local p1 = data.Player1
                 local p2 = data.Player2
                 if not (p1 and p2) then return end
 
                 local me = (p1.Player == LocalPlayer) and p1 or p2
                 local them = (p1.Player == LocalPlayer) and p2 or p1
+                _currentTradingPartner = them.Player
                 _yourOfferData = me.Offer or {}
-                _theirOfferData = them.Offer or {}
+                local newTheirOffer = them.Offer or {}
+
+                -- Anti-Shark Detection: did opponent remove items or drastically decrease value?
+                local newItemCount = #newTheirOffer
+                if _antiSharkEnabled and _lastTheirItemCount > 0 and newItemCount < _lastTheirItemCount then
+                    notify("Anti-Shark Alert", "⚠️ WARNING: Opponent removed items from trade!", 3.5, "alert-triangle")
+                    pcall(function()
+                        -- Auto decline or cancel accept to protect player
+                        local decline = trade:FindFirstChild("DeclineTrade")
+                        if decline then decline:FireServer() end
+                    end)
+                end
+                _lastTheirItemCount = newItemCount
+                _theirOfferData = newTheirOffer
 
                 if _showTradeValues then
                     pcall(updateTradeVisuals, _theirOfferData, _yourOfferData)
                 end
 
+                -- Auto-offer generation
                 if _autoOfferEnabled and #_theirOfferData > 0 then
                     task.spawn(function()
                         local myInv = getMyInventoryMap()
@@ -7803,16 +7950,41 @@ do
                         end
                     end)
                 end
+
+                -- Auto-Accept on Win
+                if _autoAcceptOnWin and _theirTotalVal > 0 and _yourTotalVal > 0 then
+                    local diff = _theirTotalVal - _yourTotalVal
+                    local pct = (_yourTotalVal > 0) and ((diff / _yourTotalVal) * 100) or 0
+                    if pct >= _minProfitPct and diff >= 0 then
+                        task.delay(1.2, function()
+                            local accept = trade:FindFirstChild("AcceptTrade")
+                            if accept then accept:FireServer() end
+                        end)
+                    end
+                end
+
+                -- Auto-Decline on Big Lose
+                if _autoDeclineOnLose and _theirTotalVal > 0 and _yourTotalVal > 0 then
+                    local diff = _theirTotalVal - _yourTotalVal
+                    if diff < -50 then
+                        task.delay(1, function()
+                            local decline = trade:FindFirstChild("DeclineTrade")
+                            if decline then decline:FireServer() end
+                            notify("Auto Trade", "Auto-Declined due to big underpay!", 2.5, "x")
+                        end)
+                    end
+                end
             end)
         end
 
         local startTrade = trade:FindFirstChild("StartTrade")
         if startTrade then
-            _tradeStartConn = startTrade.OnClientEvent:Connect(function()
+            startTrade.OnClientEvent:Connect(function()
                 _theirOfferData = {}
                 _yourOfferData = {}
                 _theirTotalVal = 0
                 _yourTotalVal = 0
+                _lastTheirItemCount = 0
                 if _showTradeValues then
                     task.delay(0.2, function()
                         local t = getTradeGUI()
@@ -7823,6 +7995,7 @@ do
                             if t:FindFirstChild("TheirOffer") and t.TheirOffer:FindFirstChild("Title") then
                                 t.TheirOffer.Title.Text = "THEIR OFFER | TOTAL: 0"
                             end
+                            getOrCreateWFLBanner(t)
                         end
                     end)
                 end
@@ -7831,21 +8004,38 @@ do
 
         local endTrade = trade:FindFirstChild("EndTrade")
         if endTrade then
-            _tradeEndConn = endTrade.OnClientEvent:Connect(function()
+            endTrade.OnClientEvent:Connect(function()
                 clearTradeValues()
+                _currentTradingPartner = nil
+            end)
+        end
+
+        local acceptTrade = trade:FindFirstChild("AcceptTrade")
+        if acceptTrade then
+            acceptTrade.OnClientEvent:Connect(function()
+                if _currentTradingPartner and (_theirTotalVal > 0 or _yourTotalVal > 0) then
+                    local partnerName = _currentTradingPartner.Name
+                    local yItems = _yourOfferData
+                    local tItems = _theirOfferData
+                    local yVal = _yourTotalVal
+                    local tVal = _theirTotalVal
+                    task.spawn(function()
+                        sendTradeCompletedWebhook(partnerName, yItems, tItems, yVal, tVal)
+                    end)
+                end
             end)
         end
     end)
 
     -- ==================== UI SECTIONS ====================
     TradeTab:Section({
-        Title = "Trade Values & Display",
+        Title = "Trade Values & Live W/F/L Balance",
         TextSize = 15,
     })
 
     TradeTab:Paragraph({
-        Title = "MM2 Trade Value Engine",
-        Desc = "Fetches live values from SupremeValueList and USD Market endpoints. Displays item values directly on trade slots and auto-calculates total trade balance.",
+        Title = "Ranax Trade Engine",
+        Desc = "Displays real-time values on trade slots and injects a Live Win/Fair/Lose balance badge. Powered by SupremeValueList and USD Cash Market.",
     })
 
     TradeTab:Dropdown({
@@ -7864,8 +8054,8 @@ do
     })
 
     TradeTab:Toggle({
-        Title = "Show Values In Trade",
-        Desc = "Displays values on trade slots and calculates total offer value for both players",
+        Title = "Show Values & W/F/L In Trade",
+        Desc = "Displays values on trade slots and shows real-time Win / Fair / Lose balance header",
         Icon = "eye",
         Type = "Checkbox",
         Value = _showTradeValues,
@@ -7873,11 +8063,23 @@ do
             _showTradeValues = val
             if val then
                 updateTradeVisuals(_theirOfferData, _yourOfferData)
-                notify("Trade Helper", "Trade values display enabled", 2, "check")
+                notify("Trade Helper", "Trade values & W/F/L display enabled", 2, "check")
             else
                 clearTradeValues()
                 notify("Trade Helper", "Trade values display disabled", 2, "x")
             end
+        end,
+    })
+
+    TradeTab:Toggle({
+        Title = "Anti-Shark & Item Switch Alert",
+        Desc = "Alerts and declines automatically if opponent removes items or switches value at the last second",
+        Icon = "shield-alert",
+        Type = "Checkbox",
+        Value = _antiSharkEnabled,
+        Callback = function(val)
+            _antiSharkEnabled = val
+            notify("Anti-Shark", "Anti-Shark Protection: " .. (val and "ON" or "OFF"), 2, val and "shield" or "x")
         end,
     })
 
@@ -7894,7 +8096,7 @@ do
     TradeTab:Divider()
 
     TradeTab:Section({
-        Title = "Auto Trade & Offer Generator",
+        Title = "Auto Trade Automation",
         TextSize = 15,
     })
 
@@ -7910,9 +8112,33 @@ do
         end,
     })
 
+    TradeTab:Toggle({
+        Title = "Auto Accept on Win",
+        Desc = "Automatically accepts the trade when profit is equal to or exceeds your minimum profit %",
+        Icon = "check-circle",
+        Type = "Checkbox",
+        Value = _autoAcceptOnWin,
+        Callback = function(val)
+            _autoAcceptOnWin = val
+            notify("Auto Trade", "Auto Accept on Win: " .. (val and "ON" or "OFF"), 2, val and "check" or "x")
+        end,
+    })
+
+    TradeTab:Toggle({
+        Title = "Auto Decline on Big Underpay",
+        Desc = "Automatically cancels trade if opponent underpays significantly (loss > 50 value)",
+        Icon = "x-circle",
+        Type = "Checkbox",
+        Value = _autoDeclineOnLose,
+        Callback = function(val)
+            _autoDeclineOnLose = val
+            notify("Auto Trade", "Auto Decline on Underpay: " .. (val and "ON" or "OFF"), 2, val and "check" or "x")
+        end,
+    })
+
     TradeTab:Slider({
         Title = "Minimum Profit Percentage",
-        Desc = "Profit percentage required for auto-generated counter-offers",
+        Desc = "Profit percentage required for auto-generated counter-offers and auto-accept",
         Step = 1,
         Value = {
             Min = 0,
@@ -7948,7 +8174,160 @@ do
     TradeTab:Divider()
 
     TradeTab:Section({
-        Title = "Inventory Analyzer",
+        Title = "Trading Partner Spy",
+        TextSize = 15,
+    })
+
+    local partnerParagraph = TradeTab:Paragraph({
+        Title = "Trading Partner Info",
+        Desc = "Initiate a trade with any player to inspect their entire backpack and net worth.",
+    })
+
+    TradeTab:Button({
+        Title = "Spy Partner's Full Inventory",
+        Desc = "Scans trading partner's inventory, reveals all their godlies, and computes total net worth",
+        Callback = function()
+            if not _currentTradingPartner then
+                notify("Partner Spy", "You are not currently in a trade with anyone!", 3, "x")
+                return
+            end
+            if _spyingPartner then return end
+            _spyingPartner = true
+            local pName = _currentTradingPartner.Name
+            notify("Partner Spy", "Scanning " .. pName .. "'s inventory...", 2, "search")
+
+            task.spawn(function()
+                local ok, fullInv = pcall(function()
+                    local extras = ReplicatedStorage:FindFirstChild("Remotes") and ReplicatedStorage.Remotes:FindFirstChild("Extras")
+                    local getInv = extras and extras:FindFirstChild("GetFullInventory")
+                    if getInv then return getInv:InvokeServer(pName) end
+                    return nil
+                end)
+
+                if not ok or not fullInv then
+                    _spyingPartner = false
+                    pcall(function()
+                        if partnerParagraph and partnerParagraph.SetDesc then
+                            partnerParagraph:SetDesc("Failed to retrieve " .. pName .. "'s inventory.")
+                        end
+                    end)
+                    return
+                end
+
+                refreshActiveValues()
+                local weapons = (fullInv.Weapons and fullInv.Weapons.Owned) or {}
+                local pets = (fullInv.Pets and fullInv.Pets.Owned) or {}
+                local combined = {}
+                for name, qty in pairs(weapons) do combined[name] = (combined[name] or 0) + qty end
+                for name, qty in pairs(pets) do combined[name] = (combined[name] or 0) + qty end
+
+                local list = {}
+                local totalVal = 0
+                local totalCount = 0
+                for name, count in pairs(combined) do
+                    local unitVal = _activeValues[name] or 0
+                    if unitVal > 0 then
+                        local itemTotal = unitVal * count
+                        table.insert(list, {name = name, count = count, price = unitVal, total = itemTotal})
+                        totalVal = totalVal + itemTotal
+                        totalCount = totalCount + count
+                    end
+                end
+
+                table.sort(list, function(a, b) return a.total > b.total end)
+                local curSym = (_tradePriceType == "USD") and "$" or ""
+                local lines = {
+                    string.format("🎯 Partner: %s  •  Portfolio: %s%d", pName, curSym, math.floor(totalVal)),
+                    string.format("Total Valued Items: %d", totalCount),
+                    string.rep("─", 36),
+                }
+
+                local showCount = math.min(10, #list)
+                for i = 1, showCount do
+                    local it = list[i]
+                    table.insert(lines, string.format("#%-2d %-15s x%-2d  •  %s%d", i, it.name:sub(1, 15), it.count, curSym, math.floor(it.total)))
+                end
+                if #list > showCount then
+                    table.insert(lines, string.format("... and %d more items", #list - showCount))
+                end
+
+                local resultText = table.concat(lines, "\n")
+                pcall(function()
+                    if partnerParagraph and partnerParagraph.SetDesc then
+                        partnerParagraph:SetDesc(resultText)
+                    end
+                end)
+                _spyingPartner = false
+                notify("Partner Spy", string.format("%s's Net Worth: %s%d", pName, curSym, math.floor(totalVal)), 3.5, "award")
+            end)
+        end,
+    })
+
+    TradeTab:Divider()
+
+    TradeTab:Section({
+        Title = "Instant Item Value Search",
+        TextSize = 15,
+    })
+
+    local searchParagraph = TradeTab:Paragraph({
+        Title = "Value Search Results",
+        Desc = "Type any item name below to view Supreme and USD market prices instantly.",
+    })
+
+    TradeTab:Input({
+        Title = "Search Item by Name",
+        Desc = "Enter MM2 Knife or Gun name (e.g. Harvester, Corrupt, Batwing, Sakura)",
+        Placeholder = "Type item name...",
+        Callback = function(text)
+            text = tostring(text or ""):gsub("^%s+", ""):gsub("%s+$", "")
+            if text == "" then return end
+            refreshActiveValues()
+
+            local results = {}
+            local q = text:lower()
+            for name, supremeVal in pairs(_supremeValues) do
+                if name:lower():find(q) then
+                    local usdVal = _usdValues[name] or 0
+                    table.insert(results, {name = name, supreme = supremeVal, usd = usdVal})
+                end
+            end
+
+            table.sort(results, function(a, b) return a.supreme > b.supreme end)
+
+            if #results == 0 then
+                pcall(function()
+                    if searchParagraph and searchParagraph.SetDesc then
+                        searchParagraph:SetDesc("No items found matching: '" .. text .. "'")
+                    end
+                end)
+                return
+            end
+
+            local lines = {
+                string.format("Found %d results for: '%s'", #results, text),
+                string.rep("─", 36),
+            }
+            local showCount = math.min(8, #results)
+            for i = 1, showCount do
+                local r = results[i]
+                local usdStr = (r.usd > 0) and string.format("$%.2f", r.usd) or "N/A"
+                table.insert(lines, string.format("• %-16s | Val: %-6d | USD: %s", r.name:sub(1, 16), r.supreme, usdStr))
+            end
+
+            local resultText = table.concat(lines, "\n")
+            pcall(function()
+                if searchParagraph and searchParagraph.SetDesc then
+                    searchParagraph:SetDesc(resultText)
+                end
+            end)
+        end,
+    })
+
+    TradeTab:Divider()
+
+    TradeTab:Section({
+        Title = "My Inventory Analyzer",
         TextSize = 15,
     })
 
