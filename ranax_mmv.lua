@@ -1003,7 +1003,7 @@ if RoundEndEvent then
             _G.CoinFarmHandlingBagFull = false
             _G.DiedThisRound = false
             _G.WaitingForNewRound = true
-            _G.MurdererDiedThisRound = false
+            _G.MurdererDiedThisRound = true
             _currentTrackedMurderer = nil
             _G.HasReportedCoins = false
             _G.RanaxCoinsCollected = 0
@@ -1014,6 +1014,8 @@ if RoundEndEvent then
             resetLobbyRoles()
             if _G.CoinTween then _G.CoinTween:Cancel(); _G.CoinTween = nil end
             if typeof(removeCoinFarmPlatform) == "function" then pcall(removeCoinFarmPlatform) end
+            if typeof(restoreChar) == "function" then pcall(restoreChar) end
+            if typeof(_G.TeleportToLobby) == "function" then pcall(_G.TeleportToLobby) end
         end)
     end)
 end
@@ -5840,7 +5842,7 @@ local CoinFarmTab = Window:Tab({
     Locked = false,
 })
 
--- ==================== KRISIS HUB COIN FARM ENGINE (FLY ENGINE WITH ENHANCED ROLE ACTIONS & WEBHOOK) ====================
+-- ==================== RANAX COIN FARM ENGINE ====================
 _G.ExecuteKillEveryone = _G.ExecuteKillEveryone or nil
 _G.VFling = _G.VFling or nil
 _G.getMurderer = _G.getMurderer or nil
@@ -5887,18 +5889,24 @@ local getChar = function()
     return LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
 end
 
-local function noclipLoop(char)
-    task.spawn(function()
-        while flying and char and char.Parent do
-            for _, v in pairs(char:GetDescendants()) do
+-- Bulletproof Permanent Noclip Engine (Runs on Stepped before physics: Never bugs out or disables)
+if _G.RanaxNoclipConn then
+    pcall(function() _G.RanaxNoclipConn:Disconnect() end)
+    _G.RanaxNoclipConn = nil
+end
+
+_G.RanaxNoclipConn = RunService.Stepped:Connect(function()
+    if flying then
+        local char = LocalPlayer.Character
+        if char then
+            for _, v in ipairs(char:GetChildren()) do
                 if v:IsA("BasePart") then
                     v.CanCollide = false
                 end
             end
-            RunService.Stepped:Wait()
         end
-    end)
-end
+    end
+end)
 
 local function restoreChar()
     local char = getChar()
@@ -5912,7 +5920,7 @@ local function restoreChar()
         hrp.AssemblyLinearVelocity = Vector3.zero
         hrp.AssemblyAngularVelocity = Vector3.zero
     end
-    for _, v in pairs(char:GetDescendants()) do
+    for _, v in ipairs(char:GetChildren()) do
         if v:IsA("BasePart") then
             v.CanCollide = true
         end
@@ -6124,63 +6132,93 @@ LocalPlayer.CharacterAdded:Connect(function(char)
     until not flying
     task.wait(0.3)
     if flying and char.Parent then
-        for _, v in pairs(char:GetDescendants()) do
-            if v:IsA("BasePart") then
-                v.CanCollide = false
-            end
-        end
-        noclipLoop(char)
     end
 end)
 if LocalPlayer.Character then
     hookDeathGuard(LocalPlayer.Character)
 end
 
+-- Ultra-Fast Coin Container Finder (Eliminates Workspace:GetDescendants Lag)
+local function getMapCoinContainer()
+    local c = workspace:FindFirstChild("CoinContainer")
+    if c then return c end
+    local norm = workspace:FindFirstChild("Normal")
+    if norm and norm:FindFirstChild("CoinContainer") then
+        return norm.CoinContainer
+    end
+    for _, obj in ipairs(workspace:GetChildren()) do
+        if obj:IsA("Model") and not isPartInLobby(obj) then
+            local cc = obj:FindFirstChild("CoinContainer")
+            if cc then return cc end
+        end
+    end
+    return nil
+end
+
 -- Strictly targets actual coins, NEVER lobby items and NEVER Halloween pumpkins/candies
 local function getNearestCoin(root)
+    if _G.DiedThisRound or _G.WaitingForNewRound then return nil end
     local nearest = nil
     local dist = math.huge
 
-    for _, v in pairs(workspace:GetDescendants()) do
-        if v:IsA("BasePart") and not collectedCoins[v] and not v:GetAttribute("Collected") then
-            -- 1. Completely ignore ANY item located in the Lobby
-            if not isPartInLobby(v) then
-                local n = v.Name:lower()
+    local coinContainer = getMapCoinContainer()
+    local targets = coinContainer and coinContainer:GetChildren() or nil
 
-                -- 2. Strictly filter out all Halloween / event pumpkins, candies, and lobby props
-                local isEventItem = n:find("pumpkin") or n:find("candy") or n:find("corn") or n:find("snowflake")
-                    or n:find("karpuz") or n:find("melon") or n:find("balkabag")
+    if targets and #targets > 0 then
+        -- Fast path: Scan only coins inside CoinContainer (30-50 parts instead of 25,000!)
+        for _, v in ipairs(targets) do
+            if v:IsA("BasePart") and not collectedCoins[v] and not v:GetAttribute("Collected") then
+                if not isPartInLobby(v) then
+                    local n = v.Name:lower()
+                    local isEvent = n:find("pumpkin") or n:find("candy") or n:find("corn") or n:find("snowflake")
+                        or n:find("karpuz") or n:find("melon") or n:find("balkabag")
 
-                if not isEventItem then
-                    local isCoin = false
-
-                    -- True coin detection
-                    if n == "coin_server" or n == "coin" then
-                        isCoin = true
-                    elseif v:FindFirstChild("CoinVisual") then
-                        isCoin = true
-                    elseif v:FindFirstChild("TouchInterest") then
-                        local p = v.Parent
-                        local pn = p and p.Name:lower() or ""
-                        if (pn:find("coin") or pn == "normal" or pn:find("container"))
-                            and not (pn:find("candy") or pn:find("pumpkin") or pn:find("lobby")) then
-                            isCoin = true
-                        end
-                    end
-
-                    -- If it has CoinVisual child, ensure it is still visible (not already collected)
-                    if isCoin then
+                    if not isEvent then
                         local vis = v:FindFirstChild("CoinVisual")
-                        if vis and vis:IsA("BasePart") and vis.Transparency >= 0.9 then
-                            isCoin = false
+                        if not (vis and vis:IsA("BasePart") and vis.Transparency >= 0.9) then
+                            local d = (root.Position - v.Position).Magnitude
+                            if d < dist then
+                                dist = d
+                                nearest = v
+                            end
                         end
                     end
+                end
+            end
+        end
+    else
+        -- Fallback path: Scan only active non-lobby models in workspace
+        for _, obj in ipairs(workspace:GetChildren()) do
+            if obj:IsA("Model") and not isPartInLobby(obj) and not Players:GetPlayerFromCharacter(obj) then
+                for _, v in ipairs(obj:GetChildren()) do
+                    if v:IsA("BasePart") and not collectedCoins[v] and not v:GetAttribute("Collected") then
+                        local n = v.Name:lower()
+                        local isEvent = n:find("pumpkin") or n:find("candy") or n:find("corn") or n:find("snowflake")
+                            or n:find("karpuz") or n:find("melon") or n:find("balkabag")
 
-                    if isCoin then
-                        local d = (root.Position - v.Position).Magnitude
-                        if d < dist then
-                            dist = d
-                            nearest = v
+                        if not isEvent then
+                            local isCoin = false
+                            if n == "coin_server" or n == "coin" then
+                                isCoin = true
+                            elseif v:FindFirstChild("CoinVisual") then
+                                isCoin = true
+                            elseif v:FindFirstChild("TouchInterest") then
+                                local pn = obj.Name:lower()
+                                if pn:find("coin") or pn == "normal" or pn:find("container") then
+                                    isCoin = true
+                                end
+                            end
+
+                            if isCoin then
+                                local vis = v:FindFirstChild("CoinVisual")
+                                if not (vis and vis:IsA("BasePart") and vis.Transparency >= 0.9) then
+                                    local d = (root.Position - v.Position).Magnitude
+                                    if d < dist then
+                                        dist = d
+                                        nearest = v
+                                    end
+                                end
+                            end
                         end
                     end
                 end
@@ -6192,12 +6230,13 @@ local function getNearestCoin(root)
 end
 
 local function flyToCoin(targetPart)
+    if _G.DiedThisRound or _G.WaitingForNewRound then return end
     local char = getChar()
     local hrp = char and char:WaitForChild("HumanoidRootPart", 3)
     local hum = char and char:WaitForChild("Humanoid", 3)
     if not (hrp and hum and hum.Health > 0) then return end
     hum.PlatformStand = true
-    local timeout = tick() + 10
+    local timeout = tick() + 8
     local speed = tonumber(_G.FarmSpeed) or 16
 
     while flying and char.Parent and targetPart.Parent do
@@ -6210,7 +6249,10 @@ local function flyToCoin(targetPart)
         if fMode == "down" or _G.UndergroundFarm == true then
             targetPos = targetPos - Vector3.new(0, 3, 0)
         end
-        local dir = (targetPos - hrp.Position).Unit
+        local diff = targetPos - hrp.Position
+        local mag = diff.Magnitude
+        local dir = diff.Unit
+
         hrp.AssemblyLinearVelocity = dir * speed
         if fMode == "down" or _G.UndergroundFarm == true then
             hrp.CFrame = CFrame.new(hrp.Position, targetPart.Position) * CFrame.Angles(math.rad(90), 0, 0)
@@ -6218,12 +6260,8 @@ local function flyToCoin(targetPart)
             hrp.CFrame = CFrame.new(hrp.Position, targetPart.Position)
         end
 
-        if typeof(firetouchinterest) == "function" then
-            firetouchinterest(hrp, targetPart, 0)
-            firetouchinterest(hrp, targetPart, 1)
-        end
-
-        if (hrp.Position - targetPos).Magnitude < 2 then
+        -- Smooth collection: only fire touch interest once when close, avoiding 120 FPS remote flooding!
+        if mag < 4.5 then
             hrp.CFrame = CFrame.new(targetPos)
             if typeof(firetouchinterest) == "function" then
                 firetouchinterest(hrp, targetPart, 0)
@@ -6233,11 +6271,18 @@ local function flyToCoin(targetPart)
         end
         RunService.RenderStepped:Wait()
     end
-    hrp.AssemblyLinearVelocity = Vector3.zero
-    collectedCoins[targetPart] = true
-    startedCollecting = true
-    _G.RanaxCoinsCollected = (_G.RanaxCoinsCollected or 0) + 1
-    _G.FarmTotalCollected = (_G.FarmTotalCollected or 0) + 1
+    if hrp and hrp.Parent then
+        hrp.AssemblyLinearVelocity = Vector3.zero
+    end
+    if hum and hum.Parent then
+        hum.PlatformStand = false
+    end
+    if targetPart and targetPart.Parent then
+        collectedCoins[targetPart] = true
+        startedCollecting = true
+        _G.RanaxCoinsCollected = (_G.RanaxCoinsCollected or 0) + 1
+        _G.FarmTotalCollected = (_G.FarmTotalCollected or 0) + 1
+    end
 end
 
 local function getCoinBagLive()
@@ -6376,21 +6421,11 @@ task.spawn(function()
             -- 1. Death / Match Wait Guard: If died in current match, stay in Lobby until new round starts!
             if _G.DiedThisRound or _G.WaitingForNewRound then
                 startedCollecting = false
+                restoreChar()
                 if char and hum and hum.Health > 0 and root then
                     if not isPartInLobby(root) then
                         TeleportToLobby()
                     end
-                end
-
-                -- Dynamic round start recovery: if game teleports player into active map
-                if root and not isPartInLobby(root) and _G.RanaxRoundInProgress then
-                    _G.DiedThisRound = false
-                    _G.WaitingForNewRound = false
-                    _G.CoinFarmHandlingBagFull = false
-                    _G.RanaxCoinsCollected = 0
-                    collectedCoins = {}
-                    startedCollecting = false
-                    if typeof(removeCoinFarmPlatform) == "function" then pcall(removeCoinFarmPlatform) end
                 end
                 task.wait(1)
                 return
@@ -6404,7 +6439,10 @@ task.spawn(function()
             end
 
             -- 3. Bag Full Guard: Teleport above map FIRST, then execute bag full action!
-            if IsCoinBagFull() then
+            local liveCur, liveMax, liveFull = getCoinBagLive()
+            local bagFinished = IsCoinBagFull() or liveFull or ((_G.RanaxCoinsCollected or 0) >= 40)
+
+            if bagFinished then
                 if not _G.CoinFarmHandlingBagFull then
                     _G.CoinFarmHandlingBagFull = true
                     restoreChar()
@@ -6454,7 +6492,30 @@ task.spawn(function()
                 end
                 flyToCoin(coin)
             else
-                -- No coins on map: wait for next round
+                -- No coins found on map:
+                -- Check if coins despawned because user's bag hit 40 coins:
+                if startedCollecting and ((_G.RanaxCoinsCollected or 0) >= 38 or liveFull) then
+                    if not _G.CoinFarmHandlingBagFull then
+                        _G.CoinFarmHandlingBagFull = true
+                        restoreChar()
+                        teleportAboveMap()
+                        task.wait(0.6)
+                        executeBagFullAction()
+                    end
+                    task.wait(1.5)
+                    return
+                end
+
+                -- Otherwise, round actually ended (Sheriff killed Murderer or match over) -> Teleport to Lobby
+                if not isPartInLobby(root) then
+                    restoreChar()
+                    TeleportToLobby()
+                    _G.WaitingForNewRound = true
+                    startedCollecting = false
+                    if typeof(removeCoinFarmPlatform) == "function" then pcall(removeCoinFarmPlatform) end
+                    notify("Coin Farm", "Round Finished / Teleported to Lobby", 2, "map-pin")
+                end
+
                 if _G.CoinFarmAutoReset and startedCollecting and not _G.CoinFarmHandlingBagFull then
                     if char then char:BreakJoints() end
                     task.wait(2)
@@ -6466,10 +6527,52 @@ task.spawn(function()
         end)
 
         if not ok then
-            warn("[Ranax Krisis CoinFarm] Error: " .. tostring(err))
+            warn("[Ranax CoinFarm] Error: " .. tostring(err))
             task.wait(0.5)
         end
         task.wait(0.01)
+    end
+end)
+
+-- Real-time Murderer Death Monitor: If Sheriff shoots Murderer during round, instantly teleport to Lobby!
+task.spawn(function()
+    while true do
+        task.wait(0.4)
+        if flying and not _G.WaitingForNewRound then
+            local mPlr = nil
+            if typeof(_G.getMurderer) == "function" then
+                pcall(function() mPlr = _G.getMurderer() end)
+            end
+            if not mPlr then
+                for _, p in ipairs(Players:GetPlayers()) do
+                    if p ~= LocalPlayer and p.Character then
+                        local hasKnife = p.Character:FindFirstChild("Knife")
+                            or (p:FindFirstChild("Backpack") and p.Backpack:FindFirstChild("Knife"))
+                        if hasKnife then
+                            mPlr = p
+                            break
+                        end
+                    end
+                end
+            end
+
+            if mPlr and mPlr.Character then
+                local mHum = mPlr.Character:FindFirstChildOfClass("Humanoid")
+                if mHum and mHum.Health <= 0 then
+                    local char = LocalPlayer.Character
+                    local root = char and char:FindFirstChild("HumanoidRootPart")
+                    if root and not isPartInLobby(root) then
+                        restoreChar()
+                        TeleportToLobby()
+                        _G.WaitingForNewRound = true
+                        _G.MurdererDiedThisRound = true
+                        startedCollecting = false
+                        if typeof(removeCoinFarmPlatform) == "function" then pcall(removeCoinFarmPlatform) end
+                        notify("Coin Farm", "Sheriff Shot Murderer! Teleported to Lobby.", 3, "shield")
+                    end
+                end
+            end
+        end
     end
 end)
 -- removed unclosed end
@@ -6511,6 +6614,125 @@ local function purgeCoinTrackerHUD()
     end)
 end
 purgeCoinTrackerHUD()
+
+local function createCoinTrackerHUD()
+    purgeCoinTrackerHUD()
+    local parent = nil
+    if typeof(gethui) == "function" then
+        pcall(function() parent = gethui() end)
+    end
+    if not parent then
+        local ok, cg = pcall(function() return game:GetService("CoreGui") end)
+        if ok and cg then parent = cg end
+    end
+    if not parent then
+        parent = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
+    end
+    if not parent then return end
+
+    local sg = Instance.new("ScreenGui")
+    sg.Name = "RanaxCoinTrackerHUD"
+    sg.ResetOnSpawn = false
+    sg.DisplayOrder = 999999
+    sg.IgnoreGuiInset = true
+    sg.Parent = parent
+    getgenv().RanaxTrackerGui = sg
+
+    local frame = Instance.new("Frame")
+    frame.Name = "TrackerFrame"
+    frame.Size = UDim2.new(0, 240, 0, 126)
+    frame.Position = UDim2.new(0.02, 0, 0.28, 0)
+    frame.BackgroundColor3 = Color3.fromRGB(15, 17, 26)
+    frame.BackgroundTransparency = 0.15
+    frame.BorderSizePixel = 0
+    frame.Active = true
+    frame.Draggable = true
+    frame.Parent = sg
+
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 10)
+    corner.Parent = frame
+
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = Color3.fromRGB(88, 101, 242)
+    stroke.Thickness = 1.5
+    stroke.Transparency = 0.3
+    stroke.Parent = frame
+
+    -- Header
+    local header = Instance.new("Frame")
+    header.Size = UDim2.new(1, 0, 0, 26)
+    header.BackgroundColor3 = Color3.fromRGB(24, 28, 44)
+    header.BackgroundTransparency = 0.2
+    header.BorderSizePixel = 0
+    header.Parent = frame
+    local hCorner = Instance.new("UICorner")
+    hCorner.CornerRadius = UDim.new(0, 10)
+    hCorner.Parent = header
+
+    local titleLbl = Instance.new("TextLabel")
+    titleLbl.Size = UDim2.new(1, -26, 1, 0)
+    titleLbl.Position = UDim2.new(0, 10, 0, 0)
+    titleLbl.BackgroundTransparency = 1
+    titleLbl.Font = Enum.Font.GothamBold
+    titleLbl.Text = "🪙  RANAX COIN TRACKER"
+    titleLbl.TextColor3 = Color3.fromRGB(255, 215, 0)
+    titleLbl.TextSize = 12
+    titleLbl.TextXAlignment = Enum.TextXAlignment.Left
+    titleLbl.Parent = header
+
+    local statusDot = Instance.new("Frame")
+    statusDot.Size = UDim2.new(0, 8, 0, 8)
+    statusDot.Position = UDim2.new(1, -16, 0.5, -4)
+    statusDot.BackgroundColor3 = Color3.fromRGB(48, 255, 106)
+    statusDot.BorderSizePixel = 0
+    statusDot.Parent = header
+    local dotCorner = Instance.new("UICorner")
+    dotCorner.CornerRadius = UDim.new(1, 0)
+    dotCorner.Parent = statusDot
+    getgenv().RanaxTrackerDot = statusDot
+
+    local content = Instance.new("Frame")
+    content.Size = UDim2.new(1, -20, 1, -34)
+    content.Position = UDim2.new(0, 10, 0, 30)
+    content.BackgroundTransparency = 1
+    content.Parent = frame
+
+    local function makeRow(yPos, labelText, defaultVal, valColor)
+        local l = Instance.new("TextLabel")
+        l.Size = UDim2.new(0.48, 0, 0, 18)
+        l.Position = UDim2.new(0, 0, 0, yPos)
+        l.BackgroundTransparency = 1
+        l.Font = Enum.Font.GothamMedium
+        l.Text = labelText
+        l.TextColor3 = Color3.fromRGB(160, 170, 200)
+        l.TextSize = 11
+        l.TextXAlignment = Enum.TextXAlignment.Left
+        l.Parent = content
+
+        local v = Instance.new("TextLabel")
+        v.Size = UDim2.new(0.52, 0, 0, 18)
+        v.Position = UDim2.new(0.48, 0, 0, yPos)
+        v.BackgroundTransparency = 1
+        v.Font = Enum.Font.GothamBold
+        v.Text = defaultVal
+        v.TextColor3 = valColor or Color3.fromRGB(255, 255, 255)
+        v.TextSize = 11
+        v.TextXAlignment = Enum.TextXAlignment.Right
+        v.Parent = content
+
+        return v
+    end
+
+    getgenv().RanaxTracker_Bag = makeRow(0, "Bag:", "0 / 40 (0%)", Color3.fromRGB(255, 215, 0))
+    getgenv().RanaxTracker_Total = makeRow(20, "Session Total:", "0 Coins", Color3.fromRGB(48, 255, 106))
+    getgenv().RanaxTracker_Rate = makeRow(40, "Farm Rate:", "0 coins/min", Color3.fromRGB(120, 180, 255))
+    getgenv().RanaxTracker_Time = makeRow(60, "Elapsed Time:", "0s", Color3.fromRGB(220, 225, 240))
+end
+_G.createCoinTrackerHUD = createCoinTrackerHUD
+if _G.ShowCoinTrackerHUD ~= false then
+    task.spawn(createCoinTrackerHUD)
+end
 
 _G.FarmStartTime = _G.FarmStartTime or os.time()
 _G.FarmTotalCollected = _G.FarmTotalCollected or 0
@@ -6608,6 +6830,40 @@ task.spawn(function()
                     end)
                 end
             end
+
+            -- === UPDATE COIN TRACKER HUD LIVE ===
+            if getgenv().RanaxTrackerGui and getgenv().RanaxTrackerGui.Parent then
+                local bVal = bagValue or 0
+                local mBag = (maxBag and maxBag > 0) and maxBag or 40
+                local pct = math.floor((bVal / mBag) * 100)
+                if getgenv().RanaxTracker_Bag then
+                    getgenv().RanaxTracker_Bag.Text = string.format("%d / %d (%d%%)", bVal, mBag, pct)
+                end
+                if getgenv().RanaxTracker_Total then
+                    getgenv().RanaxTracker_Total.Text = tostring(currentSessionTotal) .. " Coins"
+                end
+                if getgenv().RanaxTracker_Rate then
+                    local calcRate = _G.FarmRateLastMinute or 0
+                    local elapsed = now - (_G.FarmStartTime or now)
+                    if elapsed > 15 and currentSessionTotal > 0 then
+                        calcRate = math.floor(((currentSessionTotal / elapsed) * 60) + 0.5)
+                    end
+                    getgenv().RanaxTracker_Rate.Text = tostring(calcRate) .. " coins/min"
+                end
+                if getgenv().RanaxTracker_Time then
+                    local elapsed = now - (_G.FarmStartTime or now)
+                    getgenv().RanaxTracker_Time.Text = fmtTime(elapsed)
+                end
+                if getgenv().RanaxTrackerDot then
+                    if _G.DiedThisRound or _G.WaitingForNewRound then
+                        getgenv().RanaxTrackerDot.BackgroundColor3 = Color3.fromRGB(255, 75, 75)
+                    elseif _G.SafeAutoFarm then
+                        getgenv().RanaxTrackerDot.BackgroundColor3 = Color3.fromRGB(48, 255, 106)
+                    else
+                        getgenv().RanaxTrackerDot.BackgroundColor3 = Color3.fromRGB(150, 150, 150)
+                    end
+                end
+            end
         end)
         end
     end
@@ -6625,7 +6881,7 @@ if _G.CoinFarmMode == nil then _G.CoinFarmMode = "Halloween (Candies)" end
 
 UIElements.SafeAutoFarm = CoinFarmTab:Toggle({
     Title = "Enable Safe Coin Farm",
-    Desc = "Krisis Hub Fly Coin Farm & Noclip engine",
+    Desc = "Fly Coin Farm & Noclip engine",
     Icon = "coins",
     Type = "Checkbox",
     Value = _G.SafeAutoFarm or false,
@@ -6644,10 +6900,26 @@ UIElements.SafeAutoFarm = CoinFarmTab:Toggle({
             end
             local char = getChar()
             noclipLoop(char)
-            notify("Coin Farm", "Krisis Fly Coin Farm Enabled (Active)", 2, "coins")
+            notify("Coin Farm", "Ranax Fly Coin Farm Enabled (Active)", 2, "coins")
         else
             restoreChar()
             notify("Coin Farm", "Coin Farm Disabled", 2, "coins")
+        end
+    end,
+})
+
+UIElements.ShowTrackerHUD = CoinFarmTab:Toggle({
+    Title = "Show Coin Tracker HUD",
+    Desc = "Displays live floating draggable HUD on screen with coin stats and rate",
+    Icon = "layout",
+    Type = "Checkbox",
+    Value = (_G.ShowCoinTrackerHUD ~= false),
+    Callback = function(val)
+        _G.ShowCoinTrackerHUD = val
+        if val then
+            createCoinTrackerHUD()
+        else
+            purgeCoinTrackerHUD()
         end
     end,
 })
@@ -7088,6 +7360,686 @@ CoinFarmTab:Button({
         notify("Webhook", "Test Level Up webhook sent!", 2, "award")
     end
 })
+-------------------------------------------------------------------------------------------------------------------
+-- ==================== RANAX TRADE HELPER & AUTO TRADE TAB ====================
+do
+    local TradeTab = Window:Tab({
+        Title = "Trade",
+        Icon = "arrow-left-right",
+        Locked = false,
+    })
+
+    local _tradePriceType = "Supreme"
+    local _showTradeValues = false
+    local _autoOfferEnabled = false
+    local _minProfitPct = 6
+    local _supremeValues = {}
+    local _usdValues = {}
+    local _activeValues = {}
+    local _theirOfferData = {}
+    local _yourOfferData = {}
+    local _theirTotalVal = 0
+    local _yourTotalVal = 0
+    local _tradeUpdateConn = nil
+    local _tradeStartConn = nil
+    local _tradeEndConn = nil
+    local _tradeAcceptConn = nil
+    local _analyzingInv = false
+
+    local _supremeMap = {
+        ["Red Luger"] = "RedLuger", ["Hallow's Blade"] = "HallowsBlade", ["Flowerwood Gun"] = "FlowerwoodGun",
+        ["Battleaxe II"] = "BattleAxe2", ["Rainbow Gun"] = "Rainbow_G", ["Waves"] = "Waves_K",
+        ["Orange Seer"] = "OrangeSeer", ["Icecracker"] = "Icecracker_K_2020", ["Soul"] = "WraithGun",
+        ["Arctic (Gun)"] = "Arctic_G_2022", ["C. Elderwood Blade"] = "ElderwoodKnifeChroma",
+        ["Chroma Heat"] = "HeatChroma", ["Santa's Spirit"] = "SantasSpirit", ["Spirit"] = "WraithKnife",
+        ["Vampire's Edge"] = "VampiresEdge", ["Vampire's Axe"] = "VampireAxe", ["Evergun"] = "TreeGun2023",
+        ["Eternal III"] = "Eternal3", ["Cotton Candy"] = "CottonCandy", ["Chroma Gingerblade"] = "GingerbladeChroma",
+        ["Elderwood Revolver"] = "ElderwoodGun", ["Chroma Tides"] = "TidesChroma", ["Spectral (Knife)"] = "Spectral_K_2021",
+        ["Latte (Gun)"] = "Latte_G_2023", ["Ginger (Gun)"] = "Ginger_G_2018", ["Elderwood Blade"] = "ElderwoodKnife",
+        ["Chroma Seer"] = "SeerChroma", ["Red Seer"] = "RedSeer", ["Ocean"] = "Ocean_G",
+        ["Chroma Evergreen"] = "TreeKnife2023Chroma", ["Chroma Evergun"] = "TreeGun2023Chroma",
+        ["Chroma Bauble"] = "BaubleChroma", ["Green Luger"] = "GreenLuger", ["Gingermint"] = "Gingermint_G",
+        ["Phantom"] = "Phantom2022", ["Chroma Boneblade"] = "BonebladeChroma", ["Blue Seer"] = "BlueSeer",
+        ["Winter's Edge"] = "WintersEdge", ["Chroma Lightbringer"] = "ChromaLightbringer",
+        ["Cavern (Gun)"] = "Cavern_G_2019", ["Tree (Knife)"] = "Tree", ["Tree (Gun)"] = "TreeGun",
+        ["Rupture"] = "Bleed", ["Evergreen"] = "TreeKnife2023", ["Ghost (Gun)"] = "GhostG2018",
+        ["Red Fire"] = "RedFire", ["Blue Scratch"] = "ScratchBlue", ["Broken"] = "Broken_K_2023",
+        ["Chroma Deathshard"] = "DeathshardChroma", ["Red Scratch"] = "Scratch", ["Blue Elite"] = "EliteBlue",
+        ["Vampire (Knife)"] = "Vampire_K_2022", ["Traveler (Gun)"] = "Traveler_G_2023", ["Eternal II"] = "Eternal2",
+        ["C. Vampire's Gun"] = "VampireGunChroma", ["Vampire (Gun)"] = "VampireGun", ["Ice Dragon"] = "IceDragon",
+        ["Icedriller"] = "Icedriller_G_2020", ["Green Elite"] = "EliteGreen", ["Swirly Gun"] = "SwirlyGun",
+        ["Cavern (Knife)"] = "Cavern_K_2019", ["Turkey"] = "Turkey2023", ["C. Traveler's Gun"] = "TravelerGunChroma",
+        ["Santa's Magic"] = "SantasMagic", ["Sakura"] = "Sakura_K", ["Chroma Saw"] = "SawChroma",
+        ["Traveler's Gun"] = "TravelerGun", ["Latte (Knife)"] = "Latte_K_2023", ["Australis"] = "AuroraKnife",
+        ["Chroma Swirly Gun"] = "SwirlyGunChroma", ["Chroma Gemstone"] = "GemstoneChroma", ["Corrupt"] = "Sorry",
+        ["Old Glory"] = "AmericaSword", ["Chroma Fang"] = "FangChroma", ["Pearl"] = "Pearl_K",
+        ["Ginger Luger"] = "GingerLuger", ["Eternal IV"] = "Eternal4", ["Ghost (Knife)"] = "GhostK2018",
+        ["Chroma Darkbringer"] = "ChromaDarkbringer", ["Traveler's Axe"] = "TravelerAxe",
+        ["Chroma Luger"] = "LugerChroma", ["Ice Shard"] = "IceShard", ["Battleaxe"] = "BattleAxe",
+        ["Borealis"] = "AuroraGun", ["Flowerwood"] = "FlowerwoodKnife", ["Cookiecane"] = "Gingermint_K",
+        ["Hallow's Edge"] = "Hallow", ["Aurora (Gun)"] = "Aurora_G_2021", ["Frostfade (Knife)"] = "Frostfade_K_2023",
+        ["Batwing"] = "Scythe", ["Blossom"] = "Blossom_G", ["Chroma Shark"] = "SharkChroma",
+        ["Chroma Candleflame"] = "CandleflameChroma", ["Yellow Seer"] = "YellowSeer", ["Bat"] = "ZombieBat",
+        ["C. Constellation"] = "ConstellationChroma", ["Purple Seer"] = "PurpleSeer", ["Chroma Slasher"] = "SlasherChroma",
+        ["Beach"] = "Beach_K_2023", ["Elderwood Scythe"] = "ElderwoodScythe", ["Eternalcane"] = "EternalCane",
+        ["Chroma Laser"] = "LaserChroma", ["Pearlshine"] = "Pearl_G", ["Chroma Cookiecane"] = "Gingermint_KChroma",
+        ["Swirly Blade"] = "SwirlyBlade", ["Spectre"] = "Spectre2022", ["Vampire's Gun"] = "VampireGun",
+        ["Rainbow"] = "Rainbow_K", ["Chroma Watergun"] = "WatergunChroma", ["Swirly Axe"] = "SwirlyAxe",
+        ["Splitter"] = "Knife1", ["Ghost"] = "GhostKnife", ["Blood"] = "BloodKnife", ["Shadow"] = "ShadowKnife"
+    }
+
+    local function refreshActiveValues()
+        if _tradePriceType == "USD" then
+            _activeValues = _usdValues or {}
+        else
+            _activeValues = _supremeValues or {}
+        end
+    end
+
+    local function fetchUSDValues()
+        task.spawn(function()
+            local reqFunc = (syn and syn.request) or (http and http.request) or http_request or (fluxus and fluxus.request) or request
+            local body = nil
+            if reqFunc then
+                local s, res = pcall(function()
+                    return reqFunc({
+                        Url = "https://api.project-reverse.org/valuables/get-game-valuables?game=mm2",
+                        Method = "GET",
+                        Headers = {["User-Agent"] = "Roblox/WinInet"}
+                    })
+                end)
+                if s and res and (res.StatusCode == 200 or res.Status == 200) and res.Body then
+                    body = res.Body
+                end
+            end
+            if not body then
+                local s, res = pcall(game.HttpGet, game, "https://api.project-reverse.org/valuables/get-game-valuables?game=mm2")
+                if s and res and res ~= "" then body = res end
+            end
+
+            local items = nil
+            if body then
+                local decOk, dec = pcall(function() return HttpService:JSONDecode(body) end)
+                if decOk and dec and dec.data then
+                    items = dec.data
+                    pcall(function()
+                        if writefile then
+                            writefile("ValueData_mm2_values.json", body)
+                        end
+                    end)
+                end
+            end
+
+            if not items and readfile then
+                pcall(function()
+                    local saved = readfile("ValueData_mm2_values.json")
+                    if saved then
+                        local dec = HttpService:JSONDecode(saved)
+                        if dec and dec.data then items = dec.data end
+                    end
+                end)
+            end
+
+            if items then
+                local mapped = {}
+                for _, item in pairs(items) do
+                    if item.name and item.price then
+                        mapped[item.name] = tonumber(item.price) or 0
+                    end
+                end
+                _usdValues = mapped
+                refreshActiveValues()
+            end
+        end)
+    end
+
+    local function fetchSupremeValues()
+        task.spawn(function()
+            local urls = {
+                "https://supremevaluelist.com/mm2/ancients.html",
+                "https://supremevaluelist.com/mm2/chromas.html",
+                "https://supremevaluelist.com/mm2/godlies.html",
+                "https://supremevaluelist.com/mm2/uniques.html",
+                "https://supremevaluelist.com/mm2/vintages.html",
+                "https://supremevaluelist.com/mm2/legendaries.html",
+            }
+            local bigHTML = ""
+            for _, u in ipairs(urls) do
+                local ok, html = pcall(game.HttpGet, game, u)
+                if ok and html then
+                    bigHTML = bigHTML .. "\n" .. html
+                end
+            end
+
+            if bigHTML == "" then return end
+
+            local rawItems = {}
+            -- Regex pattern parser: captures .itemhead and .itemvalue
+            for head, body in bigHTML:gmatch('<div class="itemhead">([^<]+)</div>.-<div class="itemvalue">([%d,]+)</div>') do
+                local cleanName = head:gsub("%s+", " "):gsub("^%s+", ""):gsub("%s+$", "")
+                local cleanVal = tonumber((body:gsub(",", ""):gsub("%s+", ""))) or 0
+                if cleanName:find("jdrbx") then cleanName = "JD" end
+                if cleanName ~= "" and cleanVal > 0 then
+                    rawItems[cleanName] = cleanVal
+                end
+            end
+
+            -- Match to internal MM2 Item database names
+            local itemDb = {}
+            pcall(function()
+                local db = ReplicatedStorage:FindFirstChild("Database")
+                local sync = db and db:FindFirstChild("Sync")
+                local itemMod = sync and sync:FindFirstChild("Item")
+                if itemMod then itemDb = require(itemMod) or {} end
+            end)
+
+            local mapped = {}
+            for name, val in pairs(rawItems) do
+                if itemDb[name] then
+                    mapped[name] = val
+                else
+                    local internalName = _supremeMap[name]
+                    if internalName and itemDb[internalName] then
+                        mapped[internalName] = val
+                    else
+                        mapped[name] = val
+                    end
+                end
+            end
+
+            _supremeValues = mapped
+            refreshActiveValues()
+        end)
+    end
+
+    -- Initial values load
+    fetchUSDValues()
+    fetchSupremeValues()
+
+    local function getTradeGUI()
+        local pgui = LocalPlayer:FindFirstChild("PlayerGui")
+        if not pgui then return nil end
+        local isMobile = pgui:FindFirstChild("TradeGUI_Phone")
+        local tg = isMobile or pgui:FindFirstChild("TradeGUI")
+        local container = tg and tg:FindFirstChild("Container")
+        return container and container:FindFirstChild("Trade")
+    end
+
+    local function createValueTag(parent)
+        local lbl = Instance.new("TextLabel")
+        lbl.Name = "Value"
+        lbl.Position = UDim2.new(0, 0, 0, 0)
+        lbl.Size = UDim2.new(1, 0, 0.32, 0)
+        lbl.BackgroundTransparency = 1
+        lbl.Font = Enum.Font.GothamBold
+        lbl.TextSize = 13
+        lbl.TextScaled = true
+        lbl.TextStrokeTransparency = 0.5
+        lbl.TextColor3 = Color3.fromRGB(255, 255, 255)
+        lbl.ZIndex = 12
+        lbl.Parent = parent
+        return lbl
+    end
+
+    local function clearTradeValues()
+        local trade = getTradeGUI()
+        if not trade then return end
+        for _, box in ipairs({trade:FindFirstChild("TheirOffer"), trade:FindFirstChild("YourOffer")}) do
+            if box and box:FindFirstChild("Container") then
+                for _, child in ipairs(box.Container:GetChildren()) do
+                    if child:IsA("Frame") and child:FindFirstChild("Container") then
+                        local v = child.Container:FindFirstChild("Value")
+                        if v then pcall(function() v:Destroy() end) end
+                    end
+                end
+            end
+        end
+        if trade:FindFirstChild("YourOffer") and trade.YourOffer:FindFirstChild("Title") then
+            trade.YourOffer.Title.Text = "YOUR OFFER"
+        end
+        if trade:FindFirstChild("TheirOffer") and trade.TheirOffer:FindFirstChild("Title") then
+            trade.TheirOffer.Title.Text = "THEIR OFFER"
+        end
+    end
+
+    local function updateTradeVisuals(theirOffer, yourOffer)
+        refreshActiveValues()
+        local trade = getTradeGUI()
+        if not trade then return end
+
+        local theirTotal = 0
+        local yourTotal = 0
+
+        if theirOffer and trade:FindFirstChild("TheirOffer") and trade.TheirOffer:FindFirstChild("Container") then
+            for slotIdx, item in pairs(theirOffer) do
+                local iName = item[1]
+                local iCount = item[2] or 1
+                local slot = trade.TheirOffer.Container:FindFirstChild("NewItem" .. tostring(slotIdx))
+                if slot and slot:FindFirstChild("Container") then
+                    local c = slot.Container
+                    local ex = c:FindFirstChild("Value")
+                    if ex then ex:Destroy() end
+                    local unitVal = _activeValues[iName] or 0
+                    local itemTotal = unitVal * iCount
+                    theirTotal = theirTotal + itemTotal
+
+                    local tag = createValueTag(c)
+                    tag.Text = "Val: " .. tostring(itemTotal)
+                    tag.TextColor3 = Color3.fromRGB(255, 215, 0)
+                end
+            end
+        end
+
+        if yourOffer and trade:FindFirstChild("YourOffer") and trade.YourOffer:FindFirstChild("Container") then
+            for slotIdx, item in pairs(yourOffer) do
+                local iName = item[1]
+                local iCount = item[2] or 1
+                local slot = trade.YourOffer.Container:FindFirstChild("NewItem" .. tostring(slotIdx))
+                if slot and slot:FindFirstChild("Container") then
+                    local c = slot.Container
+                    local ex = c:FindFirstChild("Value")
+                    if ex then ex:Destroy() end
+                    local unitVal = _activeValues[iName] or 0
+                    local itemTotal = unitVal * iCount
+                    yourTotal = yourTotal + itemTotal
+
+                    local tag = createValueTag(c)
+                    tag.Text = "Val: " .. tostring(itemTotal)
+                    tag.TextColor3 = Color3.fromRGB(48, 255, 106)
+                end
+            end
+        end
+
+        if trade:FindFirstChild("YourOffer") and trade.YourOffer:FindFirstChild("Title") then
+            trade.YourOffer.Title.Text = "YOUR OFFER | TOTAL: " .. tostring(yourTotal)
+        end
+        if trade:FindFirstChild("TheirOffer") and trade.TheirOffer:FindFirstChild("Title") then
+            trade.TheirOffer.Title.Text = "THEIR OFFER | TOTAL: " .. tostring(theirTotal)
+        end
+
+        _theirTotalVal = theirTotal
+        _yourTotalVal = yourTotal
+    end
+
+    local function getMyInventoryMap()
+        refreshActiveValues()
+        local myMap = {}
+        local ok, res = pcall(function()
+            local extras = ReplicatedStorage:FindFirstChild("Remotes") and ReplicatedStorage.Remotes:FindFirstChild("Extras")
+            local getInv = extras and extras:FindFirstChild("GetFullInventory")
+            if getInv then
+                return getInv:InvokeServer(LocalPlayer.Name)
+            end
+            return nil
+        end)
+        if ok and res and res.Weapons and res.Weapons.Owned then
+            for name, qty in pairs(res.Weapons.Owned) do
+                local val = _activeValues[name]
+                if val and val > 0 then
+                    myMap[name] = {value = val, quantity = qty}
+                end
+            end
+        end
+        return myMap
+    end
+
+    local function solveKnapsackOffer(theirValue, myInv, minProfit)
+        if not theirValue or theirValue <= 0 then return {}, 0 end
+        local maxTargetValue = theirValue * (1 - (minProfit / 100))
+        local items = {}
+
+        for name, data in pairs(myInv) do
+            local q = data.quantity or 1
+            local v = data.value or 0
+            if v > 0 then
+                for i = 1, q do
+                    table.insert(items, {name = name, value = v})
+                end
+            end
+        end
+
+        table.sort(items, function(a, b) return a.value < b.value end)
+        local maxItems = math.min(4, #items)
+        local dp = {}
+        for i = 0, #items do
+            dp[i] = {}
+            for j = 0, maxItems do dp[i][j] = 0 end
+        end
+
+        for i = 1, #items do
+            for j = 0, maxItems do
+                dp[i][j] = dp[i - 1][j]
+                if j > 0 and dp[i - 1][j - 1] + items[i].value <= maxTargetValue then
+                    dp[i][j] = math.max(dp[i][j], dp[i - 1][j - 1] + items[i].value)
+                end
+            end
+        end
+
+        local chosen = {}
+        local currJ = maxItems
+        for i = #items, 1, -1 do
+            if dp[i][currJ] ~= dp[i - 1][currJ] then
+                table.insert(chosen, items[i].name)
+                currJ = currJ - 1
+                if currJ <= 0 then break end
+            end
+        end
+
+        return chosen, dp[#items][maxItems]
+    end
+
+    local function clearMyOfferItems(offerList)
+        if not offerList then return end
+        pcall(function()
+            local trade = ReplicatedStorage:FindFirstChild("Trade")
+            local removeOffer = trade and trade:FindFirstChild("RemoveOffer")
+            if removeOffer then
+                for _, item in pairs(offerList) do
+                    local count = item[2] or 1
+                    for i = 1, count do
+                        removeOffer:FireServer(item[1], "Weapons")
+                    end
+                end
+            end
+        end)
+    end
+
+    local function placeOfferItems(chosenNames)
+        pcall(function()
+            local trade = ReplicatedStorage:FindFirstChild("Trade")
+            local offerItem = trade and trade:FindFirstChild("OfferItem")
+            if offerItem then
+                for _, name in ipairs(chosenNames) do
+                    offerItem:FireServer(name, "Weapons")
+                end
+            end
+        end)
+    end
+
+    local function executeGenerateOffer()
+        local myInv = getMyInventoryMap()
+        local chosen, totalVal = solveKnapsackOffer(_theirTotalVal, myInv, _minProfitPct)
+        if _yourOfferData and #_yourOfferData > 0 then
+            clearMyOfferItems(_yourOfferData)
+            task.wait(0.15)
+        end
+        if #chosen > 0 then
+            placeOfferItems(chosen)
+            notify("Trade Helper", string.format("Generated Offer (%d items | Val: %d)", #chosen, totalVal), 2.5, "check")
+        else
+            notify("Trade Helper", "No profitable counter-offer found in inventory!", 3, "x")
+        end
+    end
+
+    -- Hook MM2 Trade Events
+    pcall(function()
+        local trade = ReplicatedStorage:FindFirstChild("Trade")
+        if not trade then return end
+
+        local updateTrade = trade:FindFirstChild("UpdateTrade")
+        if updateTrade then
+            _tradeUpdateConn = updateTrade.OnClientEvent:Connect(function(data)
+                local p1 = data.Player1
+                local p2 = data.Player2
+                if not (p1 and p2) then return end
+
+                local me = (p1.Player == LocalPlayer) and p1 or p2
+                local them = (p1.Player == LocalPlayer) and p2 or p1
+                _yourOfferData = me.Offer or {}
+                _theirOfferData = them.Offer or {}
+
+                if _showTradeValues then
+                    pcall(updateTradeVisuals, _theirOfferData, _yourOfferData)
+                end
+
+                if _autoOfferEnabled and #_theirOfferData > 0 then
+                    task.spawn(function()
+                        local myInv = getMyInventoryMap()
+                        local chosen, expectedVal = solveKnapsackOffer(_theirTotalVal, myInv, _minProfitPct)
+                        if expectedVal ~= _yourTotalVal and #chosen > 0 then
+                            clearMyOfferItems(_yourOfferData)
+                            task.wait(0.12)
+                            placeOfferItems(chosen)
+                        end
+                    end)
+                end
+            end)
+        end
+
+        local startTrade = trade:FindFirstChild("StartTrade")
+        if startTrade then
+            _tradeStartConn = startTrade.OnClientEvent:Connect(function()
+                _theirOfferData = {}
+                _yourOfferData = {}
+                _theirTotalVal = 0
+                _yourTotalVal = 0
+                if _showTradeValues then
+                    task.delay(0.2, function()
+                        local t = getTradeGUI()
+                        if t then
+                            if t:FindFirstChild("YourOffer") and t.YourOffer:FindFirstChild("Title") then
+                                t.YourOffer.Title.Text = "YOUR OFFER | TOTAL: 0"
+                            end
+                            if t:FindFirstChild("TheirOffer") and t.TheirOffer:FindFirstChild("Title") then
+                                t.TheirOffer.Title.Text = "THEIR OFFER | TOTAL: 0"
+                            end
+                        end
+                    end)
+                end
+            end)
+        end
+
+        local endTrade = trade:FindFirstChild("EndTrade")
+        if endTrade then
+            _tradeEndConn = endTrade.OnClientEvent:Connect(function()
+                clearTradeValues()
+            end)
+        end
+    end)
+
+    -- ==================== UI SECTIONS ====================
+    TradeTab:Section({
+        Title = "Trade Values & Display",
+        TextSize = 15,
+    })
+
+    TradeTab:Paragraph({
+        Title = "MM2 Trade Value Engine",
+        Desc = "Fetches live values from SupremeValueList and USD Market endpoints. Displays item values directly on trade slots and auto-calculates total trade balance.",
+    })
+
+    TradeTab:Dropdown({
+        Title = "Item Price Display",
+        Desc = "Choose between Supreme values and USD cash pricing",
+        Values = {"Supreme", "USD"},
+        Value = _tradePriceType,
+        Callback = function(val)
+            _tradePriceType = val
+            refreshActiveValues()
+            if _showTradeValues then
+                updateTradeVisuals(_theirOfferData, _yourOfferData)
+            end
+            notify("Trade Helper", "Price display set to: " .. tostring(val), 2, "dollar-sign")
+        end,
+    })
+
+    TradeTab:Toggle({
+        Title = "Show Values In Trade",
+        Desc = "Displays values on trade slots and calculates total offer value for both players",
+        Icon = "eye",
+        Type = "Checkbox",
+        Value = _showTradeValues,
+        Callback = function(val)
+            _showTradeValues = val
+            if val then
+                updateTradeVisuals(_theirOfferData, _yourOfferData)
+                notify("Trade Helper", "Trade values display enabled", 2, "check")
+            else
+                clearTradeValues()
+                notify("Trade Helper", "Trade values display disabled", 2, "x")
+            end
+        end,
+    })
+
+    TradeTab:Button({
+        Title = "Refresh Values Database",
+        Desc = "Re-fetches latest Supreme values and USD market prices from web servers",
+        Callback = function()
+            fetchUSDValues()
+            fetchSupremeValues()
+            notify("Trade Helper", "Fetching updated values in background...", 2.5, "refresh-cw")
+        end,
+    })
+
+    TradeTab:Divider()
+
+    TradeTab:Section({
+        Title = "Auto Trade & Offer Generator",
+        TextSize = 15,
+    })
+
+    TradeTab:Toggle({
+        Title = "Automatically Generate Offers",
+        Desc = "Automatically places profitable items from inventory into trade offer when opponent changes theirs",
+        Icon = "zap",
+        Type = "Checkbox",
+        Value = _autoOfferEnabled,
+        Callback = function(val)
+            _autoOfferEnabled = val
+            notify("Auto Trade", "Auto Offer Generation: " .. (val and "ON" or "OFF"), 2, val and "check" or "x")
+        end,
+    })
+
+    TradeTab:Slider({
+        Title = "Minimum Profit Percentage",
+        Desc = "Profit percentage required for auto-generated counter-offers",
+        Step = 1,
+        Value = {
+            Min = 0,
+            Max = 100,
+            Default = 6,
+        },
+        Callback = function(val)
+            _minProfitPct = val
+        end,
+    })
+
+    TradeTab:Button({
+        Title = "Generate Counter-Offer Now",
+        Desc = "Calculates optimal items from your inventory to beat their offer with guaranteed profit",
+        Callback = function()
+            executeGenerateOffer()
+        end,
+    })
+
+    TradeTab:Button({
+        Title = "Clear My Offer",
+        Desc = "Removes all items from your side of the trade offer",
+        Callback = function()
+            if _yourOfferData and #_yourOfferData > 0 then
+                clearMyOfferItems(_yourOfferData)
+                notify("Trade Helper", "Cleared your offer items", 2, "trash")
+            else
+                notify("Trade Helper", "Your offer is already empty", 2, "info")
+            end
+        end,
+    })
+
+    TradeTab:Divider()
+
+    TradeTab:Section({
+        Title = "Inventory Analyzer",
+        TextSize = 15,
+    })
+
+    local invParagraph = TradeTab:Paragraph({
+        Title = "Inventory Value Analysis",
+        Desc = "Press 'Start Analysis' below to evaluate your complete inventory.",
+    })
+
+    TradeTab:Button({
+        Title = "Start Inventory Analysis",
+        Desc = "Scans owned weapons and pets, sorts by value, and computes total net worth",
+        Callback = function()
+            if _analyzingInv then return end
+            _analyzingInv = true
+            pcall(function()
+                if invParagraph and invParagraph.SetDesc then
+                    invParagraph:SetDesc("Fetching inventory data from server and computing values... Please wait.")
+                end
+            end)
+            notify("Inventory", "Analyzing inventory...", 2, "loader")
+
+            task.spawn(function()
+                local ok, fullInv = pcall(function()
+                    local extras = ReplicatedStorage:FindFirstChild("Remotes") and ReplicatedStorage.Remotes:FindFirstChild("Extras")
+                    local getInv = extras and extras:FindFirstChild("GetFullInventory")
+                    if getInv then return getInv:InvokeServer(LocalPlayer.Name) end
+                    return nil
+                end)
+
+                if not ok or not fullInv then
+                    _analyzingInv = false
+                    pcall(function()
+                        if invParagraph and invParagraph.SetDesc then
+                            invParagraph:SetDesc("Failed to retrieve inventory from server. Make sure you are in a live match/server.")
+                        end
+                    end)
+                    return
+                end
+
+                refreshActiveValues()
+                local weapons = (fullInv.Weapons and fullInv.Weapons.Owned) or {}
+                local pets = (fullInv.Pets and fullInv.Pets.Owned) or {}
+                local combined = {}
+
+                for name, qty in pairs(weapons) do combined[name] = (combined[name] or 0) + qty end
+                for name, qty in pairs(pets) do combined[name] = (combined[name] or 0) + qty end
+
+                local list = {}
+                local totalItems = 0
+                local grandTotal = 0
+
+                for name, count in pairs(combined) do
+                    local unitVal = _activeValues[name] or 0
+                    if unitVal > 0 then
+                        local itemTotal = unitVal * count
+                        table.insert(list, {name = name, count = count, price = unitVal, total = itemTotal})
+                        grandTotal = grandTotal + itemTotal
+                        totalItems = totalItems + count
+                    end
+                end
+
+                table.sort(list, function(a, b) return a.total > b.total end)
+
+                local curSym = (_tradePriceType == "USD") and "$" or ""
+                local lines = {
+                    string.format("Analysis Mode: %s Values  •  Items Valued: %d", _tradePriceType, totalItems),
+                    string.format("Total Inventory Value: %s%s", curSym, tostring(math.floor(grandTotal))),
+                    string.rep("─", 38),
+                }
+
+                local showCount = math.min(12, #list)
+                for i = 1, showCount do
+                    local it = list[i]
+                    table.insert(lines, string.format("#%-2d %-15s x%-2d  •  %s%d", i, it.name:sub(1, 15), it.count, curSym, math.floor(it.total)))
+                end
+                if #list > showCount then
+                    table.insert(lines, string.format("... and %d more items", #list - showCount))
+                end
+
+                local resultText = table.concat(lines, "\n")
+                pcall(function()
+                    if invParagraph and invParagraph.SetDesc then
+                        invParagraph:SetDesc(resultText)
+                    end
+                end)
+                _analyzingInv = false
+                notify("Inventory", "Analysis Complete! Total: " .. curSym .. tostring(math.floor(grandTotal)), 3.5, "award")
+            end)
+        end,
+    })
+end
 -------------------------------------------------------------------------------------------------------------------
 -- ==================== RANAX ADVANCED MM2 SHOOT ENGINE ====================
 local Camera = Workspace.CurrentCamera
