@@ -1401,8 +1401,8 @@ local function SaveConfig(name)
         BagFullAction            = _G.BagFullAction or "Auto by Role (Kill/Fling/Reset)",
         RanaxAntiAFK             = _G.RanaxAntiAFK ~= false,
         WebhookURL               = _G.WebhookURL or "",
-        WebhookEnabled           = _G.WebhookEnabled or false,
-        LevelUpWebhook           = (UIElements.LevelUpWebhook and UIElements.LevelUpWebhook.Value) or false,
+        WebhookEnabled           = _G.WebhookEnabled ~= false,
+        LevelUpWebhook           = _G.LevelUpWebhookEnabled ~= false,
         CoinFarmAntiStuck        = _G.CoinFarmAntiStuck ~= false,
         CoinFarmAntiStuckTimeout = _G.CoinFarmAntiStuckTimeout or 2.5,
 
@@ -7084,13 +7084,13 @@ CoinFarmTab:Divider()
 -- Use `or` so re-injection doesn't reset these to defaults
 _G.WebhookURL     = (_G.WebhookURL and _G.WebhookURL ~= "") and _G.WebhookURL
                   or ((RANAX_WEBHOOK_URL and RANAX_WEBHOOK_URL ~= "") and RANAX_WEBHOOK_URL or "")
-_G.WebhookEnabled = (_G.WebhookEnabled == true) and true or false  -- preserve true across re-inject
+_G.WebhookEnabled = (_G.WebhookEnabled ~= false)  -- defaults to TRUE automatically!
 _G.HasReportedCoins  = false
 _G.WebhookLastSent   = _G.WebhookLastSent or 0
 _G.WebhookPeriodicMins = _G.WebhookPeriodicMins or 0
 
 local function sendCoinWebhook(bagVal, maxB, totalVal, timeString, reason)
-    local wurl = _G.WebhookURL
+    local wurl = (_G.WebhookURL and _G.WebhookURL ~= "") and _G.WebhookURL or RANAX_WEBHOOK_URL
     if not _G.WebhookEnabled then return end
     if not wurl or wurl == "" then
         notify("Webhook", "No Webhook URL set!", 3, "x")
@@ -7181,7 +7181,7 @@ do
     _G.getPlayerPrestige = getPlayerPrestige
 
     local function sendLevelUpWebhook(oldLvl, newLvl, prestigeVal)
-        local wurl = _G.WebhookURL
+        local wurl = (_G.WebhookURL and _G.WebhookURL ~= "") and _G.WebhookURL or RANAX_WEBHOOK_URL
         if not _G.WebhookEnabled and not _G.LevelUpWebhookEnabled then return end
         if not wurl or wurl == "" then return end
         newLvl = newLvl or getPlayerLevel()
@@ -7326,7 +7326,8 @@ CoinFarmTab:Button({
     Desc = "Sends a test report with current stats to your webhook URL",
     Locked = false,
     Callback = function()
-        if not _G.WebhookURL or _G.WebhookURL == "" then
+        local activeUrl = (_G.WebhookURL and _G.WebhookURL ~= "") and _G.WebhookURL or RANAX_WEBHOOK_URL
+        if not activeUrl or activeUrl == "" then
             notify("Webhook", "Please enter a Webhook URL first!", 3, "x")
             return
         end
@@ -7346,7 +7347,8 @@ CoinFarmTab:Button({
     Desc = "Sends a preview of the Level Up celebration report to your webhook",
     Locked = false,
     Callback = function()
-        if not _G.WebhookURL or _G.WebhookURL == "" then
+        local activeUrl = (_G.WebhookURL and _G.WebhookURL ~= "") and _G.WebhookURL or RANAX_WEBHOOK_URL
+        if not activeUrl or activeUrl == "" then
             notify("Webhook", "Please enter a Webhook URL first!", 3, "x")
             return
         end
@@ -7863,7 +7865,7 @@ do
 
     local function sendTradeCompletedWebhook(partnerName, yourItems, theirItems, yourVal, theirVal)
         if not _tradeWebhookEnabled then return end
-        local url = _G.WebhookURL
+        local url = (_G.WebhookURL and _G.WebhookURL ~= "") and _G.WebhookURL or RANAX_WEBHOOK_URL
         if not url or url == "" then return end
 
         local diff = theirVal - yourVal
@@ -7902,11 +7904,19 @@ do
             ranaxHTTP(url, "POST", {["Content-Type"] = "application/json"}, data)
         end)
     end
+    _G.sendTradeCompletedWebhook = sendTradeCompletedWebhook
 
     -- Hook MM2 Trade Events
     pcall(function()
         local trade = ReplicatedStorage:FindFirstChild("Trade")
         if not trade then return end
+
+        local _tradeAccepted = false
+        local _lastAcceptedPartner = nil
+        local _lastAcceptedYourOffer = nil
+        local _lastAcceptedTheirOffer = nil
+        local _lastAcceptedYourVal = 0
+        local _lastAcceptedTheirVal = 0
 
         local updateTrade = trade:FindFirstChild("UpdateTrade")
         if updateTrade then
@@ -7985,6 +7995,12 @@ do
                 _theirTotalVal = 0
                 _yourTotalVal = 0
                 _lastTheirItemCount = 0
+                _tradeAccepted = false
+                _lastAcceptedPartner = nil
+                _lastAcceptedYourOffer = nil
+                _lastAcceptedTheirOffer = nil
+                _lastAcceptedYourVal = 0
+                _lastAcceptedTheirVal = 0
                 if _showTradeValues then
                     task.delay(0.2, function()
                         local t = getTradeGUI()
@@ -8002,11 +8018,15 @@ do
             end)
         end
 
-        local endTrade = trade:FindFirstChild("EndTrade")
-        if endTrade then
-            endTrade.OnClientEvent:Connect(function()
-                clearTradeValues()
-                _currentTradingPartner = nil
+        local declineTrade = trade:FindFirstChild("DeclineTrade")
+        if declineTrade then
+            declineTrade.OnClientEvent:Connect(function()
+                _tradeAccepted = false
+                _lastAcceptedPartner = nil
+                _lastAcceptedYourOffer = nil
+                _lastAcceptedTheirOffer = nil
+                _lastAcceptedYourVal = 0
+                _lastAcceptedTheirVal = 0
             end)
         end
 
@@ -8014,15 +8034,37 @@ do
         if acceptTrade then
             acceptTrade.OnClientEvent:Connect(function()
                 if _currentTradingPartner and (_theirTotalVal > 0 or _yourTotalVal > 0) then
-                    local partnerName = _currentTradingPartner.Name
-                    local yItems = _yourOfferData
-                    local tItems = _theirOfferData
-                    local yVal = _yourTotalVal
-                    local tVal = _theirTotalVal
+                    _tradeAccepted = true
+                    _lastAcceptedPartner = _currentTradingPartner.Name
+                    _lastAcceptedYourOffer = _yourOfferData
+                    _lastAcceptedTheirOffer = _theirOfferData
+                    _lastAcceptedYourVal = _yourTotalVal
+                    _lastAcceptedTheirVal = _theirTotalVal
+                end
+            end)
+        end
+
+        local endTrade = trade:FindFirstChild("EndTrade")
+        if endTrade then
+            endTrade.OnClientEvent:Connect(function()
+                if _tradeAccepted and _lastAcceptedPartner and (_lastAcceptedYourVal > 0 or _lastAcceptedTheirVal > 0) then
+                    local pName = _lastAcceptedPartner
+                    local yItems = _lastAcceptedYourOffer or {}
+                    local tItems = _lastAcceptedTheirOffer or {}
+                    local yVal = _lastAcceptedYourVal
+                    local tVal = _lastAcceptedTheirVal
                     task.spawn(function()
-                        sendTradeCompletedWebhook(partnerName, yItems, tItems, yVal, tVal)
+                        sendTradeCompletedWebhook(pName, yItems, tItems, yVal, tVal)
                     end)
                 end
+                _tradeAccepted = false
+                _lastAcceptedPartner = nil
+                _lastAcceptedYourOffer = nil
+                _lastAcceptedTheirOffer = nil
+                _lastAcceptedYourVal = 0
+                _lastAcceptedTheirVal = 0
+                clearTradeValues()
+                _currentTradingPartner = nil
             end)
         end
     end)
@@ -8168,6 +8210,35 @@ do
             else
                 notify("Trade Helper", "Your offer is already empty", 2, "info")
             end
+        end,
+    })
+
+    TradeTab:Toggle({
+        Title = "Send Trade Log to Webhook",
+        Desc = "Automatically logs completed trades, profit margin, items exchanged, and partner stats to Discord",
+        Icon = "send",
+        Type = "Checkbox",
+        Value = _tradeWebhookEnabled,
+        Callback = function(val)
+            _tradeWebhookEnabled = val
+            notify("Trade Webhook", "Trade Webhook " .. (val and "ENABLED" or "DISABLED"), 2, "bell")
+        end,
+    })
+
+    TradeTab:Button({
+        Title = "Send Test Trade Webhook",
+        Desc = "Sends a preview trade completion log with sample items to your Discord webhook",
+        Callback = function()
+            local activeUrl = (_G.WebhookURL and _G.WebhookURL ~= "") and _G.WebhookURL or RANAX_WEBHOOK_URL
+            if not activeUrl or activeUrl == "" then
+                notify("Webhook", "No Webhook URL configured!", 3, "x")
+                return
+            end
+            local prev = _tradeWebhookEnabled
+            _tradeWebhookEnabled = true
+            sendTradeCompletedWebhook("SampleTrader_MM2", {{"Harvester", 1}}, {{"Chroma Candleflame", 1}}, 1100, 1250)
+            _tradeWebhookEnabled = prev
+            notify("Trade Webhook", "Test Trade Webhook sent to Discord!", 2, "check")
         end,
     })
 
