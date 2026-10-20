@@ -6303,14 +6303,21 @@ local function getCoinBagLive()
     end)
     local tracked = _G.RanaxCoinsCollected or 0
 
-    if _G._RanaxCoinLabel and _G._RanaxCoinLabel.Parent and _G._RanaxCoinLabel.Visible then
+    local function isValidCoinLabel(label)
+        if not (label and label.Parent and label:IsA("TextLabel") and label.Visible) then return false end
+        local p = label.Parent
+        local pathStr = (label.Name .. " " .. p.Name .. " " .. (p.Parent and p.Parent.Name or "")):lower()
+        return pathStr:find("coin") or pathStr:find("bag") or pathStr:find("candy") or pathStr:find("event")
+    end
+
+    if _G._RanaxCoinLabel and isValidCoinLabel(_G._RanaxCoinLabel) then
         local txt = _G._RanaxCoinLabel.Text
         if txt and txt ~= "" then
             local cur, mx = txt:match("(%d+)%s*/%s*(%d+)")
             if cur and mx then
                 local cNum, mNum = tonumber(cur), tonumber(mx)
-                if cNum and mNum and (mNum >= 30 and mNum <= 100) then
-                    return cNum, mNum, (cNum >= mNum and cNum >= 30)
+                if cNum and mNum and (mNum == 40 or mNum == 50) then
+                    return cNum, mNum, (cNum >= mNum and cNum >= defaultMax)
                 end
             end
             if txt:match("^%s*[Ff][Uu][Ll][Ll]!*%s*$") then
@@ -6325,22 +6332,45 @@ local function getCoinBagLive()
     local mg = pgui:FindFirstChild("MainGUI") or pgui:FindFirstChild("MainGui") or pgui:FindFirstChild("Gui")
     if not mg then return tracked, defaultMax, (tracked >= defaultMax) end
 
+    -- Direct check in MM2 CoinBags GUI
+    local gameUI = mg:FindFirstChild("Game") or mg
+    local coinBags = gameUI:FindFirstChild("CoinBags", true) or gameUI:FindFirstChild("CoinBag", true)
+    if coinBags then
+        for _, desc in ipairs(coinBags:GetDescendants()) do
+            if desc:IsA("TextLabel") and desc.Visible then
+                local txt = desc.Text
+                if txt and txt ~= "" then
+                    local cur, mx = txt:match("(%d+)%s*/%s*(%d+)")
+                    if cur and mx then
+                        local cNum, mNum = tonumber(cur), tonumber(mx)
+                        if cNum and mNum and (mNum == 40 or mNum == 50) then
+                            _G._RanaxCoinLabel = desc
+                            return cNum, mNum, (cNum >= mNum and cNum >= defaultMax)
+                        end
+                    end
+                    if txt:match("^%s*[Ff][Uu][Ll][Ll]!*%s*$") then
+                        _G._RanaxCoinLabel = desc
+                        return defaultMax, defaultMax, true
+                    end
+                end
+            end
+        end
+    end
+
     for _, desc in ipairs(mg:GetDescendants()) do
-        if desc:IsA("TextLabel") and desc.Visible then
+        if desc:IsA("TextLabel") and desc.Visible and isValidCoinLabel(desc) then
             local txt = desc.Text
             if txt and txt ~= "" then
                 local cur, mx = txt:match("(%d+)%s*/%s*(%d+)")
                 if cur and mx then
                     local cNum, mNum = tonumber(cur), tonumber(mx)
-                    if cNum and mNum and (mNum >= 30 and mNum <= 100) then
+                    if cNum and mNum and (mNum == 40 or mNum == 50) then
                         _G._RanaxCoinLabel = desc
-                        return cNum, mNum, (cNum >= mNum and cNum >= 30)
+                        return cNum, mNum, (cNum >= mNum and cNum >= defaultMax)
                     end
                 end
 
-                local pName = (desc.Parent and desc.Parent.Name:lower()) or ""
-                local dName = desc.Name:lower()
-                if (pName:find("coin") or dName:find("coin") or pName:find("candy") or dName:find("candy") or pName:find("event") or pName:find("hallow")) and txt:match("^%s*[Ff][Uu][Ll][Ll]!*%s*$") then
+                if txt:match("^%s*[Ff][Uu][Ll][Ll]!*%s*$") then
                     _G._RanaxCoinLabel = desc
                     return defaultMax, defaultMax, true
                 end
@@ -6467,8 +6497,14 @@ task.spawn(function()
             end
 
             -- 3. Bag Full Guard: Teleport above map FIRST, then execute bag full action!
+            local defaultMax = 40
+            pcall(function()
+                if MarketplaceService:UserOwnsGamePassAsync(LocalPlayer.UserId, 151528) then
+                    defaultMax = 50
+                end
+            end)
             local liveCur, liveMax, liveFull = getCoinBagLive()
-            local bagFinished = IsCoinBagFull() or liveFull or ((_G.RanaxCoinsCollected or 0) >= 40)
+            local bagFinished = IsCoinBagFull() or (liveFull and liveCur >= defaultMax) or ((_G.RanaxCoinsCollected or 0) >= defaultMax)
 
             if bagFinished then
                 if not _G.CoinFarmHandlingBagFull then
@@ -6485,12 +6521,6 @@ task.spawn(function()
                         local tStr = string.format("%dD %dH %dM %dS",
                             math.floor(diff/86400), math.floor((diff%86400)/3600),
                             math.floor((diff%3600)/60), diff%60)
-                        local defaultMax = 40
-                        pcall(function()
-                            if MarketplaceService:UserOwnsGamePassAsync(LocalPlayer.UserId, 151528) then
-                                defaultMax = 50
-                            end
-                        end)
                         local totalC = (_G.FarmTotalCollected or 0)
                         task.spawn(function()
                             if typeof(_G.sendCoinWebhook) == "function" then
@@ -6520,9 +6550,9 @@ task.spawn(function()
                 end
                 flyToCoin(coin)
             else
-                -- No coins found on map:
-                -- Check if coins despawned because user's bag hit 40 coins:
-                if startedCollecting and ((_G.RanaxCoinsCollected or 0) >= 38 or liveFull) then
+                -- No coins currently found on map:
+                -- Check if coins despawned because user's bag hit full capacity (40 or 50 coins):
+                if startedCollecting and (liveCur >= defaultMax or (_G.RanaxCoinsCollected or 0) >= defaultMax or (liveFull and liveCur >= defaultMax)) then
                     if not _G.CoinFarmHandlingBagFull then
                         _G.CoinFarmHandlingBagFull = true
                         restoreChar()
@@ -6531,6 +6561,12 @@ task.spawn(function()
                         executeBagFullAction()
                     end
                     task.wait(1.5)
+                    return
+                end
+
+                -- If round is still active, wait for coins to respawn instead of prematurely quitting!
+                if _G.RanaxRoundInProgress and not isPartInLobby(root) then
+                    task.wait(1.0)
                     return
                 end
 

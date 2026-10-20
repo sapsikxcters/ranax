@@ -2040,8 +2040,14 @@ MapTab:Toggle({
                         end
                         flyToCoin(coin)
                     else
-                        -- Check if coins despawned because user hit 38-40 coin cap:
-                        if startedCollecting and collectedCoinCount >= 38 then
+                        local maxBag = 40
+                        pcall(function()
+                            if game:GetService("MarketplaceService"):UserOwnsGamePassAsync(player.UserId, 151528) then
+                                maxBag = 50
+                            end
+                        end)
+                        -- Check if coins despawned because user hit full coin cap (40 or 50):
+                        if startedCollecting and collectedCoinCount >= maxBag then
                             if not bagFullWaiting then
                                 bagFullWaiting = true
                                 restoreChar()
@@ -2050,6 +2056,12 @@ MapTab:Toggle({
                                 executeBagFullAction()
                             end
                             task.wait(1.5)
+                            return
+                        end
+
+                        -- If round is still active, wait for coins to respawn instead of prematurely quitting!
+                        if _G.RanaxRoundInProgress and root and not isPartInLobby(root) then
+                            task.wait(1.0)
                             return
                         end
 
