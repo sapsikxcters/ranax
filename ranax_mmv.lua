@@ -7520,47 +7520,195 @@ do
     local _spyingPartner = false
     local _lastAcceptedTradeData = nil
 
-    local _supremeMap = {
-        ["Red Luger"] = "RedLuger", ["Hallow's Blade"] = "HallowsBlade", ["Flowerwood Gun"] = "FlowerwoodGun",
-        ["Battleaxe II"] = "BattleAxe2", ["Rainbow Gun"] = "Rainbow_G", ["Waves"] = "Waves_K",
-        ["Orange Seer"] = "OrangeSeer", ["Icecracker"] = "Icecracker_K_2020", ["Soul"] = "WraithGun",
-        ["Arctic (Gun)"] = "Arctic_G_2022", ["C. Elderwood Blade"] = "ElderwoodKnifeChroma",
-        ["Chroma Heat"] = "HeatChroma", ["Santa's Spirit"] = "SantasSpirit", ["Spirit"] = "WraithKnife",
-        ["Vampire's Edge"] = "VampiresEdge", ["Vampire's Axe"] = "VampireAxe", ["Evergun"] = "TreeGun2023",
-        ["Eternal III"] = "Eternal3", ["Cotton Candy"] = "CottonCandy", ["Chroma Gingerblade"] = "GingerbladeChroma",
-        ["Elderwood Revolver"] = "ElderwoodGun", ["Chroma Tides"] = "TidesChroma", ["Spectral (Knife)"] = "Spectral_K_2021",
-        ["Latte (Gun)"] = "Latte_G_2023", ["Ginger (Gun)"] = "Ginger_G_2018", ["Elderwood Blade"] = "ElderwoodKnife",
-        ["Chroma Seer"] = "SeerChroma", ["Red Seer"] = "RedSeer", ["Ocean"] = "Ocean_G",
-        ["Chroma Evergreen"] = "TreeKnife2023Chroma", ["Chroma Evergun"] = "TreeGun2023Chroma",
-        ["Chroma Bauble"] = "BaubleChroma", ["Green Luger"] = "GreenLuger", ["Gingermint"] = "Gingermint_G",
-        ["Phantom"] = "Phantom2022", ["Chroma Boneblade"] = "BonebladeChroma", ["Blue Seer"] = "BlueSeer",
-        ["Winter's Edge"] = "WintersEdge", ["Chroma Lightbringer"] = "ChromaLightbringer",
-        ["Cavern (Gun)"] = "Cavern_G_2019", ["Tree (Knife)"] = "Tree", ["Tree (Gun)"] = "TreeGun",
-        ["Rupture"] = "Bleed", ["Evergreen"] = "TreeKnife2023", ["Ghost (Gun)"] = "GhostG2018",
-        ["Red Fire"] = "RedFire", ["Blue Scratch"] = "ScratchBlue", ["Broken"] = "Broken_K_2023",
-        ["Chroma Deathshard"] = "DeathshardChroma", ["Red Scratch"] = "Scratch", ["Blue Elite"] = "EliteBlue",
-        ["Vampire (Knife)"] = "Vampire_K_2022", ["Traveler (Gun)"] = "Traveler_G_2023", ["Eternal II"] = "Eternal2",
-        ["C. Vampire's Gun"] = "VampireGunChroma", ["Vampire (Gun)"] = "VampireGun", ["Ice Dragon"] = "IceDragon",
-        ["Icedriller"] = "Icedriller_G_2020", ["Green Elite"] = "EliteGreen", ["Swirly Gun"] = "SwirlyGun",
-        ["Cavern (Knife)"] = "Cavern_K_2019", ["Turkey"] = "Turkey2023", ["C. Traveler's Gun"] = "TravelerGunChroma",
-        ["Santa's Magic"] = "SantasMagic", ["Sakura"] = "Sakura_K", ["Chroma Saw"] = "SawChroma",
-        ["Traveler's Gun"] = "TravelerGun", ["Latte (Knife)"] = "Latte_K_2023", ["Australis"] = "AuroraKnife",
-        ["Chroma Swirly Gun"] = "SwirlyGunChroma", ["Chroma Gemstone"] = "GemstoneChroma", ["Corrupt"] = "Sorry",
-        ["Old Glory"] = "AmericaSword", ["Chroma Fang"] = "FangChroma", ["Pearl"] = "Pearl_K",
-        ["Ginger Luger"] = "GingerLuger", ["Eternal IV"] = "Eternal4", ["Ghost (Knife)"] = "GhostK2018",
-        ["Chroma Darkbringer"] = "ChromaDarkbringer", ["Traveler's Axe"] = "TravelerAxe",
-        ["Chroma Luger"] = "LugerChroma", ["Ice Shard"] = "IceShard", ["Battleaxe"] = "BattleAxe",
-        ["Borealis"] = "AuroraGun", ["Flowerwood"] = "FlowerwoodKnife", ["Cookiecane"] = "Gingermint_K",
-        ["Hallow's Edge"] = "Hallow", ["Aurora (Gun)"] = "Aurora_G_2021", ["Frostfade (Knife)"] = "Frostfade_K_2023",
-        ["Batwing"] = "Scythe", ["Blossom"] = "Blossom_G", ["Chroma Shark"] = "SharkChroma",
-        ["Chroma Candleflame"] = "CandleflameChroma", ["Yellow Seer"] = "YellowSeer", ["Bat"] = "ZombieBat",
-        ["C. Constellation"] = "ConstellationChroma", ["Purple Seer"] = "PurpleSeer", ["Chroma Slasher"] = "SlasherChroma",
-        ["Beach"] = "Beach_K_2023", ["Elderwood Scythe"] = "ElderwoodScythe", ["Eternalcane"] = "EternalCane",
-        ["Chroma Laser"] = "LaserChroma", ["Pearlshine"] = "Pearl_G", ["Chroma Cookiecane"] = "Gingermint_KChroma",
-        ["Swirly Blade"] = "SwirlyBlade", ["Spectre"] = "Spectre2022", ["Vampire's Gun"] = "VampireGun",
-        ["Rainbow"] = "Rainbow_K", ["Chroma Watergun"] = "WatergunChroma", ["Swirly Axe"] = "SwirlyAxe",
-        ["Splitter"] = "Knife1", ["Ghost"] = "GhostKnife", ["Blood"] = "BloodKnife", ["Shadow"] = "ShadowKnife"
+    local _itemNameToCanonical = {}
+    local _itemAliases = {}
+
+    local _defaultMM2Items = {
+        -- Ancients
+        {name = "Harvester", supreme = 675, usd = 3.50, internals = {"Harvester"}, aliases = {"harv", "harvester"}},
+        {name = "Icepiercer", supreme = 625, usd = 3.20, internals = {"Icepiercer"}, aliases = {"icep", "piercer", "icepiercer"}},
+        {name = "Traveler's Axe", supreme = 2300, usd = 12.00, internals = {"TravelerAxe", "TravelersAxe", "Traveler's Axe"}, aliases = {"taxe", "trav axe", "travelers axe"}},
+        {name = "Elderwood Scythe", supreme = 80, usd = 0.50, internals = {"ElderwoodScythe", "Elderwood Scythe"}, aliases = {"ew scythe", "ewscythe"}},
+        {name = "Icebreaker", supreme = 75, usd = 0.50, internals = {"Icebreaker"}, aliases = {"ibreaker", "ice breaker"}},
+        {name = "Batwing", supreme = 55, usd = 0.35, internals = {"Scythe", "Batwing"}, aliases = {"bw", "batwing"}},
+        {name = "Hallowscythe", supreme = 60, usd = 0.40, internals = {"Hallowscythe"}, aliases = {"hscythe", "hallow scythe"}},
+        {name = "Swirly Axe", supreme = 180, usd = 1.00, internals = {"SwirlyAxe", "Swirly Axe"}, aliases = {"swaxe", "swirly axe"}},
+        {name = "Nikilis Scythe", supreme = 150000, usd = 800.00, internals = {"NikilisScythe"}, aliases = {"nik scythe"}},
+
+        -- Godlies (Top-Tiers & High Demand)
+        {name = "Corrupt", supreme = 850, usd = 4.50, internals = {"Sorry", "Corrupt"}, aliases = {"corp", "corrupt"}},
+        {name = "Bat", supreme = 550, usd = 3.00, internals = {"ZombieBat", "Bat"}, aliases = {"bat", "zombiebat"}},
+        {name = "Darksword", supreme = 525, usd = 2.80, internals = {"Darksword"}, aliases = {"dsword", "dark sword"}},
+        {name = "Darkshot", supreme = 550, usd = 2.90, internals = {"Darkshot"}, aliases = {"dshot", "dark shot"}},
+        {name = "Evergreen", supreme = 575, usd = 3.00, internals = {"TreeKnife2023", "Evergreen"}, aliases = {"evg", "evergreen"}},
+        {name = "Evergun", supreme = 575, usd = 3.00, internals = {"TreeGun2023", "Evergun"}, aliases = {"evgun", "evergun"}},
+        {name = "Traveler's Gun", supreme = 1500, usd = 8.00, internals = {"TravelerGun", "Traveler_G_2023", "Traveler's Gun"}, aliases = {"tgun", "trav gun", "traveler gun"}},
+        {name = "Turkey", supreme = 1300, usd = 7.00, internals = {"Turkey2023", "Turkey"}, aliases = {"turk", "turkey"}},
+        {name = "Sakura", supreme = 450, usd = 2.40, internals = {"Sakura_K", "Sakura"}, aliases = {"sak", "sakura"}},
+        {name = "Blossom", supreme = 450, usd = 2.40, internals = {"Blossom_G", "Blossom"}, aliases = {"bloss", "blossom"}},
+        {name = "Rainbow", supreme = 180, usd = 1.00, internals = {"Rainbow_K", "Rainbow"}, aliases = {"rb knife", "rainbow knife"}},
+        {name = "Rainbow Gun", supreme = 180, usd = 1.00, internals = {"Rainbow_G", "Rainbow Gun"}, aliases = {"rb gun", "rainbow gun"}},
+        {name = "Waves", supreme = 140, usd = 0.80, internals = {"Waves_K", "Waves"}, aliases = {"wave", "waves"}},
+        {name = "Ocean", supreme = 140, usd = 0.80, internals = {"Ocean_G", "Ocean"}, aliases = {"ocean"}},
+        {name = "Flowerwood", supreme = 110, usd = 0.70, internals = {"FlowerwoodKnife", "Flowerwood"}, aliases = {"fw", "flowerwood knife", "flowerwood"}},
+        {name = "Flowerwood Gun", supreme = 110, usd = 0.70, internals = {"FlowerwoodGun", "Flowerwood Gun"}, aliases = {"fw gun", "flowerwood gun"}},
+        {name = "Watergun", supreme = 90, usd = 0.60, internals = {"Watergun"}, aliases = {"water gun", "wgun"}},
+        {name = "Pearl", supreme = 60, usd = 0.40, internals = {"Pearl_K", "Pearl"}, aliases = {"pearl"}},
+        {name = "Pearlshine", supreme = 60, usd = 0.40, internals = {"Pearl_G", "Pearlshine"}, aliases = {"pearlshine", "pshine"}},
+        {name = "Candleflame", supreme = 115, usd = 0.75, internals = {"Candleflame"}, aliases = {"cf", "candleflame", "candle"}},
+        {name = "Gingermint", supreme = 110, usd = 0.70, internals = {"Gingermint_G", "Gingermint"}, aliases = {"gmint", "gingermint"}},
+        {name = "Cookiecane", supreme = 110, usd = 0.70, internals = {"Gingermint_K", "Cookiecane"}, aliases = {"ccane", "cookiecane"}},
+        {name = "Swirly Gun", supreme = 110, usd = 0.70, internals = {"SwirlyGun", "Swirly Gun"}, aliases = {"sgun", "swirly gun"}},
+        {name = "Swirly Blade", supreme = 50, usd = 0.35, internals = {"SwirlyBlade", "Swirly Blade"}, aliases = {"sblade", "swirly blade"}},
+        {name = "Elderwood Blade", supreme = 55, usd = 0.35, internals = {"ElderwoodKnife", "Elderwood Blade"}, aliases = {"ew blade", "ewblade", "ew knife"}},
+        {name = "Elderwood Revolver", supreme = 55, usd = 0.35, internals = {"ElderwoodGun", "Elderwood Revolver"}, aliases = {"ew rev", "ew revolver", "ew gun"}},
+        {name = "Iceblaster", supreme = 70, usd = 0.45, internals = {"Iceblaster"}, aliases = {"iblaster", "ice blaster"}},
+        {name = "Spectre", supreme = 75, usd = 0.50, internals = {"Spectre2022", "Spectre"}, aliases = {"spectre"}},
+        {name = "Phantom", supreme = 75, usd = 0.50, internals = {"Phantom2022", "Phantom"}, aliases = {"phantom"}},
+        {name = "Latte (Knife)", supreme = 100, usd = 0.65, internals = {"Latte_K_2023", "Latte (Knife)"}, aliases = {"latte knife", "latte"}},
+        {name = "Latte (Gun)", supreme = 100, usd = 0.65, internals = {"Latte_G_2023", "Latte (Gun)"}, aliases = {"latte gun"}},
+        {name = "Beach", supreme = 45, usd = 0.30, internals = {"Beach_K_2023", "Beach"}, aliases = {"beach"}},
+        {name = "Heartblade", supreme = 65, usd = 0.45, internals = {"Heartblade"}, aliases = {"hb", "heartblade"}},
+
+        -- Chromas
+        {name = "Chroma Traveler's Gun", supreme = 25000, usd = 120.00, internals = {"TravelerGunChroma", "C. Traveler's Gun"}, aliases = {"c tgun", "chroma traveler gun", "ctgun"}},
+        {name = "Chroma Evergreen", supreme = 2200, usd = 11.00, internals = {"TreeKnife2023Chroma", "Chroma Evergreen"}, aliases = {"c evergreen", "cevg", "c evg"}},
+        {name = "Chroma Evergun", supreme = 2200, usd = 11.00, internals = {"TreeGun2023Chroma", "Chroma Evergun"}, aliases = {"c evergun", "cevgun", "c evgun"}},
+        {name = "Chroma Swirly Gun", supreme = 750, usd = 4.00, internals = {"SwirlyGunChroma", "Chroma Swirly Gun"}, aliases = {"c swirly gun", "csg", "c swirly"}},
+        {name = "Chroma Watergun", supreme = 350, usd = 2.00, internals = {"WatergunChroma", "Chroma Watergun"}, aliases = {"c watergun", "cwgun"}},
+        {name = "Chroma Candleflame", supreme = 200, usd = 1.20, internals = {"CandleflameChroma", "Chroma Candleflame"}, aliases = {"c candleflame", "ccf"}},
+        {name = "Chroma Elderwood Blade", supreme = 220, usd = 1.30, internals = {"ElderwoodKnifeChroma", "C. Elderwood Blade"}, aliases = {"c ew blade", "cew blade", "cewb"}},
+        {name = "Chroma Cookiecane", supreme = 160, usd = 1.00, internals = {"Gingermint_KChroma", "Chroma Cookiecane"}, aliases = {"c cookiecane", "cccane"}},
+        {name = "Chroma Gingerscythe", supreme = 300, usd = 1.80, internals = {"GingerscytheChroma", "Chroma Gingerscythe"}, aliases = {"c gingerscythe"}},
+        {name = "Chroma Bauble", supreme = 300, usd = 1.80, internals = {"BaubleChroma", "Chroma Bauble"}, aliases = {"c bauble"}},
+        {name = "Chroma Constellation", supreme = 1200, usd = 6.50, internals = {"ConstellationChroma", "C. Constellation"}, aliases = {"c const"}},
+        {name = "Chroma Lightbringer", supreme = 105, usd = 0.65, internals = {"ChromaLightbringer", "Chroma Lightbringer"}, aliases = {"c lb", "clb"}},
+        {name = "Chroma Darkbringer", supreme = 110, usd = 0.70, internals = {"ChromaDarkbringer", "Chroma Darkbringer"}, aliases = {"c db", "cdb"}},
+        {name = "Chroma Luger", supreme = 100, usd = 0.60, internals = {"LugerChroma", "Chroma Luger"}, aliases = {"c luger", "cluger"}},
+        {name = "Chroma Laser", supreme = 85, usd = 0.50, internals = {"LaserChroma", "Chroma Laser"}, aliases = {"c laser"}},
+        {name = "Chroma Slasher", supreme = 75, usd = 0.45, internals = {"SlasherChroma", "Chroma Slasher"}, aliases = {"c slasher"}},
+        {name = "Chroma Fang", supreme = 70, usd = 0.45, internals = {"FangChroma", "Chroma Fang"}, aliases = {"c fang"}},
+        {name = "Chroma Heat", supreme = 70, usd = 0.45, internals = {"HeatChroma", "Chroma Heat"}, aliases = {"c heat"}},
+        {name = "Chroma Shark", supreme = 65, usd = 0.40, internals = {"SharkChroma", "Chroma Shark"}, aliases = {"c shark"}},
+        {name = "Chroma Tides", supreme = 60, usd = 0.40, internals = {"TidesChroma", "Chroma Tides"}, aliases = {"c tides"}},
+        {name = "Chroma Deathshard", supreme = 55, usd = 0.35, internals = {"DeathshardChroma", "Chroma Deathshard"}, aliases = {"c deathshard", "cds"}},
+        {name = "Chroma Gemstone", supreme = 55, usd = 0.35, internals = {"GemstoneChroma", "Chroma Gemstone"}, aliases = {"c gemstone", "cgem"}},
+        {name = "Chroma Saw", supreme = 50, usd = 0.30, internals = {"SawChroma", "Chroma Saw"}, aliases = {"c saw"}},
+        {name = "Chroma Seer", supreme = 45, usd = 0.30, internals = {"SeerChroma", "Chroma Seer"}, aliases = {"c seer"}},
+        {name = "Chroma Boneblade", supreme = 40, usd = 0.25, internals = {"BonebladeChroma", "Chroma Boneblade"}, aliases = {"c boneblade", "cbb"}},
+        {name = "Chroma Gingerblade", supreme = 45, usd = 0.30, internals = {"GingerbladeChroma", "Chroma Gingerblade"}, aliases = {"c gingerblade", "cgb"}},
+
+        -- Classic Godlies
+        {name = "Lightbringer", supreme = 50, usd = 0.35, internals = {"Lightbringer"}, aliases = {"lb"}},
+        {name = "Darkbringer", supreme = 50, usd = 0.35, internals = {"Darkbringer"}, aliases = {"db"}},
+        {name = "Luger", supreme = 55, usd = 0.35, internals = {"Luger"}, aliases = {"luger"}},
+        {name = "Red Luger", supreme = 60, usd = 0.40, internals = {"RedLuger", "Red Luger"}, aliases = {"rluger", "red luger"}},
+        {name = "Green Luger", supreme = 50, usd = 0.35, internals = {"GreenLuger", "Green Luger"}, aliases = {"gluger", "green luger"}},
+        {name = "Ginger Luger", supreme = 40, usd = 0.30, internals = {"GingerLuger", "Ginger Luger"}, aliases = {"ging luger"}},
+        {name = "Laser", supreme = 35, usd = 0.25, internals = {"LaserGun", "Laser"}, aliases = {"laser"}},
+        {name = "Slasher", supreme = 30, usd = 0.20, internals = {"Slasher"}, aliases = {"slasher"}},
+        {name = "Shark", supreme = 30, usd = 0.20, internals = {"Shark"}, aliases = {"shark"}},
+        {name = "Heat", supreme = 25, usd = 0.18, internals = {"Heat"}, aliases = {"heat"}},
+        {name = "Fang", supreme = 25, usd = 0.18, internals = {"Fang"}, aliases = {"fang"}},
+        {name = "Saw", supreme = 15, usd = 0.12, internals = {"Saw"}, aliases = {"saw"}},
+        {name = "Tides", supreme = 25, usd = 0.18, internals = {"Tides"}, aliases = {"tides"}},
+        {name = "Deathshard", supreme = 20, usd = 0.15, internals = {"Deathshard"}, aliases = {"ds", "deathshard"}},
+        {name = "Gemstone", supreme = 20, usd = 0.15, internals = {"Gemstone"}, aliases = {"gem", "gemstone"}},
+        {name = "Seer", supreme = 5, usd = 0.05, internals = {"Seer"}, aliases = {"seer"}},
+        {name = "Red Seer", supreme = 10, usd = 0.08, internals = {"RedSeer", "Red Seer"}, aliases = {"rseer"}},
+        {name = "Blue Seer", supreme = 10, usd = 0.08, internals = {"BlueSeer", "Blue Seer"}, aliases = {"bseer"}},
+        {name = "Purple Seer", supreme = 10, usd = 0.08, internals = {"PurpleSeer", "Purple Seer"}, aliases = {"pseer"}},
+        {name = "Orange Seer", supreme = 10, usd = 0.08, internals = {"OrangeSeer", "Orange Seer"}, aliases = {"oseer"}},
+        {name = "Yellow Seer", supreme = 10, usd = 0.08, internals = {"YellowSeer", "Yellow Seer"}, aliases = {"yseer"}},
+        {name = "Clockwork", supreme = 30, usd = 0.20, internals = {"Clockwork"}, aliases = {"cw", "clockwork"}},
+        {name = "Amerilaser", supreme = 30, usd = 0.20, internals = {"Amerilaser"}, aliases = {"alaser"}},
+        {name = "Old Glory", supreme = 30, usd = 0.20, internals = {"AmericaSword", "Old Glory"}, aliases = {"og", "old glory"}},
+        {name = "Pixel", supreme = 30, usd = 0.20, internals = {"Pixel"}, aliases = {"pixel"}},
+        {name = "Virtual", supreme = 25, usd = 0.18, internals = {"Virtual"}, aliases = {"virt"}},
+        {name = "Blaster", supreme = 25, usd = 0.18, internals = {"Blaster"}, aliases = {"blaster"}},
+        {name = "Flames", supreme = 15, usd = 0.12, internals = {"Flames"}, aliases = {"flames"}},
+        {name = "Eternal", supreme = 10, usd = 0.08, internals = {"Eternal"}, aliases = {"e1", "eternal 1"}},
+        {name = "Eternal II", supreme = 12, usd = 0.09, internals = {"Eternal2", "Eternal II"}, aliases = {"e2", "eternal 2"}},
+        {name = "Eternal III", supreme = 15, usd = 0.10, internals = {"Eternal3", "Eternal III"}, aliases = {"e3", "eternal 3"}},
+        {name = "Eternal IV", supreme = 18, usd = 0.12, internals = {"Eternal4", "Eternal IV"}, aliases = {"e4", "eternal 4"}},
+        {name = "Eternalcane", supreme = 25, usd = 0.18, internals = {"EternalCane", "Eternalcane"}, aliases = {"ecane"}},
+        {name = "Lugercane", supreme = 25, usd = 0.18, internals = {"LugerCane", "Lugercane"}, aliases = {"lcane"}},
+        {name = "Frostbite", supreme = 15, usd = 0.10, internals = {"Frostbite"}, aliases = {"fbite"}},
+        {name = "Frostsaber", supreme = 15, usd = 0.10, internals = {"Frostsaber"}, aliases = {"fsaber"}},
+        {name = "Ice Dragon", supreme = 15, usd = 0.10, internals = {"IceDragon", "Ice Dragon"}, aliases = {"idragon"}},
+        {name = "Ice Shard", supreme = 15, usd = 0.10, internals = {"IceShard", "Ice Shard"}, aliases = {"ishard"}},
+        {name = "Winter's Edge", supreme = 15, usd = 0.10, internals = {"WintersEdge", "Winter's Edge"}, aliases = {"wedge"}},
+        {name = "Jinglegun", supreme = 25, usd = 0.18, internals = {"JingleGun", "Jinglegun"}, aliases = {"jgun"}},
+        {name = "Minty", supreme = 25, usd = 0.18, internals = {"Minty"}, aliases = {"minty"}},
+        {name = "Chill", supreme = 20, usd = 0.15, internals = {"Chill"}, aliases = {"chill"}},
+        {name = "Battleaxe", supreme = 15, usd = 0.10, internals = {"BattleAxe", "Battleaxe"}, aliases = {"baxe"}},
+        {name = "Battleaxe II", supreme = 25, usd = 0.18, internals = {"BattleAxe2", "Battleaxe II"}, aliases = {"baxe2"}},
+        {name = "Pumpking", supreme = 25, usd = 0.18, internals = {"Pumpking"}, aliases = {"pumpking"}},
+        {name = "Hallow's Edge", supreme = 15, usd = 0.10, internals = {"Hallow", "Hallow's Edge"}, aliases = {"hedge"}},
+        {name = "Hallow's Blade", supreme = 15, usd = 0.10, internals = {"HallowsBlade", "Hallow's Blade"}, aliases = {"hblade"}},
+        {name = "Vampire's Edge", supreme = 15, usd = 0.10, internals = {"VampiresEdge", "Vampire's Edge"}, aliases = {"vedge"}},
+        {name = "Spider", supreme = 20, usd = 0.15, internals = {"Spider"}, aliases = {"spider"}},
+        {name = "Boneblade", supreme = 15, usd = 0.10, internals = {"Boneblade"}, aliases = {"bb"}},
+        {name = "Ghostblade", supreme = 12, usd = 0.09, internals = {"Ghostblade"}, aliases = {"gblade"}},
+        {name = "Nebula", supreme = 15, usd = 0.10, internals = {"Nebula"}, aliases = {"nebula"}},
+        {name = "Plasmabeam", supreme = 25, usd = 0.18, internals = {"Plasmabeam"}, aliases = {"pbeam"}},
+        {name = "Plasmablade", supreme = 25, usd = 0.18, internals = {"Plasmablade"}, aliases = {"pblade"}},
+
+        -- Vintages
+        {name = "America", supreme = 20, usd = 0.15, internals = {"AmericaGun", "America"}, aliases = {"america"}},
+        {name = "Blood", supreme = 18, usd = 0.14, internals = {"BloodKnife", "Blood"}, aliases = {"blood"}},
+        {name = "Golden", supreme = 15, usd = 0.12, internals = {"GoldenGun", "Golden"}, aliases = {"golden"}},
+        {name = "Laser (Vintage)", supreme = 15, usd = 0.12, internals = {"LaserVintage", "Laser (Vintage)"}, aliases = {"vintage laser", "v laser"}},
+        {name = "Phaser", supreme = 12, usd = 0.09, internals = {"PhaserGun", "Phaser"}, aliases = {"phaser"}},
+        {name = "Prince", supreme = 12, usd = 0.09, internals = {"PrinceKnife", "Prince"}, aliases = {"prince"}},
+        {name = "Shadow", supreme = 12, usd = 0.09, internals = {"ShadowKnife", "Shadow"}, aliases = {"shadow"}},
+        {name = "Splitter", supreme = 10, usd = 0.08, internals = {"Knife1", "Splitter"}, aliases = {"splitter"}},
+        {name = "Cowboy", supreme = 10, usd = 0.08, internals = {"CowboyGun", "Cowboy"}, aliases = {"cowboy"}},
+        {name = "Ghost (Vintage)", supreme = 12, usd = 0.09, internals = {"GhostKnife", "Ghost (Vintage)"}, aliases = {"ghost vintage", "v ghost"}},
+
+        -- High Demand Collectibles & Legendaries
+        {name = "Cotton Candy", supreme = 180, usd = 1.20, internals = {"CottonCandy", "Cotton Candy"}, aliases = {"cc", "cotton candy"}},
+        {name = "JD", supreme = 120, usd = 0.80, internals = {"JD"}, aliases = {"jd"}},
+        {name = "Green Elite", supreme = 45, usd = 0.30, internals = {"EliteGreen", "Green Elite"}, aliases = {"gelite", "green elite"}},
+        {name = "Blue Elite", supreme = 30, usd = 0.20, internals = {"EliteBlue", "Blue Elite"}, aliases = {"belite", "blue elite"}},
+        {name = "Red Fire", supreme = 25, usd = 0.18, internals = {"RedFire", "Red Fire"}, aliases = {"redfire"}},
+        {name = "Blue Scratch", supreme = 20, usd = 0.15, internals = {"ScratchBlue", "Blue Scratch"}, aliases = {"bscratch"}},
+        {name = "Red Scratch", supreme = 20, usd = 0.15, internals = {"Scratch", "Red Scratch"}, aliases = {"rscratch"}},
+        {name = "Rupture", supreme = 25, usd = 0.18, internals = {"Bleed", "Rupture"}, aliases = {"rupture"}},
+        {name = "Broken", supreme = 20, usd = 0.15, internals = {"Broken_K_2023", "Broken"}, aliases = {"broken"}},
+        {name = "Icecracker", supreme = 15, usd = 0.10, internals = {"Icecracker_K_2020", "Icecracker"}, aliases = {"icecracker"}},
+        {name = "Icedriller", supreme = 15, usd = 0.10, internals = {"Icedriller_G_2020", "Icedriller"}, aliases = {"icedriller"}},
+        {name = "Santa's Spirit", supreme = 20, usd = 0.15, internals = {"SantasSpirit", "Santa's Spirit"}, aliases = {"sspirit", "santas spirit"}},
+        {name = "Santa's Magic", supreme = 20, usd = 0.15, internals = {"SantasMagic", "Santa's Magic"}, aliases = {"smagic", "santas magic"}},
+        {name = "Ghost (Gun)", supreme = 25, usd = 0.18, internals = {"GhostG2018", "Ghost (Gun)"}, aliases = {"ghost gun"}},
+        {name = "Ghost (Knife)", supreme = 25, usd = 0.18, internals = {"GhostK2018", "Ghost (Knife)"}, aliases = {"ghost knife"}},
+        {name = "Vampire (Gun)", supreme = 35, usd = 0.25, internals = {"VampireGun", "Vampire (Gun)"}, aliases = {"vamp gun"}},
+        {name = "Vampire (Knife)", supreme = 35, usd = 0.25, internals = {"Vampire_K_2022", "Vampire (Knife)"}, aliases = {"vamp knife"}},
+        {name = "Borealis", supreme = 30, usd = 0.20, internals = {"AuroraGun", "Borealis"}, aliases = {"borealis"}},
+        {name = "Australis", supreme = 30, usd = 0.20, internals = {"AuroraKnife", "Australis"}, aliases = {"australis"}},
     }
+
+    local function populateDefaultDatabase()
+        for _, item in ipairs(_defaultMM2Items) do
+            _supremeValues[item.name] = item.supreme
+            _usdValues[item.name] = item.usd
+            _itemNameToCanonical[item.name] = item.name
+            _itemNameToCanonical[item.name:lower()] = item.name
+
+            for _, internal in ipairs(item.internals) do
+                _supremeValues[internal] = item.supreme
+                _usdValues[internal] = item.usd
+                _itemNameToCanonical[internal] = item.name
+                _itemNameToCanonical[internal:lower()] = item.name
+            end
+
+            for _, alias in ipairs(item.aliases) do
+                local al = alias:lower():gsub("%s+", " ")
+                _itemAliases[al] = item.name
+            end
+        end
+    end
+    populateDefaultDatabase()
 
     local function refreshActiveValues()
         if _tradePriceType == "USD" then
@@ -7569,33 +7717,73 @@ do
             _activeValues = _supremeValues or {}
         end
     end
+    refreshActiveValues()
 
-    local function fetchUSDValues()
+    local function resolveItemValue(rawName)
+        if not rawName then return 0, 0, 0, "Unknown" end
+        local str = tostring(rawName):gsub("^%s+", ""):gsub("%s+$", "")
+        if str == "" then return 0, 0, 0, "Unknown" end
+        local lower = str:lower()
+
+        local canonical = _itemNameToCanonical[str] or _itemNameToCanonical[lower]
+        if not canonical and _itemAliases[lower] then
+            canonical = _itemAliases[lower]
+        end
+
+        local supremeVal = 0
+        local usdVal = 0
+        if canonical then
+            supremeVal = _supremeValues[canonical] or 0
+            usdVal = _usdValues[canonical] or 0
+        else
+            supremeVal = _supremeValues[str] or _supremeValues[lower] or 0
+            usdVal = _usdValues[str] or _usdValues[lower] or 0
+        end
+
+        local dispName = canonical or str
+        local activeVal = (_tradePriceType == "USD") and usdVal or supremeVal
+        return activeVal, supremeVal, usdVal, dispName
+    end
+
+    local function fetchOnlineValues()
         task.spawn(function()
             local reqFunc = (syn and syn.request) or (http and http.request) or http_request or (fluxus and fluxus.request) or request
             local body = nil
-            if reqFunc then
-                local s, res = pcall(function()
-                    return reqFunc({
-                        Url = "https://api.project-reverse.org/valuables/get-game-valuables?game=mm2",
-                        Method = "GET",
-                        Headers = {["User-Agent"] = "Roblox/WinInet"}
-                    })
-                end)
-                if s and res and (res.StatusCode == 200 or res.Status == 200) and res.Body then
-                    body = res.Body
+
+            -- 1. Try public mirrors & Project Reverse API
+            local candidateUrls = {
+                "https://api.project-reverse.org/valuables/get-game-valuables?game=mm2",
+                "https://raw.githubusercontent.com/sapsikxcters/ranax/main/mm2_values.json",
+            }
+
+            for _, u in ipairs(candidateUrls) do
+                if not body and reqFunc then
+                    local s, res = pcall(function()
+                        return reqFunc({
+                            Url = u,
+                            Method = "GET",
+                            Headers = {["User-Agent"] = "Roblox/WinInet"}
+                        })
+                    end)
+                    if s and res and (res.StatusCode == 200 or res.Status == 200) and res.Body and res.Body ~= "" then
+                        body = res.Body
+                        break
+                    end
                 end
-            end
-            if not body then
-                local s, res = pcall(game.HttpGet, game, "https://api.project-reverse.org/valuables/get-game-valuables?game=mm2")
-                if s and res and res ~= "" then body = res end
+                if not body then
+                    local s, res = pcall(game.HttpGet, game, u)
+                    if s and res and res ~= "" and res:sub(1, 1) == "{" or res:sub(1, 1) == "[" then
+                        body = res
+                        break
+                    end
+                end
             end
 
             local items = nil
             if body then
                 local decOk, dec = pcall(function() return HttpService:JSONDecode(body) end)
-                if decOk and dec and dec.data then
-                    items = dec.data
+                if decOk and dec then
+                    items = dec.data or (dec[1] and dec) or nil
                     pcall(function()
                         if writefile then writefile("ValueData_mm2_values.json", body) end
                     end)
@@ -7607,79 +7795,39 @@ do
                     local saved = readfile("ValueData_mm2_values.json")
                     if saved then
                         local dec = HttpService:JSONDecode(saved)
-                        if dec and dec.data then items = dec.data end
+                        if dec then items = dec.data or (dec[1] and dec) end
                     end
                 end)
             end
 
-            if items then
-                local mapped = {}
+            if items and type(items) == "table" then
                 for _, item in pairs(items) do
-                    if item.name and item.price then
-                        mapped[item.name] = tonumber(item.price) or 0
+                    local n = item.name or item.item_name or item.ItemName
+                    local p = tonumber(item.price or item.supreme_value or item.value)
+                    local u = tonumber(item.usd_price or item.usd)
+                    if n and p and p > 0 then
+                        _supremeValues[n] = p
+                        _supremeValues[n:lower()] = p
+                    end
+                    if n and u and u > 0 then
+                        _usdValues[n] = u
+                        _usdValues[n:lower()] = u
                     end
                 end
-                _usdValues = mapped
                 refreshActiveValues()
             end
         end)
     end
 
-    local function fetchSupremeValues()
-        task.spawn(function()
-            local urls = {
-                "https://supremevaluelist.com/mm2/ancients.html",
-                "https://supremevaluelist.com/mm2/chromas.html",
-                "https://supremevaluelist.com/mm2/godlies.html",
-                "https://supremevaluelist.com/mm2/uniques.html",
-                "https://supremevaluelist.com/mm2/vintages.html",
-                "https://supremevaluelist.com/mm2/legendaries.html",
-            }
-            local bigHTML = ""
-            for _, u in ipairs(urls) do
-                local ok, html = pcall(game.HttpGet, game, u)
-                if ok and html then bigHTML = bigHTML .. "\n" .. html end
-            end
-
-            if bigHTML == "" then return end
-
-            local rawItems = {}
-            for head, body in bigHTML:gmatch('<div class="itemhead">([^<]+)</div>.-<div class="itemvalue">([%d,]+)</div>') do
-                local cleanName = head:gsub("%s+", " "):gsub("^%s+", ""):gsub("%s+$", "")
-                local cleanVal = tonumber((body:gsub(",", ""):gsub("%s+", ""))) or 0
-                if cleanName:find("jdrbx") then cleanName = "JD" end
-                if cleanName ~= "" and cleanVal > 0 then rawItems[cleanName] = cleanVal end
-            end
-
-            local itemDb = {}
-            pcall(function()
-                local db = ReplicatedStorage:FindFirstChild("Database")
-                local sync = db and db:FindFirstChild("Sync")
-                local itemMod = sync and sync:FindFirstChild("Item")
-                if itemMod then itemDb = require(itemMod) or {} end
-            end)
-
-            local mapped = {}
-            for name, val in pairs(rawItems) do
-                if itemDb[name] then
-                    mapped[name] = val
-                else
-                    local internalName = _supremeMap[name]
-                    if internalName and itemDb[internalName] then
-                        mapped[internalName] = val
-                    else
-                        mapped[name] = val
-                    end
-                end
-            end
-
-            _supremeValues = mapped
-            refreshActiveValues()
-        end)
+    local function fetchUSDValues()
+        fetchOnlineValues()
     end
 
-    fetchUSDValues()
-    fetchSupremeValues()
+    local function fetchSupremeValues()
+        fetchOnlineValues()
+    end
+
+    fetchOnlineValues()
 
     local function getTradeGUI()
         local pgui = LocalPlayer:FindFirstChild("PlayerGui")
@@ -7836,12 +7984,12 @@ do
                     local c = slot.Container
                     local ex = c:FindFirstChild("Value")
                     if ex then ex:Destroy() end
-                    local unitVal = _activeValues[iName] or 0
+                    local unitVal = resolveItemValue(iName)
                     local itemTotal = unitVal * iCount
                     theirTotal = theirTotal + itemTotal
 
                     local tag = createValueTag(c)
-                    tag.Text = "Val: " .. tostring(itemTotal)
+                    tag.Text = (_tradePriceType == "USD" and "$" or "Val: ") .. tostring(math.floor(itemTotal))
                     tag.TextColor3 = Color3.fromRGB(255, 215, 0)
                 end
             end
@@ -7856,12 +8004,12 @@ do
                     local c = slot.Container
                     local ex = c:FindFirstChild("Value")
                     if ex then ex:Destroy() end
-                    local unitVal = _activeValues[iName] or 0
+                    local unitVal = resolveItemValue(iName)
                     local itemTotal = unitVal * iCount
                     yourTotal = yourTotal + itemTotal
 
                     local tag = createValueTag(c)
-                    tag.Text = "Val: " .. tostring(itemTotal)
+                    tag.Text = (_tradePriceType == "USD" and "$" or "Val: ") .. tostring(math.floor(itemTotal))
                     tag.TextColor3 = Color3.fromRGB(48, 255, 106)
                 end
             end
@@ -7892,7 +8040,7 @@ do
         end)
         if ok and res and res.Weapons and res.Weapons.Owned then
             for name, qty in pairs(res.Weapons.Owned) do
-                local val = _activeValues[name]
+                local val = resolveItemValue(name)
                 if val and val > 0 then
                     myMap[name] = {value = val, quantity = qty}
                 end
@@ -8474,8 +8622,8 @@ do
 
     TradeTab:Input({
         Title = "Search Item by Name",
-        Desc = "Enter MM2 Knife or Gun name (e.g. Harvester, Corrupt, Batwing, Sakura)",
-        Placeholder = "Type item name...",
+        Desc = "Enter MM2 Knife or Gun name (e.g. harv, corrupt, bat, icep, ew, c luger)",
+        Placeholder = "Type item name or alias...",
         Callback = function(text)
             text = tostring(text or ""):gsub("^%s+", ""):gsub("%s+$", "")
             if text == "" then return end
@@ -8483,10 +8631,49 @@ do
 
             local results = {}
             local q = text:lower()
+            local seenNames = {}
+
+            -- 1. Check default database with deep matching (canonical name, internals, aliases)
+            for _, item in ipairs(_defaultMM2Items) do
+                local match = false
+                local cName = item.name:lower()
+                if cName:find(q, 1, true) then
+                    match = true
+                else
+                    for _, al in ipairs(item.aliases) do
+                        if al:lower():find(q, 1, true) or q:find(al:lower(), 1, true) then
+                            match = true
+                            break
+                        end
+                    end
+                    if not match then
+                        for _, intName in ipairs(item.internals) do
+                            if intName:lower():find(q, 1, true) then
+                                match = true
+                                break
+                            end
+                        end
+                    end
+                end
+
+                if match and not seenNames[item.name] then
+                    seenNames[item.name] = true
+                    local sVal = _supremeValues[item.name] or item.supreme
+                    local uVal = _usdValues[item.name] or item.usd
+                    table.insert(results, {name = item.name, supreme = sVal, usd = uVal})
+                end
+            end
+
+            -- 2. Also check any dynamically loaded items not in seenNames
             for name, supremeVal in pairs(_supremeValues) do
-                if name:lower():find(q) then
-                    local usdVal = _usdValues[name] or 0
-                    table.insert(results, {name = name, supreme = supremeVal, usd = usdVal})
+                if not seenNames[name] and name:lower():find(q, 1, true) then
+                    local canonical = _itemNameToCanonical[name]
+                    local targetName = canonical or name
+                    if not seenNames[targetName] then
+                        seenNames[targetName] = true
+                        local uVal = _usdValues[targetName] or _usdValues[name] or 0
+                        table.insert(results, {name = targetName, supreme = supremeVal, usd = uVal})
+                    end
                 end
             end
 
@@ -8495,7 +8682,7 @@ do
             if #results == 0 then
                 pcall(function()
                     if searchParagraph and searchParagraph.SetDesc then
-                        searchParagraph:SetDesc("No items found matching: '" .. text .. "'")
+                        searchParagraph:SetDesc("No items found matching: '" .. text .. "'\nTip: You can use abbreviations like 'harv', 'icep', 'corp', 'cf', 'ew', 'bw'.")
                     end
                 end)
                 return
@@ -8503,13 +8690,16 @@ do
 
             local lines = {
                 string.format("Found %d results for: '%s'", #results, text),
-                string.rep("─", 36),
+                string.rep("─", 42),
             }
-            local showCount = math.min(8, #results)
+            local showCount = math.min(10, #results)
             for i = 1, showCount do
                 local r = results[i]
                 local usdStr = (r.usd > 0) and string.format("$%.2f", r.usd) or "N/A"
-                table.insert(lines, string.format("• %-16s | Val: %-6d | USD: %s", r.name:sub(1, 16), r.supreme, usdStr))
+                table.insert(lines, string.format("• %-18s | Supreme: %-6d | USD: %s", r.name, r.supreme, usdStr))
+            end
+            if #results > showCount then
+                table.insert(lines, string.format("... and %d more results", #results - showCount))
             end
 
             local resultText = table.concat(lines, "\n")
@@ -8577,10 +8767,10 @@ do
                 local grandTotal = 0
 
                 for name, count in pairs(combined) do
-                    local unitVal = _activeValues[name] or 0
+                    local unitVal, sVal, uVal, dispName = resolveItemValue(name)
                     if unitVal > 0 then
                         local itemTotal = unitVal * count
-                        table.insert(list, {name = name, count = count, price = unitVal, total = itemTotal})
+                        table.insert(list, {name = dispName, count = count, price = unitVal, total = itemTotal})
                         grandTotal = grandTotal + itemTotal
                         totalItems = totalItems + count
                     end
@@ -8592,13 +8782,13 @@ do
                 local lines = {
                     string.format("Analysis Mode: %s Values  •  Items Valued: %d", _tradePriceType, totalItems),
                     string.format("Total Inventory Value: %s%s", curSym, tostring(math.floor(grandTotal))),
-                    string.rep("─", 38),
+                    string.rep("─", 40),
                 }
 
                 local showCount = math.min(12, #list)
                 for i = 1, showCount do
                     local it = list[i]
-                    table.insert(lines, string.format("#%-2d %-15s x%-2d  •  %s%d", i, it.name:sub(1, 15), it.count, curSym, math.floor(it.total)))
+                    table.insert(lines, string.format("#%-2d %-16s x%-2d  •  %s%d", i, it.name:sub(1, 16), it.count, curSym, math.floor(it.total)))
                 end
                 if #list > showCount then
                     table.insert(lines, string.format("... and %d more items", #list - showCount))

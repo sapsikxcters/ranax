@@ -1,0 +1,452 @@
+[
+  {
+    "name": "Harvester",
+    "supreme_value": 675,
+    "usd": 3.5,
+    "type": "Ancient"
+  },
+  {
+    "name": "Icepiercer",
+    "supreme_value": 625,
+    "usd": 3.2,
+    "type": "Ancient"
+  },
+  {
+    "name": "Traveler's Axe",
+    "supreme_value": 2300,
+    "usd": 12.0,
+    "type": "Ancient"
+  },
+  {
+    "name": "Elderwood Scythe",
+    "supreme_value": 80,
+    "usd": 0.5,
+    "type": "Ancient"
+  },
+  {
+    "name": "Icebreaker",
+    "supreme_value": 75,
+    "usd": 0.5,
+    "type": "Ancient"
+  },
+  {
+    "name": "Batwing",
+    "supreme_value": 55,
+    "usd": 0.35,
+    "type": "Ancient"
+  },
+  {
+    "name": "Hallowscythe",
+    "supreme_value": 60,
+    "usd": 0.4,
+    "type": "Ancient"
+  },
+  {
+    "name": "Swirly Axe",
+    "supreme_value": 180,
+    "usd": 1.0,
+    "type": "Ancient"
+  },
+  {
+    "name": "Nikilis Scythe",
+    "supreme_value": 150000,
+    "usd": 800.0,
+    "type": "Ancient"
+  },
+  {
+    "name": "Corrupt",
+    "supreme_value": 850,
+    "usd": 4.5,
+    "type": "Godly"
+  },
+  {
+    "name": "Bat",
+    "supreme_value": 550,
+    "usd": 3.0,
+    "type": "Godly"
+  },
+  {
+    "name": "Darksword",
+    "supreme_value": 525,
+    "usd": 2.8,
+    "type": "Godly"
+  },
+  {
+    "name": "Darkshot",
+    "supreme_value": 550,
+    "usd": 2.9,
+    "type": "Godly"
+  },
+  {
+    "name": "Evergreen",
+    "supreme_value": 575,
+    "usd": 3.0,
+    "type": "Godly"
+  },
+  {
+    "name": "Evergun",
+    "supreme_value": 575,
+    "usd": 3.0,
+    "type": "Godly"
+  },
+  {
+    "name": "Traveler's Gun",
+    "supreme_value": 1500,
+    "usd": 8.0,
+    "type": "Godly"
+  },
+  {
+    "name": "Turkey",
+    "supreme_value": 1300,
+    "usd": 7.0,
+    "type": "Godly"
+  },
+  {
+    "name": "Sakura",
+    "supreme_value": 450,
+    "usd": 2.4,
+    "type": "Godly"
+  },
+  {
+    "name": "Blossom",
+    "supreme_value": 450,
+    "usd": 2.4,
+    "type": "Godly"
+  },
+  {
+    "name": "Rainbow",
+    "supreme_value": 180,
+    "usd": 1.0,
+    "type": "Godly"
+  },
+  {
+    "name": "Rainbow Gun",
+    "supreme_value": 180,
+    "usd": 1.0,
+    "type": "Godly"
+  },
+  {
+    "name": "Waves",
+    "supreme_value": 140,
+    "usd": 0.8,
+    "type": "Godly"
+  },
+  {
+    "name": "Ocean",
+    "supreme_value": 140,
+    "usd": 0.8,
+    "type": "Godly"
+  },
+  {
+    "name": "Flowerwood",
+    "supreme_value": 110,
+    "usd": 0.7,
+    "type": "Godly"
+  },
+  {
+    "name": "Flowerwood Gun",
+    "supreme_value": 110,
+    "usd": 0.7,
+    "type": "Godly"
+  },
+  {
+    "name": "Watergun",
+    "supreme_value": 90,
+    "usd": 0.6,
+    "type": "Godly"
+  },
+  {
+    "name": "Pearl",
+    "supreme_value": 60,
+    "usd": 0.4,
+    "type": "Godly"
+  },
+  {
+    "name": "Pearlshine",
+    "supreme_value": 60,
+    "usd": 0.4,
+    "type": "Godly"
+  },
+  {
+    "name": "Candleflame",
+    "supreme_value": 115,
+    "usd": 0.75,
+    "type": "Godly"
+  },
+  {
+    "name": "Gingermint",
+    "supreme_value": 110,
+    "usd": 0.7,
+    "type": "Godly"
+  },
+  {
+    "name": "Cookiecane",
+    "supreme_value": 110,
+    "usd": 0.7,
+    "type": "Godly"
+  },
+  {
+    "name": "Swirly Gun",
+    "supreme_value": 110,
+    "usd": 0.7,
+    "type": "Godly"
+  },
+  {
+    "name": "Swirly Blade",
+    "supreme_value": 50,
+    "usd": 0.35,
+    "type": "Godly"
+  },
+  {
+    "name": "Elderwood Blade",
+    "supreme_value": 55,
+    "usd": 0.35,
+    "type": "Godly"
+  },
+  {
+    "name": "Elderwood Revolver",
+    "supreme_value": 55,
+    "usd": 0.35,
+    "type": "Godly"
+  },
+  {
+    "name": "Iceblaster",
+    "supreme_value": 70,
+    "usd": 0.45,
+    "type": "Godly"
+  },
+  {
+    "name": "Spectre",
+    "supreme_value": 75,
+    "usd": 0.5,
+    "type": "Godly"
+  },
+  {
+    "name": "Phantom",
+    "supreme_value": 75,
+    "usd": 0.5,
+    "type": "Godly"
+  },
+  {
+    "name": "Chroma Traveler's Gun",
+    "supreme_value": 25000,
+    "usd": 120.0,
+    "type": "Chroma"
+  },
+  {
+    "name": "Chroma Evergreen",
+    "supreme_value": 2200,
+    "usd": 11.0,
+    "type": "Chroma"
+  },
+  {
+    "name": "Chroma Evergun",
+    "supreme_value": 2200,
+    "usd": 11.0,
+    "type": "Chroma"
+  },
+  {
+    "name": "Chroma Swirly Gun",
+    "supreme_value": 750,
+    "usd": 4.0,
+    "type": "Chroma"
+  },
+  {
+    "name": "Chroma Watergun",
+    "supreme_value": 350,
+    "usd": 2.0,
+    "type": "Chroma"
+  },
+  {
+    "name": "Chroma Candleflame",
+    "supreme_value": 200,
+    "usd": 1.2,
+    "type": "Chroma"
+  },
+  {
+    "name": "Chroma Elderwood Blade",
+    "supreme_value": 220,
+    "usd": 1.3,
+    "type": "Chroma"
+  },
+  {
+    "name": "Chroma Cookiecane",
+    "supreme_value": 160,
+    "usd": 1.0,
+    "type": "Chroma"
+  },
+  {
+    "name": "Chroma Lightbringer",
+    "supreme_value": 105,
+    "usd": 0.65,
+    "type": "Chroma"
+  },
+  {
+    "name": "Chroma Darkbringer",
+    "supreme_value": 110,
+    "usd": 0.7,
+    "type": "Chroma"
+  },
+  {
+    "name": "Chroma Luger",
+    "supreme_value": 100,
+    "usd": 0.6,
+    "type": "Chroma"
+  },
+  {
+    "name": "Chroma Laser",
+    "supreme_value": 85,
+    "usd": 0.5,
+    "type": "Chroma"
+  },
+  {
+    "name": "Chroma Slasher",
+    "supreme_value": 75,
+    "usd": 0.45,
+    "type": "Chroma"
+  },
+  {
+    "name": "Chroma Fang",
+    "supreme_value": 70,
+    "usd": 0.45,
+    "type": "Chroma"
+  },
+  {
+    "name": "Chroma Heat",
+    "supreme_value": 70,
+    "usd": 0.45,
+    "type": "Chroma"
+  },
+  {
+    "name": "Chroma Shark",
+    "supreme_value": 65,
+    "usd": 0.4,
+    "type": "Chroma"
+  },
+  {
+    "name": "Chroma Tides",
+    "supreme_value": 60,
+    "usd": 0.4,
+    "type": "Chroma"
+  },
+  {
+    "name": "Chroma Deathshard",
+    "supreme_value": 55,
+    "usd": 0.35,
+    "type": "Chroma"
+  },
+  {
+    "name": "Chroma Gemstone",
+    "supreme_value": 55,
+    "usd": 0.35,
+    "type": "Chroma"
+  },
+  {
+    "name": "Chroma Saw",
+    "supreme_value": 50,
+    "usd": 0.3,
+    "type": "Chroma"
+  },
+  {
+    "name": "Chroma Seer",
+    "supreme_value": 45,
+    "usd": 0.3,
+    "type": "Chroma"
+  },
+  {
+    "name": "Chroma Boneblade",
+    "supreme_value": 40,
+    "usd": 0.25,
+    "type": "Chroma"
+  },
+  {
+    "name": "Chroma Gingerblade",
+    "supreme_value": 45,
+    "usd": 0.3,
+    "type": "Chroma"
+  },
+  {
+    "name": "Luger",
+    "supreme_value": 55,
+    "usd": 0.35,
+    "type": "Godly"
+  },
+  {
+    "name": "Red Luger",
+    "supreme_value": 60,
+    "usd": 0.4,
+    "type": "Godly"
+  },
+  {
+    "name": "Green Luger",
+    "supreme_value": 50,
+    "usd": 0.35,
+    "type": "Godly"
+  },
+  {
+    "name": "Ginger Luger",
+    "supreme_value": 40,
+    "usd": 0.3,
+    "type": "Godly"
+  },
+  {
+    "name": "Lightbringer",
+    "supreme_value": 50,
+    "usd": 0.35,
+    "type": "Godly"
+  },
+  {
+    "name": "Darkbringer",
+    "supreme_value": 50,
+    "usd": 0.35,
+    "type": "Godly"
+  },
+  {
+    "name": "Laser",
+    "supreme_value": 35,
+    "usd": 0.25,
+    "type": "Godly"
+  },
+  {
+    "name": "Slasher",
+    "supreme_value": 30,
+    "usd": 0.2,
+    "type": "Godly"
+  },
+  {
+    "name": "Shark",
+    "supreme_value": 30,
+    "usd": 0.2,
+    "type": "Godly"
+  },
+  {
+    "name": "Heat",
+    "supreme_value": 25,
+    "usd": 0.18,
+    "type": "Godly"
+  },
+  {
+    "name": "Fang",
+    "supreme_value": 25,
+    "usd": 0.18,
+    "type": "Godly"
+  },
+  {
+    "name": "Heartblade",
+    "supreme_value": 65,
+    "usd": 0.45,
+    "type": "Godly"
+  },
+  {
+    "name": "Cotton Candy",
+    "supreme_value": 180,
+    "usd": 1.2,
+    "type": "Collectible"
+  },
+  {
+    "name": "JD",
+    "supreme_value": 120,
+    "usd": 0.8,
+    "type": "Collectible"
+  }
+]
