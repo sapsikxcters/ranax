@@ -3829,6 +3829,15 @@ local function executeWallhop()
     local rightRotation = CFrame.Angles(0, math.rad(-angleDeg), 0)
     local targetHrpCF = CFrame.new(hrp.Position) * (origHrpCF.Rotation * rightRotation)
 
+    -- Wallhop Camera horizontal snap: extract pitch (rx) and yaw (ry) so rotation is purely horizontal (yaw only) without upward tilt
+    local camPitch, camYaw = 0, 0
+    local targetCamCF = nil
+    if origCamCF then
+        local rx, ry, _ = origCamCF:ToOrientation()
+        camPitch, camYaw = rx, ry
+        targetCamCF = CFrame.new(origCamCF.Position) * CFrame.fromOrientation(camPitch, camYaw - math.rad(angleDeg), 0)
+    end
+
     -- Phase 1: Flick right
     for i = 1, steps do
         if not (hrp and hrp.Parent) then break end
@@ -3836,8 +3845,7 @@ local function executeWallhop()
         local newRot = origHrpCF:Lerp(targetHrpCF, alpha)
         hrp.CFrame = CFrame.new(hrp.Position) * newRot.Rotation
 
-        if _G.WallhopCameraSnap and cam and origCamCF then
-            local targetCamCF = CFrame.new(cam.CFrame.Position) * (origCamCF.Rotation * rightRotation)
+        if _G.WallhopCameraSnap and cam and origCamCF and targetCamCF then
             cam.CFrame = origCamCF:Lerp(targetCamCF, alpha)
         end
         RunService.RenderStepped:Wait()
@@ -3849,6 +3857,7 @@ local function executeWallhop()
     local apexHrpCF = hrp.CFrame
     local apexCamCF = cam and cam.CFrame
     local returnTargetHrp = CFrame.new(hrp.Position) * origHrpCF.Rotation
+    local returnTargetCam = origCamCF and (CFrame.new(origCamCF.Position) * CFrame.fromOrientation(camPitch, camYaw, 0))
 
     for i = 1, steps do
         if not (hrp and hrp.Parent) then break end
@@ -3856,8 +3865,7 @@ local function executeWallhop()
         local newRot = apexHrpCF:Lerp(returnTargetHrp, alpha)
         hrp.CFrame = CFrame.new(hrp.Position) * newRot.Rotation
 
-        if _G.WallhopCameraSnap and cam and apexCamCF and origCamCF then
-            local returnTargetCam = CFrame.new(cam.CFrame.Position) * origCamCF.Rotation
+        if _G.WallhopCameraSnap and cam and apexCamCF and returnTargetCam then
             cam.CFrame = apexCamCF:Lerp(returnTargetCam, alpha)
         end
         RunService.RenderStepped:Wait()
@@ -5943,7 +5951,17 @@ _G.WaitingForNewRound = _G.WaitingForNewRound or false
 -- Helper to check if any part or position is inside the Lobby
 local function isPartInLobby(part)
     if not part then return false end
-    local pos = part.Position
+    local pos = nil
+    if typeof(part) == "Vector3" then
+        pos = part
+    elseif part:IsA("BasePart") then
+        pos = part.Position
+    elseif part:IsA("Model") then
+        local prim = part.PrimaryPart or part:FindFirstChildWhichIsA("BasePart")
+        pos = prim and prim.Position or (part:GetPivot().Position)
+    else
+        return false
+    end
 
     -- 1. Check parent hierarchy for any lobby container
     local current = part.Parent
@@ -5959,7 +5977,7 @@ local function isPartInLobby(part)
     local lobbyNames = {"RegularLobby", "Lobby", "HalloweenLobby", "HolidayLobby", "LobbyHoliday"}
     for _, lName in ipairs(lobbyNames) do
         local lObj = workspace:FindFirstChild(lName)
-        if lObj and part:IsDescendantOf(lObj) then
+        if lObj and (part == lObj or part:IsDescendantOf(lObj)) then
             return true
         end
     end
@@ -6180,7 +6198,7 @@ end
 
 -- Strictly targets actual coins, NEVER lobby items and NEVER Halloween pumpkins/candies
 local function getNearestCoin(root)
-    if _G.DiedThisRound or _G.WaitingForNewRound then return nil end
+    if _G.DiedThisRound then return nil end
     local nearest = nil
     local dist = math.huge
 
@@ -6251,7 +6269,8 @@ local function getNearestCoin(root)
 end
 
 local function flyToCoin(targetPart)
-    if _G.DiedThisRound or _G.WaitingForNewRound then return end
+    if not flying then return end
+    if _G.DiedThisRound then return end
     local char = getChar()
     local hrp = char and char:WaitForChild("HumanoidRootPart", 3)
     local hum = char and char:WaitForChild("Humanoid", 3)
@@ -6259,13 +6278,22 @@ local function flyToCoin(targetPart)
     if not hum.PlatformStand then
         hum.PlatformStand = true
     end
-    local timeout = tick() + 6
-    local speed = tonumber(_G.FarmSpeed) or 16
 
-    while flying and char.Parent and targetPart.Parent do
+    local bv = hrp:FindFirstChild("RanaxFlyVelocity")
+    if not bv then
+        bv = Instance.new("BodyVelocity")
+        bv.Name = "RanaxFlyVelocity"
+        bv.MaxForce = Vector3.new(9e9, 9e9, 9e9)
+        bv.Parent = hrp
+    end
+
+    local timeout = tick() + 6
+    local speed = tonumber(_G.FarmSpeed) or 22
+
+    while flying and char.Parent and targetPart and targetPart.Parent do
         if tick() > timeout then break end
         if targetPart:GetAttribute("Collected") then break end
-        if _G.DiedThisRound or _G.WaitingForNewRound or hum.Health <= 0 then break end
+        if _G.DiedThisRound or hum.Health <= 0 then break end
 
         local targetPos = targetPart.Position
         local fMode = _G.FlyMode or "normal"
@@ -6274,8 +6302,9 @@ local function flyToCoin(targetPart)
         end
         local diff = targetPos - hrp.Position
         local mag = diff.Magnitude
-        local dir = diff.Unit
+        local dir = mag > 0.001 and diff.Unit or Vector3.zero
 
+        bv.Velocity = dir * speed
         hrp.AssemblyLinearVelocity = dir * speed
         if fMode == "down" or _G.UndergroundFarm == true then
             hrp.CFrame = CFrame.new(hrp.Position, targetPart.Position) * CFrame.Angles(math.rad(90), 0, 0)
@@ -6295,6 +6324,11 @@ local function flyToCoin(targetPart)
         end
         RunService.Heartbeat:Wait()
     end
+
+    if bv and bv.Parent then
+        bv.Velocity = Vector3.zero
+    end
+
     -- Keep PlatformStand on while flying so physics engine doesn't rebuild joints & cause micro-freezes!
     if targetPart and targetPart.Parent then
         collectedCoins[targetPart] = true
@@ -6550,6 +6584,8 @@ task.spawn(function()
             -- 4. Search for coins; if coins exist, clear bag full flag for fresh round!
             local coin = getNearestCoin(root)
             if coin then
+                _G.WaitingForNewRound = false
+                _G.DiedThisRound = false
                 if _G.CoinFarmHandlingBagFull then
                     _G.CoinFarmHandlingBagFull = false
                     _G.HasReportedCoins = false
@@ -6970,6 +7006,9 @@ UIElements.SafeAutoFarm = CoinFarmTab:Toggle({
             _G.HasReportedCoins = false
             _G.RanaxCoinsCollected = 0
             _G._RanaxCoinLabel = nil
+            _G.DiedThisRound = false
+            _G.WaitingForNewRound = false
+            _G._RanaxCoinContainer = nil
             if not _G.FarmStartTime or _G.FarmStartTime == 0 then
                 _G.FarmStartTime = os.time()
             end
@@ -6978,6 +7017,12 @@ UIElements.SafeAutoFarm = CoinFarmTab:Toggle({
             notify("Coin Farm", "Ranax Fly Coin Farm Enabled (Active)", 2, "coins")
         else
             restoreChar()
+            local char = LocalPlayer.Character
+            local hrp = char and char:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                local bv = hrp:FindFirstChild("RanaxFlyVelocity")
+                if bv then bv:Destroy() end
+            end
             notify("Coin Farm", "Coin Farm Disabled", 2, "coins")
         end
     end,
@@ -9549,19 +9594,14 @@ _G.ShootV2FlickCamera = false
 _G.ShootV2FlickTurnTime = 0.08
 local flickV2InProgress = false
 
-local function moveMouseToWorld(worldPos)
-    local cam = Workspace.CurrentCamera
-    if not cam then return false end
-    local screenPos, onScreen = cam:WorldToViewportPoint(worldPos)
-    local x = onScreen and math.floor(screenPos.X) or math.floor(cam.ViewportSize.X / 2)
-    local y = onScreen and math.floor(screenPos.Y) or math.floor(cam.ViewportSize.Y / 2)
+local function setMouseScreenPos(pos)
     if typeof(mousemoveabs) == "function" then
-        pcall(function() mousemoveabs(x, y) end)
+        pcall(function() mousemoveabs(math.floor(pos.X), math.floor(pos.Y)) end)
         return true
     end
     pcall(function()
         if VirtualInputManager then
-            VirtualInputManager:SendMouseMoveEvent(x, y, game)
+            VirtualInputManager:SendMouseMoveEvent(math.floor(pos.X), math.floor(pos.Y), game)
         end
     end)
     return true
@@ -9579,7 +9619,8 @@ executeRanaxFlickShoot = function()
 
     flickV2InProgress = true
     local origCFrame   = myHRP.CFrame
-    local origCameraCF = Workspace.CurrentCamera and Workspace.CurrentCamera.CFrame
+    local cam = Workspace.CurrentCamera
+    local origCameraCF = cam and cam.CFrame
     local savedAutoRotate = myHum.AutoRotate
     myHum.AutoRotate = false
 
@@ -9588,30 +9629,48 @@ executeRanaxFlickShoot = function()
     local flatTarget = Vector3.new(targetPos.X, myHRP.Position.Y, targetPos.Z)
     local aimCFrame  = CFrame.lookAt(myHRP.Position, flatTarget)
 
-    --  Ease-IN: smooth rotation from current → aim 
+    -- Detect Shift Lock state
+    local isShiftLock = (UserInputService.MouseBehavior == Enum.MouseBehavior.LockCenter)
+        or (UserInputService.MouseBehavior == Enum.MouseBehavior.LockCurrentPosition)
+
+    -- Calculate screen target for smooth mouse travel
+    local targetTorsoPos = Vector3.new(targetPos.X, root.Position.Y + 1.2, targetPos.Z)
+    local startMousePos = UserInputService:GetMouseLocation()
+    local targetMousePos = startMousePos
+    if cam then
+        local screenPos, onScreen = cam:WorldToViewportPoint(targetTorsoPos)
+        targetMousePos = Vector2.new(
+            onScreen and screenPos.X or (cam.ViewportSize.X / 2),
+            onScreen and screenPos.Y or (cam.ViewportSize.Y / 2)
+        )
+    end
+
+    local camAim = origCameraCF and CFrame.lookAt(origCameraCF.Position, targetTorsoPos)
+    local shouldRotateCamera = _G.ShootV2FlickCamera or isShiftLock
+
+    --  Ease-IN Phase: Smooth character & camera turn + smooth mouse glide (NO TELEPORT)
     for i = 1, steps do
         if not (myHRP and myHRP.Parent) then break end
-        local alpha = (i / steps) ^ 0.6   -- slight ease-in curve (feels like a real flick)
+        local alpha = (i / steps) ^ 0.6   -- smooth ease curve
+
+        -- Smooth character rotation
         local newRot = origCFrame:Lerp(aimCFrame, alpha)
         myHRP.CFrame = CFrame.new(myHRP.Position) * newRot.Rotation
 
-        if _G.ShootV2FlickCamera and Workspace.CurrentCamera then
+        -- Smooth camera rotation (active when Camera Snap is ON or in Shift Lock)
+        if shouldRotateCamera and cam and origCameraCF and camAim then
             pcall(function()
-                local camAim = CFrame.lookAt(Workspace.CurrentCamera.CFrame.Position, targetPos)
-                Workspace.CurrentCamera.CFrame = origCameraCF:Lerp(camAim, alpha)
-            end)
-            pcall(function()
-                moveMouseToWorld(targetPos)
+                cam.CFrame = origCameraCF:Lerp(camAim, alpha)
             end)
         end
-        task.wait()
-    end
 
-    --  Camera & Mouse snap to target at peak
-    if _G.ShootV2FlickCamera then
-        pcall(function()
-            moveMouseToWorld(targetPos)
-        end)
+        -- Smooth mouse glide when Shift Lock is OFF (never teleport, smooth interpolated trajectory)
+        if not isShiftLock then
+            local curM = startMousePos:Lerp(targetMousePos, alpha)
+            setMouseScreenPos(curM)
+        end
+
+        RunService.RenderStepped:Wait()
     end
 
     --  Fire at peak of flick 
@@ -9620,22 +9679,34 @@ executeRanaxFlickShoot = function()
     --  Brief hold at peak so the shot registers 
     task.wait(0.04)
 
-    --  Ease-OUT: smoothly return to original orientation 
+    --  Ease-OUT Phase: Smoothly return character, camera, and mouse to original position
     local peakCFrame       = myHRP.CFrame
-    local peakCameraCF     = Workspace.CurrentCamera and Workspace.CurrentCamera.CFrame
+    local peakCameraCF     = cam and cam.CFrame
+    local peakMousePos     = UserInputService:GetMouseLocation()
     local returnSteps      = math.max(3, math.floor(steps * 0.7))
+
     for i = 1, returnSteps do
         if not (myHRP and myHRP.Parent) then break end
-        local alpha = (i / returnSteps) ^ 1.4  -- ease-out (decelerates back)
+        local alpha = (i / returnSteps) ^ 1.4  -- decelerating return curve
+
+        -- Return character
         local newRot = peakCFrame:Lerp(origCFrame, alpha)
         myHRP.CFrame = CFrame.new(myHRP.Position) * newRot.Rotation
 
-        if _G.ShootV2FlickCamera and Workspace.CurrentCamera and peakCameraCF and origCameraCF then
+        -- Return camera
+        if shouldRotateCamera and cam and peakCameraCF and origCameraCF then
             pcall(function()
-                Workspace.CurrentCamera.CFrame = peakCameraCF:Lerp(origCameraCF, alpha)
+                cam.CFrame = peakCameraCF:Lerp(origCameraCF, alpha)
             end)
         end
-        task.wait()
+
+        -- Smoothly glide mouse back to initial position when Shift Lock is OFF
+        if not isShiftLock then
+            local curM = peakMousePos:Lerp(startMousePos, alpha)
+            setMouseScreenPos(curM)
+        end
+
+        RunService.RenderStepped:Wait()
     end
 
     pcall(function() myHum.AutoRotate = savedAutoRotate end)
