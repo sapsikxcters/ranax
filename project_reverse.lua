@@ -4608,9 +4608,9 @@ do
             tbl2.MaxCoins = maxCoins
 
             if tbl2.PlayerData[localPlayer.Name] then
-                local coins = tbl2.PlayerData[localPlayer.Name].Coins
-                local coinBag = coins or 0
-                tbl2.CoinBag = coinBag
+                local walletCoins = tbl2.PlayerData[localPlayer.Name].Coins or 0
+                tbl2.WalletCoins = walletCoins
+                tbl2.CoinBag = 0
                 local isFarming
 
                 if tbl2.PlayerData[localPlayer.Name].Dead then

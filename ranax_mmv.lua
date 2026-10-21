@@ -871,6 +871,14 @@ pcall(function()
         DataChangedEvent = Remotes:FindFirstChild("PlayerDataChanged")
         RoundEndEvent = Remotes:FindFirstChild("RoundEndFade")
         RoundStartEvent = Remotes:FindFirstChild("TeleportToPart")
+        local CoinCollectedEvent = Remotes:FindFirstChild("CoinCollected")
+        if CoinCollectedEvent and CoinCollectedEvent:IsA("RemoteEvent") then
+            CoinCollectedEvent.OnClientEvent:Connect(function(arg, coinBag)
+                if typeof(coinBag) == "number" and coinBag >= 0 and coinBag <= 50 then
+                    _G.RanaxCoinsCollected = coinBag
+                end
+            end)
+        end
     end
 end)
 
@@ -1010,6 +1018,7 @@ if RoundEndEvent then
             _G.BlacklistedCoins = {}
             if typeof(_RanaxCoinCache) == "table" then table.clear(_RanaxCoinCache) end
             cachedCoinLabel = nil
+            _G._RanaxCoinLabel = nil
             _detectedMurderer = nil
             resetLobbyRoles()
             if _G.CoinTween then _G.CoinTween:Cancel(); _G.CoinTween = nil end
@@ -1036,6 +1045,7 @@ if RoundStartEvent then
             _G.BlacklistedCoins = {}
             if typeof(_RanaxCoinCache) == "table" then table.clear(_RanaxCoinCache) end
             cachedCoinLabel = nil
+            _G._RanaxCoinLabel = nil
             _detectedMurderer = nil
             currentRoundToken = currentRoundToken + 1
             lastNotifiedRole = nil
@@ -6320,7 +6330,7 @@ local function getCoinBagLive()
                     return cNum, mNum, (cNum >= mNum and cNum >= defaultMax)
                 end
             end
-            if txt:match("^%s*[Ff][Uu][Ll][Ll]!*%s*$") then
+            if txt:match("^%s*[Ff][Uu][Ll][Ll]!*%s*$") and tracked > 0 then
                 return defaultMax, defaultMax, true
             end
         end
@@ -6348,7 +6358,7 @@ local function getCoinBagLive()
                             return cNum, mNum, (cNum >= mNum and cNum >= defaultMax)
                         end
                     end
-                    if txt:match("^%s*[Ff][Uu][Ll][Ll]!*%s*$") then
+                    if txt:match("^%s*[Ff][Uu][Ll][Ll]!*%s*$") and tracked > 0 then
                         _G._RanaxCoinLabel = desc
                         return defaultMax, defaultMax, true
                     end
@@ -6370,7 +6380,7 @@ local function getCoinBagLive()
                     end
                 end
 
-                if txt:match("^%s*[Ff][Uu][Ll][Ll]!*%s*$") then
+                if txt:match("^%s*[Ff][Uu][Ll][Ll]!*%s*$") and tracked > 0 then
                     _G._RanaxCoinLabel = desc
                     return defaultMax, defaultMax, true
                 end
@@ -6959,6 +6969,7 @@ UIElements.SafeAutoFarm = CoinFarmTab:Toggle({
             _G.CoinFarmHandlingBagFull = false
             _G.HasReportedCoins = false
             _G.RanaxCoinsCollected = 0
+            _G._RanaxCoinLabel = nil
             if not _G.FarmStartTime or _G.FarmStartTime == 0 then
                 _G.FarmStartTime = os.time()
             end
