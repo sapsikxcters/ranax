@@ -6312,12 +6312,18 @@ local function flyToCoin(targetPart)
             hrp.CFrame = CFrame.new(hrp.Position, targetPart.Position)
         end
 
-        -- Smooth collection: trigger touch when in range without teleport stutter or FPS drops
+        -- Instant guaranteed collection: snap directly onto coin position and trigger touch on part and CoinVisual
         if mag < 4.5 then
+            hrp.CFrame = CFrame.new(targetPart.Position)
             if typeof(firetouchinterest) == "function" then
                 pcall(function()
                     firetouchinterest(hrp, targetPart, 0)
                     firetouchinterest(hrp, targetPart, 1)
+                    local cv = targetPart:FindFirstChild("CoinVisual")
+                    if cv and cv:IsA("BasePart") then
+                        firetouchinterest(hrp, cv, 0)
+                        firetouchinterest(hrp, cv, 1)
+                    end
                 end)
             end
             break
