@@ -1,0 +1,350 @@
+local HttpService     = game:GetService("HttpService")
+local RunService      = game:GetService("RunService")
+local CoreGui         = game:GetService("CoreGui")
+local TweenService    = game:GetService("TweenService")
+local Players         = game:GetService("Players")
+local ContentProvider = game:GetService("ContentProvider")
+
+local PlayerGui = Players.LocalPlayer:FindFirstChild("PlayerGui")
+
+_G.LuauPro_Launcher_Connections = {}
+
+local function safeDestroy(parent, name)
+    if not parent then return end
+    local obj = parent:FindFirstChild(name)
+    if obj then obj:Destroy() end
+end
+
+safeDestroy(CoreGui,   "LuauPro_LauncherGui")
+safeDestroy(PlayerGui, "LuauPro_LauncherGui")
+
+pcall(function()
+    local tmp = Instance.new("Path2D")
+    tmp:SetControlPoints({})
+    tmp:GetLength()
+    tmp:Destroy()
+end)
+
+local ScreenGui3 = Instance.new("ScreenGui")
+ScreenGui3.Name           = "LuauPro_LauncherGui"
+ScreenGui3.ResetOnSpawn   = false
+ScreenGui3.IgnoreGuiInset = true
+ScreenGui3.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ScreenGui3.Parent         = CoreGui
+
+local Frame3 = Instance.new("Frame")
+Frame3.Name = "TopVignette"
+Frame3.Size = UDim2.new(1, 0, 0, 190)
+Frame3.BackgroundColor3 = Color3.fromRGB(0,0,0)
+Frame3.BackgroundTransparency = 1
+Frame3.BorderSizePixel = 0
+Frame3.ZIndex = 1
+Frame3.Parent = ScreenGui3
+
+local UIGradient = Instance.new("UIGradient")
+UIGradient.Rotation = 90
+UIGradient.Transparency = NumberSequence.new({
+    NumberSequenceKeypoint.new(0, 0.15),
+    NumberSequenceKeypoint.new(0.6, 0.65),
+    NumberSequenceKeypoint.new(1, 1)
+})
+UIGradient.Parent = Frame3
+
+local Frame4 = Instance.new("Frame")
+Frame4.Name = "CurtainFrame"
+Frame4.AnchorPoint = Vector2.new(0.5, 0.5)
+Frame4.Position = UDim2.new(0.5, 0, 0.5, 0)
+Frame4.Size = UDim2.new(0, 420, 0, 0)
+Frame4.BackgroundTransparency = 1
+Frame4.ClipsDescendants = true
+Frame4.ZIndex = 5
+Frame4.Parent = ScreenGui3
+
+local ImageLabel = Instance.new("ImageLabel")
+ImageLabel.Name = "TitleImage"
+ImageLabel.AnchorPoint = Vector2.new(0.5, 0.5)
+ImageLabel.Position = UDim2.new(0.5, 0, 0.5, 0)
+ImageLabel.Size = UDim2.new(0, 420, 0, 218)
+ImageLabel.BackgroundTransparency = 1
+ImageLabel.ScaleType = Enum.ScaleType.Fit
+ImageLabel.ZIndex = 6
+ImageLabel.Parent = Frame4
+
+local ImageLabel2 = Instance.new("ImageLabel")
+ImageLabel2.Name = "CleanImage"
+ImageLabel2.AnchorPoint = Vector2.new(0.5, 0.5)
+ImageLabel2.Position = UDim2.new(0.5, 0, 0.5, 0)
+ImageLabel2.Size = UDim2.new(0, 420, 0, 218)
+ImageLabel2.BackgroundTransparency = 1
+ImageLabel2.ScaleType = Enum.ScaleType.Fit
+ImageLabel2.ImageTransparency = 1
+ImageLabel2.ZIndex = 7
+ImageLabel2.Parent = Frame4
+
+local function makeTrack(anchor, xOffset)
+    local track = Instance.new("Frame")
+    track.AnchorPoint = anchor
+    track.Position = UDim2.new(0.5, xOffset, 0, 52)
+    track.Size = UDim2.new(0, 190, 0, 6)
+    track.BackgroundColor3 = Color3.fromRGB(255,255,255)
+    track.BackgroundTransparency = 1
+    track.ClipsDescendants = true
+    track.ZIndex = 4
+    track.Parent = ScreenGui3
+    local c1 = Instance.new("UICorner"); c1.CornerRadius = UDim.new(1,0); c1.Parent = track
+
+    local fill = Instance.new("Frame")
+    fill.Size = UDim2.new(0, 0, 1, 0)
+    fill.BackgroundColor3 = Color3.fromRGB(255,255,255)
+    fill.BackgroundTransparency = 1
+    fill.ZIndex = 5
+    fill.Parent = track
+    local c2 = Instance.new("UICorner"); c2.CornerRadius = UDim.new(1,0); c2.Parent = fill
+
+    return track, fill
+end
+
+local Frame5, Frame6 = makeTrack(Vector2.new(1, 0.5), -81)
+local Frame7, Frame8 = makeTrack(Vector2.new(0, 0.5),  81)
+
+local TextLabel = Instance.new("TextLabel")
+TextLabel.Name = "SubtitleLabel"
+TextLabel.AnchorPoint = Vector2.new(0.5, 0)
+TextLabel.Position = UDim2.new(0.5, 0, 0, 97.75)
+TextLabel.Size = UDim2.new(0, 560, 0, 22)
+TextLabel.BackgroundTransparency = 1
+TextLabel.Font = Enum.Font.GothamMedium
+TextLabel.Text = "Loading launcher..."
+TextLabel.TextColor3 = Color3.fromRGB(220,225,235)
+TextLabel.TextSize = 13
+TextLabel.TextTransparency = 1
+TextLabel.TextXAlignment = Enum.TextXAlignment.Center
+TextLabel.ZIndex = 6
+TextLabel.Parent = ScreenGui3
+
+_G.LuauPro_Launcher = {
+    CurrentProgress = 0,
+    Gui = ScreenGui3,
+    IsRunning = false,
+    Ready = false,
+
+    Prepare = function()
+        ImageLabel.Image  = "rbxasset://_luau.pro/Launcher/lp_splashscreen_title.png"
+        ImageLabel2.Image = "rbxasset://_luau.pro/Launcher/lp_splashscreen.png"
+    end,
+
+    Play = function()
+        pcall(function()
+            ContentProvider:PreloadAsync({ ImageLabel, ImageLabel2 })
+        end)
+
+        TweenService:Create(
+            Frame4,
+            TweenInfo.new(0.65, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+            { Size = UDim2.new(0, 420, 0, 218) }
+        ):Play()
+
+        task.wait(1.2)
+
+        TweenService:Create(
+            Frame3,
+            TweenInfo.new(0.85, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
+            { BackgroundTransparency = 0 }
+        ):Play()
+    end,
+
+    SetProgress = function(percent, text)
+        TextLabel.TextTransparency = 0
+        TextLabel.Text = text or ("Loading... " .. tostring(percent) .. "%")
+        local p = math.clamp(percent / 100, 0, 1)
+        TweenService:Create(Frame6, TweenInfo.new(0.2), { Size = UDim2.new(p, 0, 1, 0) }):Play()
+        TweenService:Create(Frame8, TweenInfo.new(0.2), { Size = UDim2.new(p, 0, 1, 0) }):Play()
+    end,
+
+    AskInterface = function(callback)
+        local ScreenGui4 = Instance.new("ScreenGui")
+        ScreenGui4.Name = "LuauPro_InterfacePrompt"
+        ScreenGui4.ResetOnSpawn = false
+        ScreenGui4.IgnoreGuiInset = true
+        ScreenGui4.DisplayOrder = 1000
+        ScreenGui4.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+        ScreenGui4.Parent = CoreGui
+
+        local veil = Instance.new("Frame")
+        veil.Size = UDim2.fromScale(1,1)
+        veil.BackgroundColor3 = Color3.new(0,0,0)
+        veil.BackgroundTransparency = 1
+        veil.Active = true
+        veil.Parent = ScreenGui4
+
+        local card = Instance.new("Frame")
+        card.AnchorPoint = Vector2.new(0.5,0.5)
+        card.Position = UDim2.fromScale(0.5,0.5)
+        card.Size = UDim2.fromOffset(560, 344)
+        card.BackgroundColor3 = Color3.fromHex("ECEEF2")
+        card.ZIndex = 2
+        card.Parent = veil
+        local c1 = Instance.new("UICorner"); c1.CornerRadius = UDim.new(0,24); c1.Parent = card
+        local s1 = Instance.new("UIStroke"); s1.Color = Color3.fromHex("B0B5C2"); s1.Thickness = 1.5; s1.Parent = card
+        local scale = Instance.new("UIScale"); scale.Scale = 0.45; scale.Parent = card
+
+        local function mkLabel(text, posY, size, color, size2, weight)
+            local lbl = Instance.new("TextLabel")
+            lbl.BackgroundTransparency = 1
+            lbl.FontFace = Font.new("rbxasset://fonts/families/BuilderSans.json", weight or Enum.FontWeight.Medium)
+            lbl.TextColor3 = color
+            lbl.TextSize = size2 or 16
+            lbl.TextWrapped = true
+            lbl.TextXAlignment = Enum.TextXAlignment.Center
+            lbl.Text = text
+            lbl.Size = size
+            lbl.Position = UDim2.fromOffset(32, posY)
+            lbl.ZIndex = 3
+            lbl.Parent = card
+            return lbl
+        end
+
+        mkLabel("Choose your interface", 28, UDim2.new(1,-64,0,28), Color3.fromHex("202124"), 24, Enum.FontWeight.Bold)
+        mkLabel("Pick the layout luau.pro should load.", 62, UDim2.new(1,-64,0,20), Color3.fromHex("6E7079"), 15)
+
+        local function mkChoice(name, xOffset, letter, title, desc, choiceId)
+            local btn = Instance.new("TextButton")
+            btn.Name = name
+            btn.Text = ""
+            btn.AutoButtonColor = false
+            btn.Position = UDim2.fromOffset(xOffset, 102)
+            btn.Size = UDim2.fromOffset(240, 166)
+            btn.BackgroundColor3 = Color3.fromHex("FFFFFF")
+            btn.ZIndex = 3
+            btn.Parent = card
+            local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,16); c.Parent = btn
+            local s = Instance.new("UIStroke"); s.Color = Color3.fromHex("B0B5C2"); s.Thickness = 1.5; s.Parent = btn
+
+            local l1 = Instance.new("TextLabel")
+            l1.BackgroundTransparency = 1
+            l1.FontFace = Font.new("rbxasset://fonts/families/BuilderSans.json", Enum.FontWeight.Bold)
+            l1.TextColor3 = Color3.fromHex("202124")
+            l1.TextSize = 40
+            l1.Text = letter
+            l1.Size = UDim2.new(1, 0, 0, 44)
+            l1.Position = UDim2.new(0, 0, 0, 30)
+            l1.ZIndex = 4
+            l1.Parent = btn
+
+            local l2 = Instance.new("TextLabel")
+            l2.BackgroundTransparency = 1
+            l2.FontFace = Font.new("rbxasset://fonts/families/BuilderSans.json", Enum.FontWeight.Bold)
+            l2.TextColor3 = Color3.fromHex("202124")
+            l2.TextSize = 20
+            l2.Text = title
+            l2.Size = UDim2.new(1, -24, 0, 24)
+            l2.Position = UDim2.new(0, 12, 0, 92)
+            l2.ZIndex = 4
+            l2.Parent = btn
+
+            local l3 = Instance.new("TextLabel")
+            l3.BackgroundTransparency = 1
+            l3.FontFace = Font.new("rbxasset://fonts/families/BuilderSans.json", Enum.FontWeight.Medium)
+            l3.TextColor3 = Color3.fromHex("6E7079")
+            l3.TextSize = 14
+            l3.TextWrapped = true
+            l3.Text = desc
+            l3.Size = UDim2.new(1, -24, 0, 34)
+            l3.Position = UDim2.new(0, 12, 0, 120)
+            l3.ZIndex = 4
+            l3.Parent = btn
+
+            btn.Activated:Connect(function()
+                TweenService:Create(s, TweenInfo.new(0.15), { Color = Color3.fromHex("202124"), Thickness = 3 }):Play()
+                task.wait(0.15)
+                ScreenGui4:Destroy()
+                if callback then callback(choiceId) end
+            end)
+        end
+
+        mkChoice("Choice-pc",     32,  "P", "PC",     "The full desktop layout", "pc")
+        mkChoice("Choice-mobile", 288, "M", "Mobile", "Made for touch screens",  "mobile")
+
+        local remember = Instance.new("TextButton")
+        remember.Name = "Remember"
+        remember.Text = ""
+        remember.BackgroundTransparency = 1
+        remember.Position = UDim2.fromOffset(32, 290)
+        remember.Size = UDim2.fromOffset(260, 28)
+        remember.ZIndex = 3
+        remember.Parent = card
+
+        local box = Instance.new("Frame")
+        box.AnchorPoint = Vector2.new(0, 0.5)
+        box.Position = UDim2.new(0, 0, 0.5, 0)
+        box.Size = UDim2.fromOffset(22, 22)
+        box.BackgroundColor3 = Color3.fromHex("FFFFFF")
+        box.ZIndex = 4
+        box.Parent = remember
+        local bc = Instance.new("UICorner"); bc.CornerRadius = UDim.new(0,6); bc.Parent = box
+        local bs = Instance.new("UIStroke"); bs.Color = Color3.fromHex("B0B5C2"); bs.Thickness = 1.5; bs.Parent = box
+
+        local check = Instance.new("TextLabel")
+        check.BackgroundTransparency = 1
+        check.FontFace = Font.new("rbxasset://fonts/families/BuilderSans.json", Enum.FontWeight.Bold)
+        check.TextColor3 = Color3.fromHex("FFFFFF")
+        check.TextSize = 16
+        check.Text = "✓"
+        check.Size = UDim2.fromScale(1,1)
+        check.ZIndex = 5
+        check.Parent = box
+        check.Visible = false
+
+        local lbl = Instance.new("TextLabel")
+        lbl.BackgroundTransparency = 1
+        lbl.FontFace = Font.new("rbxasset://fonts/families/BuilderSans.json", Enum.FontWeight.Medium)
+        lbl.TextColor3 = Color3.fromHex("202124")
+        lbl.TextSize = 15
+        lbl.Text = "Remember my choice"
+        lbl.Size = UDim2.new(1, -32, 0, 20)
+        lbl.Position = UDim2.new(0, 32, 0.5, 0)
+        lbl.AnchorPoint = Vector2.new(0, 0.5)
+        lbl.ZIndex = 4
+        lbl.Parent = remember
+
+        remember.Activated:Connect(function()
+            check.Visible = true
+            box.BackgroundColor3 = Color3.fromHex("202124")
+            bs.Color = Color3.fromHex("202124")
+        end)
+
+        card.Position = UDim2.new(0.5, 0, 0.5, 16)
+        TweenService:Create(veil, TweenInfo.new(0.25), { BackgroundTransparency = 0.55 }):Play()
+        TweenService:Create(card, TweenInfo.new(0.35, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), { Position = UDim2.fromScale(0.5, 0.5) }):Play()
+    end,
+
+    Finish       = function() end,
+    Start        = function() end,
+    SetInterface = function() end,
+    WaitForReady = function() end
+}
+
+_G.__ReSwiftLauncher = {}
+
+task.spawn(function()
+    _G.LuauPro_Launcher.Prepare()
+    _G.LuauPro_Launcher.Play()
+
+    for i = 1, 100, 5 do
+        _G.LuauPro_Launcher.SetProgress(i)
+        task.wait(0.05)
+    end
+
+    _G.LuauPro_Launcher.SetProgress(100, "Ready — choose interface")
+    task.wait(0.4)
+
+    _G.LuauPro_Launcher.AskInterface(function(choice)
+        if choice == "mobile" then
+            _G.LuauPro_Launcher.SetProgress(100, "Mobile layout selected")
+        else
+            _G.LuauPro_Launcher.SetProgress(100, "PC layout selected")
+        end
+        task.wait(0.8)
+        ScreenGui3:Destroy()
+    end)
+end)
