@@ -9842,7 +9842,7 @@ executeRanaxFlickShoot = function()
     end
 
     local camAim = origCameraCF and CFrame.lookAt(origCameraCF.Position, targetTorsoPos)
-    local shouldRotateCamera = _G.ShootV2FlickCamera or isShiftLock
+    local shouldRotateCamera = (_G.ShootV2FlickCamera == true)
 
     --  Ease-IN Phase: Smooth character & camera turn + smooth mouse glide (NO TELEPORT)
     for i = 1, steps do
@@ -9853,15 +9853,15 @@ executeRanaxFlickShoot = function()
         local newRot = origCFrame:Lerp(aimCFrame, alpha)
         myHRP.CFrame = CFrame.new(myHRP.Position) * newRot.Rotation
 
-        -- Smooth camera rotation (active when Camera Snap is ON or in Shift Lock)
+        -- Smooth camera rotation (active strictly when Camera Snap is ON)
         if shouldRotateCamera and cam and origCameraCF and camAim then
             pcall(function()
                 cam.CFrame = origCameraCF:Lerp(camAim, alpha)
             end)
         end
 
-        -- Smooth mouse glide when Shift Lock is OFF (never teleport, smooth interpolated trajectory)
-        if not isShiftLock then
+        -- Smooth mouse glide when Camera Snap is ON and Shift Lock is OFF
+        if shouldRotateCamera and not isShiftLock then
             local curM = startMousePos:Lerp(targetMousePos, alpha)
             setMouseScreenPos(curM)
         end
@@ -9889,15 +9889,15 @@ executeRanaxFlickShoot = function()
         local newRot = peakCFrame:Lerp(origCFrame, alpha)
         myHRP.CFrame = CFrame.new(myHRP.Position) * newRot.Rotation
 
-        -- Return camera
+        -- Return camera (active strictly when Camera Snap is ON)
         if shouldRotateCamera and cam and peakCameraCF and origCameraCF then
             pcall(function()
                 cam.CFrame = peakCameraCF:Lerp(origCameraCF, alpha)
             end)
         end
 
-        -- Smoothly glide mouse back to initial position when Shift Lock is OFF
-        if not isShiftLock then
+        -- Smoothly glide mouse back to initial position when Camera Snap is ON and Shift Lock is OFF
+        if shouldRotateCamera and not isShiftLock then
             local curM = peakMousePos:Lerp(startMousePos, alpha)
             setMouseScreenPos(curM)
         end
@@ -9936,6 +9936,7 @@ UIElements.ShootV2FlickCamera = SheriffTab:Toggle({
     Value = _G.ShootV2FlickCamera,
     Callback = function(state)
         _G.ShootV2FlickCamera = state
+        V.RanaxFlickCamera = state
         notify("Flick", "Camera Snap " .. (state and "ON" or "OFF"), 2, "camera")
     end
 })
