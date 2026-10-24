@@ -1024,7 +1024,8 @@ if RoundEndEvent then
             if _G.CoinTween then _G.CoinTween:Cancel(); _G.CoinTween = nil end
             if typeof(removeCoinFarmPlatform) == "function" then pcall(removeCoinFarmPlatform) end
             if typeof(restoreChar) == "function" then pcall(restoreChar) end
-            if typeof(_G.TeleportToLobby) == "function" then pcall(_G.TeleportToLobby) end
+            local isCoinFarmActive = (_G.SafeAutoFarm or _G.AutoCoins or false)
+            if isCoinFarmActive and typeof(_G.TeleportToLobby) == "function" then pcall(_G.TeleportToLobby) end
         end)
     end)
 end
@@ -6114,6 +6115,7 @@ local function hookDeathGuard(char)
     local hum = char:WaitForChild("Humanoid", 5)
     if hum then
         hum.Died:Connect(function()
+            if not (_G.SafeAutoFarm or _G.AutoCoins or flying) then return end
             _G.DiedThisRound = true
             _G.WaitingForNewRound = true
             startedCollecting = false
@@ -6122,7 +6124,9 @@ local function hookDeathGuard(char)
             restoreChar()
             notify("Coin Farm", "Died this match -> Returning to Lobby until next match!", 3, "skull")
             task.delay(0.5, function()
-                TeleportToLobby()
+                if _G.SafeAutoFarm or _G.AutoCoins or flying then
+                    TeleportToLobby()
+                end
             end)
         end)
     end
@@ -6132,7 +6136,7 @@ LocalPlayer.CharacterAdded:Connect(function(char)
     hookDeathGuard(char)
 
     -- If died in the ongoing match, teleport to lobby immediately and stay idle until new round!
-    if _G.DiedThisRound or _G.WaitingForNewRound then
+    if (_G.SafeAutoFarm or _G.AutoCoins or flying) and (_G.DiedThisRound or _G.WaitingForNewRound) then
         task.wait(0.4)
         TeleportToLobby()
         return
