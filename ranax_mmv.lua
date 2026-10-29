@@ -6850,7 +6850,8 @@ local function createCoinTrackerHUD()
     getgenv().RanaxTracker_Time = makeRow(60, "Elapsed Time:", "0s", Color3.fromRGB(220, 225, 240))
 end
 _G.createCoinTrackerHUD = createCoinTrackerHUD
-if _G.ShowCoinTrackerHUD ~= false then
+_G.ShowCoinTrackerHUD = false
+if _G.ShowCoinTrackerHUD == true then
     task.spawn(createCoinTrackerHUD)
 end
 
@@ -7043,7 +7044,7 @@ UIElements.ShowTrackerHUD = CoinFarmTab:Toggle({
     Desc = "Displays live floating draggable HUD on screen with coin stats and rate",
     Icon = "layout",
     Type = "Checkbox",
-    Value = (_G.ShowCoinTrackerHUD ~= false),
+    Value = false,
     Callback = function(val)
         _G.ShowCoinTrackerHUD = val
         if val then
