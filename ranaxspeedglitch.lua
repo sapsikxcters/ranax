@@ -3,16 +3,19 @@
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
+local ContextActionService = game:GetService("ContextActionService")
 
 local player = Players.LocalPlayer
 
 -- AYARLAR
 local DEFAULT_WALKSPEED = 16
 local GLITCH_SPEED = 200
-local BLOCKED_KEYWORDS = { "gun", "knife" } -- Tool adinda bunlardan biri gecerse calismaz
+local TOGGLE_KEY = Enum.KeyCode.F
+local BLOCKED_KEYWORDS = { "gun", "knife" }
 
 local enabled = true
 local canUseWithTool = false
+local lastToggleTick = 0
 local conn
 local toolConnAdded
 local toolConnRemoved
@@ -49,12 +52,34 @@ local function updateToolState(char)
 	canUseWithTool = not isBlockedTool(equippedTool)
 end
 
--- [F] TUSU ILE AC / KAPAT
+-- TOGGLE FONKSIYONU (CIFT TETIKLENME ONLEMELI)
+local function toggleSpeed()
+	local now = os.clock()
+	if now - lastToggleTick < 0.15 then return end
+	lastToggleTick = now
+
+	enabled = not enabled
+	print("[Speed Glitch] Durum:", enabled and "ACIK" or "KAPALI")
+end
+
+-- YOL 1: ContextActionService (F TUSU)
+pcall(function()
+	ContextActionService:UnbindAction("ToggleSpeedGlitchF")
+end)
+
+ContextActionService:BindAction("ToggleSpeedGlitchF", function(_, inputState)
+	if inputState == Enum.UserInputState.Begin then
+		toggleSpeed()
+		return Enum.ContextActionResult.Sink
+	end
+	return Enum.ContextActionResult.Pass
+end, false, TOGGLE_KEY)
+
+-- YOL 2: UserInputService YEDEK (Sohbet/textbox acik degilse)
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
-	if gameProcessed then return end
-	if input.KeyCode == Enum.KeyCode.F then
-		enabled = not enabled
-		print("Speed Glitch:", enabled and "ACIK" or "KAPALI")
+	if UserInputService:GetFocusedTextBox() ~= nil then return end
+	if input.KeyCode == TOGGLE_KEY then
+		toggleSpeed()
 	end
 end)
 
@@ -113,4 +138,4 @@ if player.Character then
 	setup(player.Character)
 end
 
-print("Speed Glitch (Tool + [F], Gun/Knife Kapali) yuklendi!")
+print("[Speed Glitch] Yuklendi! [F] ile ac/kapat.")
